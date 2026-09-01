@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vecitap — banco de pruebas</title>
+<style>
+  :root{
+    --fondo:#FDF7EB; --texto:#493B34; --linea:#C7BFB4; --papel:#FFFDF8;
+    --acento:#FA8D4A; --acento-texto:#C04D05; --azul:#628083;
+    --solvente:#3E7A5E; --pendiente:#8A5E10; --deuda:#A8402F;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fondo);color:var(--texto);
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:12px 20px;
+         border-bottom:1px solid var(--linea);background:var(--papel);
+         position:sticky;top:0;z-index:5;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;letter-spacing:-.01em}
+  header .sp{flex:1}
+  main{max-width:1080px;margin:0 auto;padding:20px}
+  .caja{background:var(--papel);border:1px solid var(--linea);border-radius:10px;
+        padding:18px;margin-bottom:18px}
+  h2{font-size:15px;margin:0 0 14px;text-transform:uppercase;letter-spacing:.08em;
+     color:var(--acento-texto)}
+  h3{font-size:14px;margin:18px 0 8px}
+  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+        color:#7d6f66;margin-bottom:4px}
+  input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--linea);
+        border-radius:7px;background:#fff;color:var(--texto);font:inherit;font-size:14px}
+  .fila{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .fila>div{flex:1;min-width:130px}
+  button{padding:9px 15px;border:1px solid var(--acento);border-radius:7px;
+         background:var(--acento);color:#3a2109;font:inherit;font-weight:600;cursor:pointer}
+  button:hover{filter:brightness(1.05)}
+  button.sec{background:transparent;color:var(--acento-texto);border-color:var(--linea)}
+  button.mini{padding:4px 9px;font-size:12px;font-weight:500}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--linea)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7d6f66;font-weight:600}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .tabla-scroll{overflow-x:auto}
+  .aviso{padding:10px 12px;border-radius:7px;font-size:14px;margin-bottom:12px;
+         border:1px solid var(--linea);background:#fff}
+  .aviso.mal{border-color:var(--deuda);color:var(--deuda);background:#fdf2f0}
+  .aviso.bien{border-color:var(--solvente);color:var(--solvente);background:#f1f7f4}
+  .edificio{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .uni{width:96px;padding:9px;border-radius:8px;border:1px solid var(--linea);
+       background:#fff;cursor:pointer;text-align:left}
+  .uni b{display:block;font-size:13px}
+  .uni span{font-size:12px;font-variant-numeric:tabular-nums}
+  .uni.debe{border-color:var(--deuda)} .uni.debe span{color:var(--deuda)}
+  .uni.al_dia{border-color:var(--solvente)} .uni.al_dia span{color:var(--solvente)}
+  .uni.a_favor{border-color:var(--azul)} .uni.a_favor span{color:var(--azul)}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .tabs button{background:transparent;border:1px solid var(--linea);color:var(--texto);
+               font-weight:500;font-size:13px}
+  .tabs button[aria-current="true"]{background:var(--acento);border-color:var(--acento);
+               color:#3a2109;font-weight:600}
+  .pie{font-size:12px;color:#7d6f66;margin-top:6px}
+  dialog{border:1px solid var(--linea);border-radius:10px;background:var(--papel);
+         color:var(--texto);max-width:520px;width:92%;padding:18px}
+  dialog::backdrop{background:rgba(73,59,52,.35)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Vecitap</h1>
+  <span id="quien" class="pie"></span>
+  <span class="sp"></span>
+  <button id="salir" class="sec mini" hidden>Salir</button>
+</header>
+
+<main>
+  <!-- ── Configuración ─────────────────────────────────────────── -->
+  <section id="pConfig" class="caja" hidden>
+    <h2>Conexión con tu base</h2>
+    <p class="pie">Están en Supabase → Project Settings → API. La clave
+      <b>anon</b> es pública a propósito: quien protege los datos es el aislamiento
+      que ya montamos en la base, no el secreto de esta clave.</p>
+    <div class="fila">
+      <div><label>URL del proyecto</label>
+        <input id="cfgUrl" placeholder="https://xxxx.supabase.co"></div>
+    </div>
+    <div class="fila">
+      <div><label>Clave anon (public)</label>
+        <input id="cfgKey" placeholder="eyJhbGciOi..."></div>
+    </div>
+    <button id="cfgOk">Conectar</button>
+    <button id="cfgReset" class="sec">Olvidar</button>
+  </section>
+
+  <!-- ── Entrar ────────────────────────────────────────────────── -->
+  <section id="pAuth" class="caja" hidden>
+    <h2>Entrar</h2>
+    <div class="fila">
+      <div><label>Correo</label><input id="au" type="email" autocomplete="username"></div>
+      <div><label>Contraseña</label><input id="ap" type="password" autocomplete="current-password"></div>
+    </div>
+    <button id="bEntrar">Entrar</button>
+    <button id="bCrear" class="sec">Crear cuenta</button>
+    <p class="pie">Si al crear la cuenta te pide confirmar por correo, puedes apagar
+      esa exigencia mientras pruebas en Supabase → Authentication → Sign In / Providers
+      → Email → Confirm email.</p>
+  </section>
+
+  <!-- ── Organización ──────────────────────────────────────────── -->
+  <section id="pOrg" class="caja" hidden>
+    <h2>Tu administradora</h2>
+    <div id="orgLista"></div>
+    <h3>Crear una nueva</h3>
+    <div class="fila">
+      <div><label>Nombre</label><input id="orgNombre" placeholder="Administradora Unión"></div>
+      <div><label>RIF (opcional)</label><input id="orgRif" placeholder="J-40048248-8"></div>
+    </div>
+    <button id="bOrg">Crear administradora</button>
+  </section>
+
+  <!-- ── Aplicación ────────────────────────────────────────────── -->
+  <section id="pApp" hidden>
+    <div class="caja">
+      <h2>Edificios</h2>
+      <div class="fila">
+        <div><label>Edificio</label><select id="selEdificio"></select></div>
+        <div style="flex:0 0 auto;align-self:end"><button id="bNuevoEdificio" class="sec">Agregar edificio</button></div>
+      </div>
+      <div id="dibujo" class="edificio"></div>
+      <p class="pie" id="resumenSaldos"></p>
+    </div>
+
+    <div class="tabs">
+      <button data-t="unidades" aria-current="true">Unidades</button>
+      <button data-t="cobros">Cobros</button>
+      <button data-t="mes">Mes</button>
+      <button data-t="pagos">Pagos</button>
+      <button data-t="control">Control</button>
+    </div>
+
+    <section id="tUnidades" class="caja">
+      <h2>Unidades y alícuotas</h2>
+      <div class="tabla-scroll"><table id="tblUnidades"></table></div>
+      <h3>Cargar unidades</h3>
+      <p class="pie">Una por línea: <code>código, alícuota, saldo inicial</code>.
+        El saldo inicial es opcional.</p>
+      <textarea id="uniPegar" rows="4" placeholder="01A, 2.41144, 0&#10;01B, 2.50809, 145.50"></textarea>
+      <div style="margin-top:10px"><button id="bUnidades">Cargar</button></div>
+    </section>
+
+    <section id="tCobros" class="caja" hidden>
+      <h2>Qué se le cobra a cada unidad</h2>
+      <div class="tabla-scroll"><table id="tblCobros"></table></div>
+      <h3>Agregar un cobro</h3>
+      <div class="fila">
+        <div><label>Nombre en el recibo</label><input id="coNombre" placeholder="Fondo de reserva"></div>
+        <div><label>Bolsillo</label><select id="coBolsillo">
+          <option value="condominio">Condominio</option>
+          <option value="administracion">Administración</option>
+        </select></div>
+      </div>
+      <div class="fila">
+        <div><label>Cómo se calcula</label><select id="coModo">
+          <option value="presupuesto_alicuota">Presupuesto del mes × alícuota</option>
+          <option value="presupuesto_partes_iguales">Presupuesto del mes ÷ nº de unidades</option>
+          <option value="gasto_alicuota">Gasto del mes × alícuota</option>
+          <option value="gasto_partes_iguales">Gasto del mes ÷ nº de unidades</option>
+          <option value="monto_por_unidad">Un monto igual a cada unidad</option>
+          <option value="monto_por_alicuota">Un monto total repartido por alícuota</option>
+          <option value="monto_fijo_repartido">Un monto total ÷ nº de unidades</option>
+          <option value="porcentaje_condominio">% de lo que paga de condominio</option>
+        </select></div>
+        <div><label>Monto o %</label><input id="coMonto" type="number" step="0.0001" value="0"></div>
+        <div><label>IVA %</label><input id="coIva" type="number" step="0.001" value="0"></div>
+      </div>
+      <button id="bCobro">Agregar cobro</button>
+    </section>
+
+    <section id="tMes" class="caja" hidden>
+      <h2>El mes</h2>
+      <div id="mesEstado"></div>
+      <h3>Abrir un mes</h3>
+      <div class="fila">
+        <div><label>Año</label><input id="mAnio" type="number" value="2026"></div>
+        <div><label>Mes</label><input id="mMes" type="number" min="1" max="12" value="9"></div>
+        <div><label>Tasa BCV</label><input id="mTasa" type="number" step="0.000001" value="1"></div>
+        <div><label>Presupuesto USD</label><input id="mPresu" type="number" step="0.01" placeholder="5630.15"></div>
+      </div>
+      <button id="bAbrir">Abrir mes</button>
+      <h3>Gastos del mes</h3>
+      <div class="fila">
+        <div><label>Concepto</label><input id="gConcepto" placeholder="Vigilancia"></div>
+        <div><label>Monto USD</label><input id="gMonto" type="number" step="0.01"></div>
+        <div><label>Solo para una unidad</label><select id="gUnidad"><option value="">— gasto común —</option></select></div>
+        <div><label>Bolsillo</label><select id="gBolsillo">
+          <option value="condominio">Condominio</option>
+          <option value="administracion">Administración</option>
+        </select></div>
+      </div>
+      <button id="bGasto" class="sec">Agregar gasto</button>
+      <div class="tabla-scroll" style="margin-top:12px"><table id="tblGastos"></table></div>
+      <h3>Cerrar</h3>
+      <button id="bCerrar">Cerrar el mes y emitir recibos</button>
+      <button id="bReabrir" class="sec">Reabrir el último mes</button>
+    </section>
+
+    <section id="tPagos" class="caja" hidden>
+      <h2>Pagos</h2>
+      <div class="fila">
+        <div><label>Unidad</label><select id="pgUnidad"></select></div>
+        <div><label>Fecha</label><input id="pgFecha" type="date"></div>
+        <div><label>Monto USD</label><input id="pgMonto" type="number" step="0.01"></div>
+        <div><label>Va a</label><select id="pgDestino">
+          <option value="condominio">Condominio</option>
+          <option value="honorarios">Administración</option>
+        </select></div>
+      </div>
+      <div class="fila">
+        <div><label>Referencia</label><input id="pgRef" placeholder="77001"></div>
+        <div><label>Banco</label><input id="pgBanco" placeholder="Banesco"></div>
+      </div>
+      <button id="bPago">Registrar como reportado</button>
+      <div class="tabla-scroll" style="margin-top:14px"><table id="tblPagos"></table></div>
+    </section>
+
+    <section id="tControl" class="caja" hidden>
+      <h2>Control</h2>
+      <p class="pie">Recalcula desde cero y compara contra las instantáneas guardadas.
+        Debe devolver cero filas. Si devuelve alguna, hay una instantánea que no cuadra
+        y hay que investigar antes de que el cliente lo note.</p>
+      <button id="bVerificar">Verificar el edificio</button>
+      <div id="verifSalida" style="margin-top:12px"></div>
+    </section>
+  </section>
+</main>
+
+<dialog id="dlgRecibo"><div id="reciboBody"></div>
+  <div style="margin-top:14px;text-align:right"><button id="cerrarDlg" class="sec">Cerrar</button></div>
+</dialog>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const $ = s => document.querySelector(s);
+const el = (t,c,x)=>{const n=document.createElement(t); if(c)n.className=c; if(x!=null)n.textContent=x; return n;};
+const money = n => (Number(n)||0).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
+               'Septiembre','Octubre','Noviembre','Diciembre'];
+
+/* Guardar la configuración es una comodidad, no algo de lo que dependa la página. */
+const guardar = (k,v)=>{ try{ localStorage.setItem(k,v); }catch(e){} };
+const leer    = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
+
+let sb = null, org = null, edificios = [], edificio = null, unidades = [], periodoAbierto = null;
+
+function aviso(msg, tipo){
+  document.querySelectorAll('.aviso.flotante').forEach(n=>n.remove());
+  const n = el('div','aviso flotante '+(tipo||''), msg);
+  $('main').prepend(n);
+  if(tipo!=='mal') setTimeout(()=>n.remove(), 4000);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function fallo(e){ aviso(e?.message || String(e), 'mal'); console.error(e); }
+function mostrar(id, si){ $(id).hidden = !si; }
+
+/* ── Conexión ─────────────────────────────────────────────────── */
+function conectar(url, key){
+  sb = createClient(url, key);
+  mostrar('#pConfig', false);
+  sb.auth.onAuthStateChange((_e, sesion)=> sesion ? entrado(sesion) : deslogueado());
+  sb.auth.getSession().then(({data})=> data.session ? entrado(data.session) : deslogueado());
+}
+$('#cfgOk').onclick = ()=>{
+  const u = $('#cfgUrl').value.trim(), k = $('#cfgKey').value.trim();
+  if(!u || !k) return aviso('Faltan la URL y la clave.','mal');
+  guardar('vecitap_url',u); guardar('vecitap_key',k);
+  conectar(u,k);
+};
+$('#cfgReset').onclick = ()=>{ guardar('vecitap_url',''); guardar('vecitap_key',''); location.reload(); };
+
+/* ── Sesión ───────────────────────────────────────────────────── */
+$('#bEntrar').onclick = async ()=>{
+  const {error} = await sb.auth.signInWithPassword({email:$('#au').value.trim(), password:$('#ap').value});
+  if(error) fallo(error);
+};
+$('#bCrear').onclick = async ()=>{
+  const {error} = await sb.auth.signUp({email:$('#au').value.trim(), password:$('#ap').value});
+  if(error) return fallo(error);
+  aviso('Cuenta creada. Si Supabase pide confirmar el correo, confírmalo y vuelve a entrar.','bien');
+};
+$('#salir').onclick = ()=> sb.auth.signOut();
+
+function deslogueado(){
+  org=null; edificio=null;
+  $('#quien').textContent=''; $('#salir').hidden=true;
+  mostrar('#pAuth',true); mostrar('#pOrg',false); mostrar('#pApp',false);
+}
+async function entrado(sesion){
+  $('#quien').textContent = sesion.user.email;
+  $('#salir').hidden = false;
+  mostrar('#pAuth',false);
+  await cargarOrgs();
+}
+
+/* ── Organización ─────────────────────────────────────────────── */
+async function cargarOrgs(){
+  const {data,error} = await sb.from('organizaciones').select('id,nombre,rif').order('nombre');
+  if(error) return fallo(error);
+  const cont = $('#orgLista'); cont.innerHTML='';
+  if(!data.length){
+    cont.append(el('p','pie','Todavía no perteneces a ninguna administradora.'));
+    mostrar('#pOrg',true); mostrar('#pApp',false); return;
+  }
+  data.forEach(o=>{
+    const b = el('button','sec mini', o.nombre + (o.rif? ' · '+o.rif : ''));
+    b.style.marginRight='6px';
+    b.onclick = ()=> abrirOrg(o);
+    cont.append(b);
+  });
+  if(data.length===1) abrirOrg(data[0]); else mostrar('#pOrg',true);
+}
+$('#bOrg').onclick = async ()=>{
+  const nombre = $('#orgNombre').value.trim();
+  if(!nombre) return aviso('Falta el nombre.','mal');
+  const {data,error} = await sb.rpc('crear_organizacion',
+    {p_nombre:nombre, p_rif:$('#orgRif').value.trim() || null});
+  if(error) return fallo(error);
+  aviso('Administradora creada.','bien');
+  $('#orgNombre').value=''; $('#orgRif').value='';
+  await cargarOrgs();
+};
+async function abrirOrg(o){
+  org = o; mostrar('#pOrg',false); mostrar('#pApp',true);
+  await cargarEdificios();
+}
+
+/* ── Edificios ────────────────────────────────────────────────── */
+async function cargarEdificios(){
+  const {data,error} = await sb.from('edificios')
+    .select('id,nombre,prefijo_recibo,interes_mora,tolerancia_alicuota')
+    .eq('org_id',org.id).order('nombre');
+  if(error) return fallo(error);
+  edificios = data;
+  const s = $('#selEdificio'); s.innerHTML='';
+  data.forEach(e=> s.append(new Option(e.nombre, e.id)));
+  if(!data.length){ edificio=null; pintarTodo(); return; }
+  edificio = data.find(e=>e.id===edificio?.id) || data[0];
+  s.value = edificio.id;
+  await pintarTodo();
+}
+$('#selEdificio').onchange = async ()=>{
+  edificio = edificios.find(e=>e.id===$('#selEdificio').value);
+  await pintarTodo();
+};
+$('#bNuevoEdificio').onclick = async ()=>{
+  const nombre = prompt('Nombre del edificio o conjunto:');
+  if(!nombre) return;
+  const pref = prompt('Prefijo para los números de recibo (único por administradora):','CON1');
+  if(!pref) return;
+  const mora = prompt('Interés de mora mensual en %, 0 si no se cobra:','0');
+  const {error} = await sb.from('edificios').insert({
+    org_id:org.id, nombre, prefijo_recibo:pref.toUpperCase(),
+    interes_mora:Number(mora)||0, honorario_monto:0});
+  if(error) return fallo(error);
+  aviso('Edificio creado con sus cobros por omisión.','bien');
+  await cargarEdificios();
+};
+
+async function pintarTodo(){
+  if(!edificio){ $('#dibujo').innerHTML=''; return; }
+  await Promise.all([cargarUnidades(), cargarCobros(), cargarPeriodo()]);
+  await pintarEdificio();
+}
+
+/* ── Unidades ─────────────────────────────────────────────────── */
+async function cargarUnidades(){
+  const {data,error} = await sb.from('unidades')
+    .select('id,codigo,alicuota,saldo_inicial,activa')
+    .eq('edificio_id',edificio.id).order('codigo');
+  if(error) return fallo(error);
+  unidades = data;
+
+  const t = $('#tblUnidades'); t.innerHTML='';
+  const thead = t.createTHead().insertRow();
+  ['Código','Alícuota %','Saldo inicial','Activa'].forEach((h,i)=>{
+    const th=el('th',i>0?'n':'',h); thead.append(th);
+  });
+  const tb = t.createTBody();
+  let suma = 0;
+  data.forEach(u=>{
+    suma += Number(u.alicuota);
+    const r = tb.insertRow();
+    r.insertCell().textContent = u.codigo;
+    r.insertCell().outerHTML = `<td class="n">${Number(u.alicuota).toFixed(5)}</td>`;
+    r.insertCell().outerHTML = `<td class="n">${money(u.saldo_inicial)}</td>`;
+    r.insertCell().outerHTML = `<td class="n">${u.activa?'sí':'no'}</td>`;
+  });
+  const pie = tb.insertRow();
+  pie.insertCell().outerHTML = '<td><b>Suman</b></td>';
+  pie.insertCell().outerHTML = `<td class="n"><b>${suma.toFixed(5)}</b></td>`;
+  pie.insertCell(); pie.insertCell();
+
+  [$('#gUnidad'), $('#pgUnidad')].forEach((s,i)=>{
+    const v = s.value; s.innerHTML='';
+    if(i===0) s.append(new Option('— gasto común —',''));
+    data.forEach(u=> s.append(new Option(u.codigo, u.id)));
+    s.value = v;
+  });
+}
+$('#bUnidades').onclick = async ()=>{
+  const filas = $('#uniPegar').value.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!filas.length) return;
+  const nuevas = [];
+  for(const l of filas){
+    const p = l.split(/[,;\t]/).map(x=>x.trim());
+    if(!p[0]) continue;
+    nuevas.push({org_id:org.id, edificio_id:edificio.id, codigo:p[0],
+                 alicuota:Number(p[1])||0, saldo_inicial:Number(p[2])||0});
+  }
+  const {error} = await sb.from('unidades').insert(nuevas);
+  if(error) return fallo(error);
+  $('#uniPegar').value='';
+  aviso(nuevas.length+' unidades cargadas.','bien');
+  await pintarTodo();
+};
+
+/* ── Cobros ───────────────────────────────────────────────────── */
+const NOMBRE_MODO = {
+  presupuesto_alicuota:'Presupuesto × alícuota',
+  presupuesto_partes_iguales:'Presupuesto ÷ unidades',
+  gasto_alicuota:'Gasto × alícuota',
+  gasto_partes_iguales:'Gasto ÷ unidades',
+  monto_por_unidad:'Monto igual a cada unidad',
+  monto_por_alicuota:'Monto total × alícuota',
+  monto_fijo_repartido:'Monto total ÷ unidades',
+  porcentaje_condominio:'% del condominio'
+};
+async function cargarCobros(){
+  const {data,error} = await sb.from('conceptos_cobro')
+    .select('id,nombre,bolsillo,modo,monto,iva,orden,activo,edificio_id')
+    .or(`edificio_id.eq.${edificio.id},edificio_id.is.null`)
+    .order('orden');
+  if(error) return fallo(error);
+
+  const t = $('#tblCobros'); t.innerHTML='';
+  const h = t.createTHead().insertRow();
+  ['Nombre','Bolsillo','Cómo se calcula','Monto','IVA %',''].forEach((x,i)=>
+    h.append(el('th', i===3||i===4 ?'n':'', x)));
+  const tb = t.createTBody();
+  data.forEach(c=>{
+    const r = tb.insertRow();
+    r.insertCell().textContent = c.nombre + (c.activo?'':' (apagado)');
+    r.insertCell().textContent = {condominio:'Condominio',administracion:'Administración',
+                                  servicio:'Servicio Vecitap'}[c.bolsillo];
+    const sel = document.createElement('select');
+    Object.entries(NOMBRE_MODO).forEach(([k,v])=> sel.append(new Option(v,k)));
+    sel.value = c.modo;
+    sel.disabled = c.bolsillo==='servicio';
+    sel.onchange = ()=> guardarCobro(c.id,{modo:sel.value});
+    r.insertCell().append(sel);
+
+    const inm = el('input'); inm.type='number'; inm.step='0.0001'; inm.value=c.monto;
+    inm.disabled = c.bolsillo==='servicio';
+    inm.onchange = ()=> guardarCobro(c.id,{monto:Number(inm.value)||0});
+    const c1=r.insertCell(); c1.className='n'; c1.append(inm);
+
+    const inv = el('input'); inv.type='number'; inv.step='0.001'; inv.value=c.iva;
+    inv.disabled = c.bolsillo==='servicio';
+    inv.onchange = ()=> guardarCobro(c.id,{iva:Number(inv.value)||0});
+    const c2=r.insertCell(); c2.className='n'; c2.append(inv);
+
+    const b = el('button','sec mini', c.activo?'Apagar':'Encender');
+    b.disabled = c.bolsillo==='servicio';
+    b.onclick = ()=> guardarCobro(c.id,{activo:!c.activo});
+    r.insertCell().append(b);
+  });
+  if(data.some(c=>c.bolsillo==='servicio'))
+    $('#tCobros').querySelector('.pie')?.remove();
+}
+async function guardarCobro(id, cambios){
+  const {error} = await sb.from('conceptos_cobro').update(cambios).eq('id',id);
+  if(error) return fallo(error);
+  aviso('Guardado.','bien'); await cargarCobros();
+}
+$('#bCobro').onclick = async ()=>{
+  const nombre = $('#coNombre').value.trim();
+  if(!nombre) return aviso('Falta el nombre.','mal');
+  const {error} = await sb.from('conceptos_cobro').insert({
+    org_id:org.id, edificio_id:edificio.id, nombre,
+    bolsillo:$('#coBolsillo').value, modo:$('#coModo').value,
+    monto:Number($('#coMonto').value)||0, iva:Number($('#coIva').value)||0, orden:5});
+  if(error) return fallo(error);
+  $('#coNombre').value='';
+  aviso('Cobro agregado.','bien'); await cargarCobros();
+};
+
+/* ── El mes ───────────────────────────────────────────────────── */
+async function cargarPeriodo(){
+  const {data,error} = await sb.from('periodos')
+    .select('id,anio,mes,etiqueta,estado,tasa_bcv,presupuesto,total_gastos')
+    .eq('edificio_id',edificio.id).order('anio',{ascending:false}).order('mes',{ascending:false});
+  if(error) return fallo(error);
+  periodoAbierto = data.find(p=>p.estado==='abierto') || null;
+
+  const c = $('#mesEstado'); c.innerHTML='';
+  if(periodoAbierto){
+    c.append(el('div','aviso',
+      `Abierto: ${periodoAbierto.etiqueta}. Presupuesto ${periodoAbierto.presupuesto!=null?money(periodoAbierto.presupuesto)+' USD':'sin fijar'}.`));
+  } else {
+    c.append(el('div','aviso','No hay ningún mes abierto.'));
+  }
+  const ult = data.filter(p=>p.estado==='cerrado').slice(0,6);
+  if(ult.length){
+    const t = el('table'); const h=t.createTHead().insertRow();
+    ['Mes','Presupuesto','Gastos','Estado'].forEach((x,i)=> h.append(el('th', i>0&&i<3?'n':'', x)));
+    const tb=t.createTBody();
+    ult.forEach(p=>{
+      const r=tb.insertRow();
+      r.insertCell().textContent = p.etiqueta;
+      r.insertCell().outerHTML = `<td class="n">${p.presupuesto!=null?money(p.presupuesto):'—'}</td>`;
+      r.insertCell().outerHTML = `<td class="n">${money(p.total_gastos)}</td>`;
+      r.insertCell().textContent = 'cerrado';
+    });
+    c.append(el('h3',null,'Últimos meses cerrados')); c.append(t);
+  }
+  await cargarGastos();
+}
+$('#bAbrir').onclick = async ()=>{
+  const anio = Number($('#mAnio').value), mes = Number($('#mMes').value);
+  const presu = $('#mPresu').value === '' ? null : Number($('#mPresu').value);
+  const {error} = await sb.rpc('abrir_periodo',{
+    p_edificio:edificio.id, p_anio:anio, p_mes:mes,
+    p_etiqueta:`${MESES[mes]} ${anio}`, p_tasa:Number($('#mTasa').value)||1,
+    p_presupuesto:presu});
+  if(error) return fallo(error);
+  aviso('Mes abierto.','bien'); await pintarTodo();
+};
+async function cargarGastos(){
+  const t = $('#tblGastos'); t.innerHTML='';
+  if(!periodoAbierto) return;
+  const {data,error} = await sb.from('gastos')
+    .select('id,concepto,monto,tipo,bolsillo,unidad_id')
+    .eq('periodo_id',periodoAbierto.id).order('creado_en');
+  if(error) return fallo(error);
+  const h=t.createTHead().insertRow();
+  ['Concepto','Tipo','Bolsillo','Monto',''].forEach((x,i)=> h.append(el('th', i===3?'n':'', x)));
+  const tb=t.createTBody(); let suma=0;
+  data.forEach(g=>{
+    if(g.tipo==='comun') suma += Number(g.monto);
+    const r=tb.insertRow();
+    r.insertCell().textContent=g.concepto;
+    r.insertCell().textContent= g.tipo==='comun' ? 'común'
+      : 'solo '+(unidades.find(u=>u.id===g.unidad_id)?.codigo||'');
+    r.insertCell().textContent= g.bolsillo==='administracion'?'Administración':'Condominio';
+    r.insertCell().outerHTML=`<td class="n">${money(g.monto)}</td>`;
+    const b=el('button','sec mini','Quitar');
+    b.onclick = async ()=>{
+      const {error}=await sb.from('gastos').delete().eq('id',g.id);
+      if(error) return fallo(error); await cargarGastos();
+    };
+    r.insertCell().append(b);
+  });
+  const p=tb.insertRow();
+  p.insertCell().outerHTML='<td colspan="3"><b>Gastos comunes</b></td>';
+  p.insertCell().outerHTML=`<td class="n"><b>${money(suma)}</b></td>`;
+  p.insertCell();
+}
+$('#bGasto').onclick = async ()=>{
+  if(!periodoAbierto) return aviso('Primero hay que abrir un mes.','mal');
+  const uni = $('#gUnidad').value;
+  const fila = {org_id:org.id, periodo_id:periodoAbierto.id,
+    concepto:$('#gConcepto').value.trim() || 'Sin concepto',
+    monto:Number($('#gMonto').value)||0,
+    tipo: uni ? 'directo' : 'comun',
+    unidad_id: uni || null,
+    bolsillo: uni ? $('#gBolsillo').value : 'condominio'};
+  const {error} = await sb.from('gastos').insert(fila);
+  if(error) return fallo(error);
+  $('#gConcepto').value=''; $('#gMonto').value='';
+  await cargarGastos();
+};
+$('#bCerrar').onclick = async ()=>{
+  if(!periodoAbierto) return aviso('No hay mes abierto.','mal');
+  if(!confirm('Cerrar '+periodoAbierto.etiqueta+' y emitir los recibos?')) return;
+  const {data,error} = await sb.rpc('cerrar_periodo',{p_periodo:periodoAbierto.id});
+  if(error) return fallo(error);
+  const r = Array.isArray(data)?data[0]:data;
+  aviso(`Cerrado: ${r.recibos_emitidos} recibos por ${money(r.total_facturado)} USD.`,'bien');
+  await pintarTodo();
+};
+$('#bReabrir').onclick = async ()=>{
+  const {data} = await sb.from('periodos').select('id,etiqueta,anio,mes')
+    .eq('edificio_id',edificio.id).eq('estado','cerrado')
+    .order('anio',{ascending:false}).order('mes',{ascending:false}).limit(1);
+  if(!data?.length) return aviso('No hay meses cerrados.','mal');
+  if(!confirm('Reabrir '+data[0].etiqueta+'? Se anulan sus recibos.')) return;
+  const {error} = await sb.rpc('reabrir_periodo',{p_periodo:data[0].id});
+  if(error) return fallo(error);
+  aviso('Mes reabierto.','bien'); await pintarTodo();
+};
+
+/* ── El edificio dibujado ─────────────────────────────────────── */
+async function pintarEdificio(){
+  const {data,error} = await sb.from('saldos_actuales')
+    .select('unidad_id,codigo,condominio,administracion,servicio,total,estado')
+    .eq('edificio_id',edificio.id).order('codigo');
+  if(error) return fallo(error);
+  const d = $('#dibujo'); d.innerHTML='';
+  let deuda=0, favor=0, aldia=0;
+  data.forEach(u=>{
+    if(u.estado==='debe') deuda += Number(u.total);
+    if(u.estado==='a_favor') favor += Number(u.total);
+    if(u.estado==='al_dia') aldia++;
+    const b = el('button','uni '+u.estado);
+    b.append(el('b',null,u.codigo));
+    b.append(el('span',null, money(u.total)));
+    b.onclick = ()=> verRecibo(u);
+    d.append(b);
+  });
+  $('#resumenSaldos').textContent =
+    `${data.length} unidades · ${money(deuda)} USD por cobrar · ${money(-favor)} USD a favor · ${aldia} al día`;
+}
+async function verRecibo(u){
+  const {data,error} = await sb.from('recibos')
+    .select('numero,cuota,directos,anterior,a_favor,mora,honorario,servicio,anterior_hon,anterior_serv,total,conceptos,periodo_id,periodos(etiqueta)')
+    .eq('unidad_id',u.unidad_id).order('emitido_en',{ascending:false}).limit(1);
+  if(error) return fallo(error);
+  const b = $('#reciboBody'); b.innerHTML='';
+  b.append(el('h2',null,'Unidad '+u.codigo));
+  const s = el('table'); const tb=s.createTBody();
+  const linea=(k,v)=>{const r=tb.insertRow(); r.insertCell().textContent=k;
+    r.insertCell().outerHTML=`<td class="n">${money(v)}</td>`;};
+  linea('Saldo de condominio', u.condominio);
+  linea('Saldo de administración', u.administracion);
+  linea('Saldo de servicio', u.servicio);
+  linea('Total', u.total);
+  b.append(s);
+  if(data.length){
+    const r = data[0];
+    b.append(el('h3',null,'Último recibo · '+r.numero+' · '+(r.periodos?.etiqueta||'')));
+    const t2 = el('table'); const tb2=t2.createTBody();
+    (r.conceptos||[]).forEach(c=>{
+      const f=tb2.insertRow();
+      f.insertCell().textContent=c.nombre;
+      f.insertCell().outerHTML=`<td class="n">${money(c.monto)}</td>`;
+    });
+    const extras = [['Saldo anterior',r.anterior],['Saldo a favor',-r.a_favor],
+                    ['Mora',r.mora],['Cargos a la unidad',r.directos],
+                    ['Total del recibo',r.total]];
+    extras.forEach(([k,v])=>{ if(Number(v)!==0 || k==='Total del recibo'){
+      const f=tb2.insertRow(); f.insertCell().textContent=k;
+      f.insertCell().outerHTML=`<td class="n">${money(v)}</td>`;}});
+    b.append(t2);
+  } else {
+    b.append(el('p','pie','Todavía no se le ha emitido ningún recibo.'));
+  }
+  $('#dlgRecibo').showModal();
+}
+$('#cerrarDlg').onclick = ()=> $('#dlgRecibo').close();
+
+/* ── Pagos ────────────────────────────────────────────────────── */
+$('#bPago').onclick = async ()=>{
+  const monto = Number($('#pgMonto').value)||0;
+  if(!monto) return aviso('Falta el monto.','mal');
+  const {error} = await sb.from('pagos').insert({
+    org_id:org.id, unidad_id:$('#pgUnidad').value,
+    fecha:$('#pgFecha').value || new Date().toISOString().slice(0,10),
+    monto, moneda:'USD', monto_usd:monto,
+    destino:$('#pgDestino').value, estado:'reportado',
+    referencia:$('#pgRef').value.trim()||null, banco:$('#pgBanco').value.trim()||null});
+  if(error) return fallo(error);
+  $('#pgMonto').value=''; $('#pgRef').value='';
+  aviso('Pago reportado. Falta conciliarlo.','bien');
+  await cargarPagos();
+};
+async function cargarPagos(){
+  const ids = unidades.map(u=>u.id);
+  if(!ids.length) return;
+  const {data,error} = await sb.from('pagos')
+    .select('id,fecha,monto_usd,destino,estado,referencia,banco,unidad_id,periodo_cierre_id')
+    .in('unidad_id',ids).order('fecha',{ascending:false}).limit(60);
+  if(error) return fallo(error);
+  const t=$('#tblPagos'); t.innerHTML='';
+  const h=t.createTHead().insertRow();
+  ['Fecha','Unidad','Monto','Va a','Ref.','Estado',''].forEach((x,i)=> h.append(el('th', i===2?'n':'', x)));
+  const tb=t.createTBody();
+  data.forEach(p=>{
+    const r=tb.insertRow();
+    r.insertCell().textContent=p.fecha;
+    r.insertCell().textContent=unidades.find(u=>u.id===p.unidad_id)?.codigo||'';
+    r.insertCell().outerHTML=`<td class="n">${money(p.monto_usd)}</td>`;
+    r.insertCell().textContent= p.destino==='honorarios'?'Administración':
+                                p.destino==='servicio'?'Servicio':'Condominio';
+    r.insertCell().textContent=p.referencia||'';
+    r.insertCell().textContent=p.estado + (p.periodo_cierre_id?' · en cierre':'');
+    const c=r.insertCell();
+    if(p.estado==='reportado'){
+      const b=el('button','mini','Conciliar');
+      b.onclick = async ()=>{
+        const {error}=await sb.from('pagos')
+          .update({estado:'conciliado', conciliado_en:new Date().toISOString()}).eq('id',p.id);
+        if(error) return fallo(error);
+        await cargarPagos(); await pintarEdificio();
+      };
+      c.append(b);
+    }
+  });
+}
+
+/* ── Control ──────────────────────────────────────────────────── */
+$('#bVerificar').onclick = async ()=>{
+  const {data,error} = await sb.rpc('verificar_cortes',{p_edificio:edificio.id});
+  if(error) return fallo(error);
+  const s = $('#verifSalida'); s.innerHTML='';
+  if(!data.length){ s.append(el('div','aviso bien','Todas las instantáneas cuadran.')); return; }
+  s.append(el('div','aviso mal', data.length+' unidades no cuadran.'));
+  const t=el('table'); const h=t.createTHead().insertRow();
+  ['Unidad','Guardado','Recalculado','Diferencia'].forEach((x,i)=> h.append(el('th', i?'n':'', x)));
+  const tb=t.createTBody();
+  data.forEach(d=>{
+    const r=tb.insertRow();
+    r.insertCell().textContent=d.unidad;
+    r.insertCell().outerHTML=`<td class="n">${money(d.guardado)}</td>`;
+    r.insertCell().outerHTML=`<td class="n">${money(d.recalculado)}</td>`;
+    r.insertCell().outerHTML=`<td class="n">${money(d.diferencia)}</td>`;
+  });
+  s.append(t);
+};
+
+/* ── Pestañas ─────────────────────────────────────────────────── */
+document.querySelectorAll('.tabs button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-current', x===b));
+    ['unidades','cobros','mes','pagos','control'].forEach(t=>
+      mostrar('#t'+t[0].toUpperCase()+t.slice(1), t===b.dataset.t));
+    if(b.dataset.t==='pagos') cargarPagos();
+  };
+});
+
+/* ── Arranque ─────────────────────────────────────────────────── */
+const u0 = leer('vecitap_url'), k0 = leer('vecitap_key');
+if(u0 && k0){ $('#cfgUrl').value=u0; $('#cfgKey').value=k0; conectar(u0,k0); }
+else mostrar('#pConfig', true);
+</script>
+</body>
+</html>
