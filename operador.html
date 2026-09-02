@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vecitap · Consola del operador</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  *{box-sizing:border-box}
+  body{margin:0;background:#0F1620;color:#E6EDF3;font-family:Archivo,system-ui,sans-serif}
+  .num{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+  .flex{display:flex}.grid{display:grid}.flex-wrap{flex-wrap:wrap}
+  .items-center{align-items:center}.items-end{align-items:flex-end}.items-start{align-items:flex-start}
+  .justify-between{justify-content:space-between}.justify-end{justify-content:flex-end}
+  .gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-6{gap:24px}
+  .mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}.mb-6{margin-bottom:24px}
+  .mt-4{margin-top:16px}
+  table{border-collapse:collapse;width:100%}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:600;color:#8B9AAB;
+     text-align:left;padding:9px 12px;border-bottom:1px solid #2A3746;white-space:nowrap}
+  td{padding:11px 12px;border-bottom:1px solid #2A3746;font-size:13px}
+  .fila:hover{background:#1C2836}
+  .scroll-x{overflow-x:auto}
+  input,select,textarea{background:#0F1620;border:1px solid #2A3746;border-radius:4px;
+    padding:8px 10px;font-size:13px;width:100%;outline:none;color:#E6EDF3;font-family:inherit}
+  input:focus,select:focus,textarea:focus{border-color:#4FB286}
+  @media (max-width:760px){ td,th{padding:8px 9px;font-size:12px} }
+</style>
+</head>
+<body>
+<div id="raiz"></div>
+
+<script type="text/babel" data-type="module" data-presets="react">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const { useState, useEffect, useMemo } = React;
+
+const C = { bg:"#0F1620", panel:"#16202C", panelAlt:"#1C2836", borde:"#2A3746",
+  texto:"#E6EDF3", tenue:"#8B9AAB", suave:"#B9C6D3",
+  acento:"#4FB286", acentoBg:"rgba(79,178,134,.13)",
+  ambar:"#D9A441", ambarBg:"rgba(217,164,65,.13)",
+  rojo:"#D4685C", rojoBg:"rgba(212,104,92,.13)",
+  azul:"#5B9BD5", azulBg:"rgba(91,155,213,.13)" };
+
+const ESTADOS = {
+  prueba:      { t: "En prueba",    col: C.azul,   bg: C.azulBg },
+  activa:      { t: "Activa",       col: C.acento, bg: C.acentoBg },
+  vencida:     { t: "Pago vencido", col: C.ambar,  bg: C.ambarBg },
+  suspendida:  { t: "Suspendida",   col: C.rojo,   bg: C.rojoBg },
+  cancelada:   { t: "Cancelada",    col: C.tenue,  bg: "transparent" },
+  "sin suscripción": { t: "Sin suscripción", col: C.tenue, bg: "transparent" },
+};
+const PLANES = { mensual: "Mensual", trimestral: "Trimestral", anual: "Anual" };
+const DESCUENTO = { mensual: 0, trimestral: 10, anual: 20 };
+
+const nf = (d = 2) => new Intl.NumberFormat("es-VE", { minimumFractionDigits: d, maximumFractionDigits: d });
+const usd = (v) => "$ " + nf(2).format(Number(v) || 0);
+const usd0 = (v) => "$ " + nf(0).format(Number(v) || 0);
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+/* En Venezuela se escribe 5.630,15: un input numérico descarta la coma. */
+const num = (v) => {
+  const t = String(v ?? "").trim();
+  if (t === "") return null;
+  const n = Number(t.replace(/\.(?=\d{3}\b)/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+};
+const num0 = (v) => num(v) || 0;
+const guardarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const leerLocal = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+
+const Panel = ({ children, style }) => (
+  <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 5,
+    padding: 18, ...style }}>{children}</div>
+);
+const Boton = ({ children, onClick, tono = "acento", disabled, style }) => {
+  const c = { acento: { background: C.acento, color: C.bg, border: "1px solid transparent" },
+              suave:  { background: "transparent", color: C.suave, border: `1px solid ${C.borde}` },
+              rojo:   { background: "transparent", color: C.rojo, border: `1px solid ${C.borde}` },
+              ambar:  { background: "transparent", color: C.ambar, border: `1px solid ${C.borde}` } }[tono];
+  return <button onClick={onClick} disabled={disabled} style={{ ...c, borderRadius: 4,
+    fontSize: 13, fontWeight: 600, padding: "8px 14px", cursor: disabled ? "not-allowed" : "pointer",
+    display: "inline-flex", alignItems: "center", gap: 7, opacity: disabled ? .5 : 1,
+    fontFamily: "inherit", whiteSpace: "nowrap", ...style }}>{children}</button>;
+};
+const Campo = ({ label, children, ayuda }) => (
+  <label style={{ display: "block" }}>
+    <span style={{ fontSize: 11.5, color: C.tenue, display: "block", marginBottom: 5 }}>{label}</span>
+    {children}
+    {ayuda && <span style={{ fontSize: 11, color: C.tenue, display: "block", marginTop: 4 }}>{ayuda}</span>}
+  </label>
+);
+const Kpi = ({ label, valor, pie, destaque }) => (
+  <div style={{ padding: "16px 18px", background: destaque ? C.acentoBg : C.panel,
+    border: `1px solid ${destaque ? "rgba(79,178,134,.35)" : C.borde}`, borderRadius: 5 }}>
+    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
+      color: C.tenue, marginBottom: 8 }}>{label}</div>
+    <div className="num" style={{ fontSize: 25, fontWeight: 700,
+      color: destaque ? C.acento : C.texto }}>{valor}</div>
+    {pie && <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 4 }}>{pie}</div>}
+  </div>
+);
+const Etiqueta = ({ e }) => {
+  const x = ESTADOS[e] || ESTADOS.cancelada;
+  return <span style={{ background: x.bg, color: x.col, borderRadius: 3,
+    padding: "3px 9px", fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>{x.t}</span>;
+};
+
+function App() {
+  const [cfg, setCfg] = useState(() => {
+    const u = leerLocal("vecitap_url"), k = leerLocal("vecitap_key");
+    return u && k ? { url: u, key: k } : null;
+  });
+  const sb = useMemo(() => cfg ? createClient(cfg.url, cfg.key) : null, [cfg]);
+  const [sesion, setSesion] = useState(undefined);
+  const [esOperador, setEsOperador] = useState(null);
+  const [cartera, setCartera] = useState(null);
+  const [abierto, setAbierto] = useState(null);
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState("todos");
+  const [aviso, setAviso] = useState(null);
+  const [tarea, setTarea] = useState(null);
+  const [corriendo, setCorriendo] = useState(false);
+
+  const notificar = (t, tipo = "ok") => { setAviso({ t, tipo });
+    setTimeout(() => setAviso(null), 3600); };
+  const fallo = (e) => notificar(e?.message || String(e), "error");
+
+  useEffect(() => {
+    if (!sb) return;
+    sb.auth.getSession().then(({ data }) => setSesion(data.session || null));
+    const { data: s } = sb.auth.onAuthStateChange((_e, ses) => {
+      setSesion(ses || null); if (!ses) { setEsOperador(null); setCartera(null); } });
+    return () => s?.subscription?.unsubscribe();
+  }, [sb]);
+
+  const cargar = async () => {
+    const { data: op } = await sb.rpc("es_operador");
+    setEsOperador(!!op);
+    if (!op) return;
+    const { data, error } = await sb.rpc("cartera_operador");
+    if (error) return fallo(error);
+    setCartera(data || []);
+    const { data: log } = await sb.from("tareas_log").select("corrida_en,detalle")
+      .eq("tarea", "cobros_suscripcion").order("corrida_en", { ascending: false }).limit(1);
+    setTarea((log && log[0]) || null);
+  };
+
+  const correrAhora = async () => {
+    setCorriendo(true);
+    const { data, error } = await sb.rpc("correr_cobros_ahora");
+    setCorriendo(false);
+    if (error) return fallo(error);
+    notificar(`Tarea corrida: ${data.cobros_generados} cobros por ${usd(data.monto_total)}` +
+      (data.marcadas_vencidas ? `, ${data.marcadas_vencidas} marcadas vencidas.` : "."));
+    cargar();
+  };
+  useEffect(() => { if (sb && sesion) cargar(); }, [sb, sesion]);
+
+  if (!cfg) return <Conexion onListo={(url, key) => setCfg({ url, key })} />;
+  if (sesion === undefined) return <Centro>Comprobando la sesión…</Centro>;
+  if (!sesion) return <Entrar sb={sb} notificar={notificar} aviso={aviso} />;
+  if (esOperador === null) return <Centro>Cargando…</Centro>;
+  if (!esOperador) return (
+    <Centro>
+      <Panel style={{ maxWidth: 520 }}>
+        <h2 style={{ margin: "0 0 8px", fontSize: 17 }}>Esta cuenta no es de operador</h2>
+        <p style={{ color: C.tenue, fontSize: 13.5, lineHeight: 1.6 }}>
+          La consola solo la abre quien esté registrado en la tabla <b>operadores</b>. Se
+          agrega desde el panel de Supabase, con la llave de servicio: a propósito, nadie
+          se puede hacer operador a sí mismo desde la aplicación.
+        </p>
+        <div className="mt-4"><Boton tono="suave" onClick={() => sb.auth.signOut()}>Salir</Boton></div>
+      </Panel>
+    </Centro>
+  );
+  if (cartera === null) return <Centro>Cargando la cartera…</Centro>;
+
+  /* ── Métricas del negocio ── */
+  const activos = cartera.filter((c) => c.estado === "activa");
+  const ingresoMes = activos.reduce((s, c) => s + (Number(c.cuota_mes) || 0), 0);
+  const unidades = cartera.reduce((s, c) => s + (c.unidades || 0), 0);
+  const unidadesActivas = activos.reduce((s, c) => s + (c.unidades || 0), 0);
+  const edificios = cartera.reduce((s, c) => s + (c.edificios || 0), 0);
+  const porCobrarClientes = cartera.reduce((s, c) => s + (Number(c.por_cobrar) || 0), 0);
+  const pendiente = cartera.reduce((s, c) => s + (Number(c.monto_pendiente) || 0), 0);
+  const cobrosPend = cartera.reduce((s, c) => s + (c.cobros_pendientes || 0), 0);
+
+  const visibles = cartera
+    .filter((c) => filtro === "todos" || c.estado === filtro)
+    .filter((c) => !busca || (c.nombre + " " + (c.rif || "") + " " + (c.contacto || ""))
+      .toLowerCase().includes(busca.toLowerCase()))
+    .sort((a, b) => (b.unidades || 0) - (a.unidades || 0));
+
+  return (
+    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 18px" }}>
+      <header className="flex items-end justify-between gap-4 flex-wrap mb-6">
+        <div>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".14em",
+            color: C.acento, marginBottom: 3 }}>Consola del operador</div>
+          <h1 style={{ fontSize: 23, fontWeight: 700, margin: 0 }}>Cartera de Vecitap</h1>
+          <p style={{ fontSize: 12, color: C.tenue, margin: "3px 0 0" }}>
+            {sesion.user.email} · esta pantalla no la ve ningún cliente
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Boton tono="suave" onClick={cargar}>Actualizar</Boton>
+          <Boton tono="suave" onClick={() => sb.auth.signOut()}>Salir</Boton>
+        </div>
+      </header>
+
+      {aviso && (
+        <div className="mb-4" style={{ padding: "10px 14px", borderRadius: 4, fontSize: 13.5,
+          background: aviso.tipo === "error" ? C.rojoBg : C.acentoBg,
+          color: aviso.tipo === "error" ? C.rojo : C.acento,
+          borderLeft: `3px solid ${aviso.tipo === "error" ? C.rojo : C.acento}` }}>{aviso.t}</div>
+      )}
+
+      <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
+        <Kpi destaque label="Ingreso recurrente mensual" valor={usd(ingresoMes)}
+          pie={`${usd0(ingresoMes * 12)} al año`} />
+        <Kpi label="Clientes activos" valor={String(activos.length)}
+          pie={`${cartera.filter((c) => c.estado === "prueba").length} en prueba · ` +
+               `${cartera.filter((c) => c.estado === "vencida").length} vencidos`} />
+        <Kpi label="Unidades bajo gestión" valor={nf(0).format(unidadesActivas)}
+          pie={`${edificios} edificios · ${nf(0).format(unidades)} totales`} />
+        <Kpi label="Ingreso por unidad" valor={unidadesActivas ? usd(ingresoMes / unidadesActivas) : "—"}
+          pie={activos.length ? `${usd(ingresoMes / activos.length)} por cliente` : ""} />
+      </div>
+
+      <div className="mb-6" style={{ padding: "16px 18px", background: C.panel,
+        border: `1px solid ${C.borde}`, borderLeft: `3px solid ${cobrosPend ? C.ambar : C.acento}`,
+        borderRadius: 5 }}>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
+              color: C.tenue, marginBottom: 3 }}>Por cobrarle a sus clientes</div>
+            <div className="num" style={{ fontSize: 22, fontWeight: 700,
+              color: cobrosPend ? C.ambar : C.texto }}>{usd(pendiente)}</div>
+          </div>
+          <div style={{ fontSize: 12.5, color: C.tenue, maxWidth: 460 }}>
+            {cobrosPend
+              ? `${cobrosPend} cobros pendientes. Se cobran desde la ficha de cada cliente.`
+              : "No hay cobros pendientes."}
+            <br />
+            <span style={{ color: C.suave }}>
+              La morosidad de los propietarios en los edificios de sus clientes suma {usd0(porCobrarClientes)}.
+              Ese es el tamaño del problema que resuelve el producto, no dinero suyo.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-6" style={{ padding: "14px 18px", background: C.panel,
+        border: `1px solid ${C.borde}`, borderRadius: 5 }}>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
+              color: C.tenue, marginBottom: 3 }}>Cobros automáticos</div>
+            <div style={{ fontSize: 13 }}>
+              {tarea ? (() => {
+                const d = tarea.detalle || {};
+                return <>Última corrida {new Date(tarea.corrida_en).toLocaleString("es-VE")} ·{" "}
+                  <b>{d.cobros_generados ?? 0}</b> cobros generados por{" "}
+                  <b className="num">{usd(d.monto_total)}</b>
+                  {d.marcadas_vencidas ? ` · ${d.marcadas_vencidas} marcadas vencidas` : ""}</>;
+              })() : <span style={{ color: C.ambar }}>
+                La tarea no ha corrido todavía. Si no corre sola en 24 horas, pg_cron no quedó
+                activo y hay que correrla a mano.</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 3 }}>
+              Corre todos los días a las 7:00 de Caracas. Genera los cobros vencidos y marca
+              como vencida a quien se pasó de su plazo de gracia. Nunca suspende a nadie: eso
+              se decide a mano.
+            </div>
+          </div>
+          <Boton tono="suave" disabled={corriendo} onClick={correrAhora}>
+            {corriendo ? "Corriendo…" : "Correr ahora"}</Boton>
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center mb-3">
+        <input value={busca} onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar administradora, RIF o contacto" style={{ flex: 1, minWidth: 220 }} />
+        {[["todos", `Todos (${cartera.length})`], ["activa", "Activos"], ["prueba", "En prueba"],
+          ["vencida", "Vencidos"], ["suspendida", "Suspendidos"],
+          ["sin suscripción", "Sin suscripción"]].map(([k, t]) => (
+          <Boton key={k} tono={filtro === k ? "acento" : "suave"} onClick={() => setFiltro(k)}
+            style={{ padding: "7px 11px", fontSize: 12 }}>{t}</Boton>
+        ))}
+      </div>
+
+      <Panel style={{ padding: 0, overflow: "hidden" }}>
+        <div className="scroll-x">
+          <table>
+            <thead><tr>
+              <th>Administradora</th><th>Contacto</th><th>Plan</th>
+              <th style={{ textAlign: "right" }}>Edificios</th>
+              <th style={{ textAlign: "right" }}>Unidades</th>
+              <th style={{ textAlign: "right" }}>Cuota/mes</th>
+              <th style={{ textAlign: "right" }}>Le debe</th>
+              <th>Próximo cobro</th><th>Estado</th><th></th>
+            </tr></thead>
+            <tbody>
+              {visibles.map((c) => {
+                const vencido = c.proximo_cobro && c.proximo_cobro < hoyISO();
+                return (
+                  <tr key={c.org_id} className="fila" style={{ cursor: "pointer" }}
+                    onClick={() => setAbierto(c)}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{c.nombre}</div>
+                      <div className="num" style={{ fontSize: 11.5, color: C.tenue }}>
+                        {c.rif || "sin RIF"}</div>
+                    </td>
+                    <td style={{ fontSize: 12 }}>
+                      {c.contacto || <span style={{ color: C.tenue }}>—</span>}
+                      {c.telefono && <div className="num" style={{ color: C.tenue }}>{c.telefono}</div>}
+                    </td>
+                    <td style={{ fontSize: 12 }}>{PLANES[c.plan] || "—"}</td>
+                    <td className="num" style={{ textAlign: "right" }}>{c.edificios}</td>
+                    <td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{c.unidades}</td>
+                    <td className="num" style={{ textAlign: "right" }}>{c.cuota_mes ? usd(c.cuota_mes) : "—"}</td>
+                    <td className="num" style={{ textAlign: "right",
+                      color: Number(c.monto_pendiente) > 0 ? C.ambar : C.tenue }}>
+                      {Number(c.monto_pendiente) > 0 ? usd(c.monto_pendiente) : "—"}</td>
+                    <td className="num" style={{ fontSize: 12,
+                      color: vencido ? C.rojo : C.tenue }}>{c.proximo_cobro || "—"}</td>
+                    <td><Etiqueta e={c.estado} /></td>
+                    <td style={{ color: C.tenue }}>›</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {visibles.length === 0 && (
+          <div style={{ padding: 36, textAlign: "center", color: C.tenue, fontSize: 13.5 }}>
+            Ningún cliente coincide con el filtro.
+          </div>
+        )}
+      </Panel>
+
+      <div className="flex justify-end mt-4">
+        <Boton tono="suave" onClick={() => exportar(cartera, notificar)}>Exportar la cartera</Boton>
+      </div>
+
+      {abierto && <Ficha sb={sb} c={abierto} notificar={notificar} fallo={fallo}
+        onCerrar={() => setAbierto(null)} onGuardado={() => { cargar(); setAbierto(null); }} />}
+    </div>
+  );
+}
+
+const Centro = ({ children }) => (
+  <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
+    justifyContent: "center", padding: 20, color: C.tenue, fontSize: 14 }}>{children}</div>
+);
+
+function Conexion({ onListo }) {
+  const [url, setUrl] = useState(leerLocal("vecitap_url") || "");
+  const [key, setKey] = useState(leerLocal("vecitap_key") || "");
+  return (
+    <Centro>
+      <Panel style={{ maxWidth: 480, width: "100%" }}>
+        <h2 style={{ margin: "0 0 6px", fontSize: 17 }}>Conexión con la base</h2>
+        <p style={{ color: C.tenue, fontSize: 12.5, lineHeight: 1.6, marginTop: 0 }}>
+          La misma URL y la misma clave <b>anon</b> que usa la aplicación. Aquí tampoco va
+          la <b>service_role</b>: el permiso lo da su cuenta, no la llave.
+        </p>
+        <div className="grid gap-3">
+          <Campo label="URL del proyecto">
+            <input className="num" value={url} onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://xxxx.supabase.co" /></Campo>
+          <Campo label="Clave anon">
+            <input className="num" value={key} onChange={(e) => setKey(e.target.value)}
+              placeholder="eyJhbGciOi…" /></Campo>
+          <div><Boton onClick={() => {
+            if (!url.trim() || !key.trim()) return;
+            guardarLocal("vecitap_url", url.trim()); guardarLocal("vecitap_key", key.trim());
+            onListo(url.trim(), key.trim());
+          }}>Conectar</Boton></div>
+        </div>
+      </Panel>
+    </Centro>
+  );
+}
+
+function Entrar({ sb, notificar, aviso }) {
+  const [correo, setCorreo] = useState("");
+  const [clave, setClave] = useState("");
+  const entrar = async () => {
+    const { error } = await sb.auth.signInWithPassword({ email: correo.trim(), password: clave });
+    if (error) notificar(error.message, "error");
+  };
+  return (
+    <Centro>
+      <Panel style={{ maxWidth: 400, width: "100%" }}>
+        <h2 style={{ margin: "0 0 14px", fontSize: 17 }}>Consola del operador</h2>
+        {aviso && <div className="mb-3" style={{ color: C.rojo, fontSize: 13 }}>{aviso.t}</div>}
+        <div className="grid gap-3">
+          <Campo label="Correo"><input type="email" value={correo}
+            onChange={(e) => setCorreo(e.target.value)} /></Campo>
+          <Campo label="Contraseña"><input type="password" value={clave}
+            onChange={(e) => setClave(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && entrar()} /></Campo>
+          <div><Boton onClick={entrar}>Entrar</Boton></div>
+        </div>
+      </Panel>
+    </Centro>
+  );
+}
+
+/* ── Ficha de un cliente ── */
+function Ficha({ sb, c, notificar, fallo, onCerrar, onGuardado }) {
+  const [s, setS] = useState({
+    plan: c.plan || "mensual", modo_precio: c.modo_precio || "fijo",
+    precio: String(c.precio ?? 0), descuento_pct: String(c.descuento_pct ?? 0),
+    estado: c.estado === "sin suscripción" ? "prueba" : c.estado,
+    inicio: c.inicio || hoyISO(), proximo_cobro: c.proximo_cobro || "",
+    contacto: c.contacto || "", telefono: c.telefono || "", correo: c.correo || "",
+    dias_gracia: String(c.dias_gracia ?? 10), notas: c.notas || "",
+  });
+  const [edificios, setEdificios] = useState(null);
+  const [cobros, setCobros] = useState([]);
+  const [servicio, setServicio] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    sb.rpc("edificios_operador", { p_org: c.org_id })
+      .then(({ data, error }) => { if (error) return fallo(error); setEdificios(data || []); });
+    sb.from("cobros_suscripcion").select("*").eq("org_id", c.org_id)
+      .order("desde", { ascending: false }).limit(12)
+      .then(({ data }) => setCobros(data || []));
+    sb.from("conceptos_cobro").select("id,nombre,modo,monto,activo")
+      .eq("org_id", c.org_id).eq("bolsillo", "servicio").maybeSingle()
+      .then(({ data }) => setServicio(data));
+  }, [c.org_id]);
+
+  const cuotaPrevista = (() => {
+    const base = s.modo_precio === "por_unidad" ? num0(s.precio) * (c.unidades || 0) : num0(s.precio);
+    return base * (1 - num0(s.descuento_pct) / 100);
+  })();
+
+  const guardar = async () => {
+    setOcupado(true);
+    const fila = { org_id: c.org_id, plan: s.plan, modo_precio: s.modo_precio,
+      precio: num0(s.precio), descuento_pct: num0(s.descuento_pct), estado: s.estado,
+      inicio: s.inicio || hoyISO(), proximo_cobro: s.proximo_cobro || null,
+      contacto: s.contacto || null, telefono: s.telefono || null, correo: s.correo || null,
+      dias_gracia: Math.max(0, Math.round(num0(s.dias_gracia))),
+      notas: s.notas || null, actualizada_en: new Date().toISOString() };
+    const { error } = await sb.from("suscripciones").upsert(fila, { onConflict: "org_id" });
+    if (!error && (s.estado === "suspendida" || s.estado === "cancelada")) {
+      await sb.from("organizaciones").update({ plan: "suspendido" }).eq("id", c.org_id);
+    } else if (!error && s.estado === "activa") {
+      await sb.from("organizaciones").update({ plan: "activo" }).eq("id", c.org_id);
+    }
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar("Suscripción guardada."); onGuardado();
+  };
+
+  const generar = async () => {
+    const { error } = await sb.rpc("generar_cobro", { p_org: c.org_id, p_desde: null });
+    if (error) return fallo(error);
+    notificar("Cobro generado."); onGuardado();
+  };
+
+  const marcar = async (id, estado) => {
+    const { error } = await sb.from("cobros_suscripcion")
+      .update({ estado, fecha_pago: estado === "pagado" ? hoyISO() : null }).eq("id", id);
+    if (error) return fallo(error);
+    notificar(estado === "pagado" ? "Cobro marcado como pagado." : "Cobro anulado.");
+    onGuardado();
+  };
+
+  const guardarServicio = async (monto) => {
+    if (servicio) {
+      const { error } = await sb.from("conceptos_cobro")
+        .update({ monto, activo: monto > 0 }).eq("id", servicio.id);
+      if (error) return fallo(error);
+    } else {
+      const { error } = await sb.from("conceptos_cobro").insert({
+        org_id: c.org_id, edificio_id: null, nombre: "Servicio Vecitap",
+        bolsillo: "servicio", modo: "monto_por_unidad", monto, iva: 0, orden: 9 });
+      if (error) return fallo(error);
+    }
+    notificar("Cobro en el recibo actualizado.");
+  };
+
+  return (
+    <div onClick={onCerrar} style={{ position: "fixed", inset: 0, zIndex: 60,
+      background: "rgba(0,0,0,.6)", display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.bg, width: "100%",
+        maxWidth: 720, height: "100%", overflow: "auto" }}>
+        <div className="flex items-start justify-between gap-3" style={{ padding: "18px 22px",
+          borderBottom: `1px solid ${C.borde}`, position: "sticky", top: 0,
+          background: C.bg, zIndex: 5 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 19 }}>{c.nombre}</h2>
+            <div className="num" style={{ fontSize: 12, color: C.tenue, marginTop: 3 }}>
+              {c.rif || "sin RIF"} · {c.edificios} edificios · {c.unidades} unidades
+              {c.ultimo_cierre ? ` · último cierre ${c.ultimo_cierre}` : " · sin cerrar ningún mes"}
+            </div>
+          </div>
+          <button onClick={onCerrar} style={{ background: "none", border: "none",
+            color: C.tenue, cursor: "pointer", fontSize: 20 }}>✕</button>
+        </div>
+
+        <div style={{ padding: 22 }} className="grid gap-4">
+          <Panel>
+            <h3 style={{ margin: "0 0 12px", fontSize: 13, textTransform: "uppercase",
+              letterSpacing: ".08em", color: C.suave }}>Suscripción</h3>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+              <Campo label="Estado">
+                <select value={s.estado} onChange={(e) => setS({ ...s, estado: e.target.value })}>
+                  {["prueba","activa","vencida","suspendida","cancelada"].map((k) =>
+                    <option key={k} value={k}>{ESTADOS[k].t}</option>)}
+                </select>
+              </Campo>
+              <Campo label="Plan">
+                <select value={s.plan} onChange={(e) => setS({ ...s, plan: e.target.value,
+                  descuento_pct: String(DESCUENTO[e.target.value]) })}>
+                  {Object.entries(PLANES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </Campo>
+              <Campo label="Cómo se cobra">
+                <select value={s.modo_precio} onChange={(e) => setS({ ...s, modo_precio: e.target.value })}>
+                  <option value="fijo">Monto fijo al mes</option>
+                  <option value="por_unidad">Por unidad al mes</option>
+                </select>
+              </Campo>
+              <Campo label={s.modo_precio === "por_unidad" ? "Precio por unidad" : "Precio mensual"}>
+                <input className="num" value={s.precio}
+                  onChange={(e) => setS({ ...s, precio: e.target.value })} /></Campo>
+              <Campo label="Descuento %" ayuda="10 en trimestral, 20 en anual">
+                <input className="num" value={s.descuento_pct}
+                  onChange={(e) => setS({ ...s, descuento_pct: e.target.value })} /></Campo>
+              <Campo label="Próximo cobro">
+                <input type="date" className="num" value={s.proximo_cobro}
+                  onChange={(e) => setS({ ...s, proximo_cobro: e.target.value })} /></Campo>
+              <Campo label="Días de gracia"
+                ayuda="Pasados estos días sin pagar, la tarea la marca vencida.">
+                <input className="num" value={s.dias_gracia}
+                  onChange={(e) => setS({ ...s, dias_gracia: e.target.value })} /></Campo>
+            </div>
+            <div className="flex gap-6 flex-wrap mt-4" style={{ paddingTop: 12,
+              borderTop: `1px solid ${C.borde}` }}>
+              <div><div style={{ fontSize: 11, color: C.tenue }}>Cuota efectiva al mes</div>
+                <div className="num" style={{ fontSize: 18, fontWeight: 700, color: C.acento }}>
+                  {usd(cuotaPrevista)}</div></div>
+              <div><div style={{ fontSize: 11, color: C.tenue }}>Por unidad</div>
+                <div className="num" style={{ fontSize: 18, fontWeight: 600 }}>
+                  {c.unidades ? usd(cuotaPrevista / c.unidades) : "—"}</div></div>
+              <div><div style={{ fontSize: 11, color: C.tenue }}>Al año</div>
+                <div className="num" style={{ fontSize: 18, fontWeight: 600 }}>
+                  {usd0(cuotaPrevista * 12)}</div></div>
+            </div>
+          </Panel>
+
+          <Panel>
+            <h3 style={{ margin: "0 0 12px", fontSize: 13, textTransform: "uppercase",
+              letterSpacing: ".08em", color: C.suave }}>Contacto</h3>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+              <Campo label="Persona"><input value={s.contacto}
+                onChange={(e) => setS({ ...s, contacto: e.target.value })} /></Campo>
+              <Campo label="Teléfono"><input className="num" value={s.telefono}
+                onChange={(e) => setS({ ...s, telefono: e.target.value })} /></Campo>
+              <Campo label="Correo"><input value={s.correo}
+                onChange={(e) => setS({ ...s, correo: e.target.value })} /></Campo>
+            </div>
+            <div className="flex gap-2 mt-4 flex-wrap">
+              {s.telefono && <Boton tono="suave" onClick={() => window.open(
+                `https://wa.me/${String(s.telefono).replace(/\D/g,"").replace(/^0/,"58")}`, "_blank")}>
+                WhatsApp</Boton>}
+              {s.correo && <Boton tono="suave" onClick={() => window.open(`mailto:${s.correo}`)}>
+                Escribir</Boton>}
+            </div>
+            <div className="mt-4">
+              <Campo label="Notas"><textarea rows={3} value={s.notas}
+                onChange={(e) => setS({ ...s, notas: e.target.value })}
+                placeholder="Acuerdos, incidencias, próximos pasos…" /></Campo>
+            </div>
+          </Panel>
+
+          <Panel>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <h3 style={{ margin: 0, fontSize: 13, textTransform: "uppercase",
+                letterSpacing: ".08em", color: C.suave }}>Cobros</h3>
+              <Boton onClick={generar}>Generar el cobro del período</Boton>
+            </div>
+            <div className="scroll-x">
+              <table>
+                <thead><tr><th>Desde</th><th>Hasta</th>
+                  <th style={{ textAlign: "right" }}>Unidades</th>
+                  <th style={{ textAlign: "right" }}>Monto</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                  {cobros.map((x) => (
+                    <tr key={x.id}>
+                      <td className="num">{x.desde}</td>
+                      <td className="num">{x.hasta}</td>
+                      <td className="num" style={{ textAlign: "right" }}>{x.unidades ?? "—"}</td>
+                      <td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{usd(x.monto)}</td>
+                      <td><span style={{ fontSize: 11.5, fontWeight: 600,
+                        color: x.estado === "pagado" ? C.acento : x.estado === "anulado" ? C.tenue : C.ambar }}>
+                        {x.estado}{x.fecha_pago ? ` · ${x.fecha_pago}` : ""}</span></td>
+                      <td>
+                        {x.estado === "pendiente" && (
+                          <div className="flex gap-1 flex-wrap">
+                            <Boton tono="suave" style={{ padding: "4px 9px", fontSize: 11.5 }}
+                              onClick={() => marcar(x.id, "pagado")}>Pagado</Boton>
+                            <Boton tono="rojo" style={{ padding: "4px 9px", fontSize: 11.5 }}
+                              onClick={() => marcar(x.id, "anulado")}>Anular</Boton>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {cobros.length === 0 && (
+                    <tr><td colSpan={6} style={{ color: C.tenue, textAlign: "center", padding: 22 }}>
+                      Todavía no se le ha generado ningún cobro.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+
+          <Panel>
+            <h3 style={{ margin: "0 0 6px", fontSize: 13, textTransform: "uppercase",
+              letterSpacing: ".08em", color: C.suave }}>Cobro dentro del recibo</h3>
+            <p style={{ fontSize: 12.5, color: C.tenue, marginTop: 0, lineHeight: 1.6 }}>
+              Si se le cobra el servicio al propietario, aparece como una línea más de su recibo,
+              en su propio bolsillo. La administradora lo ve pero no lo puede editar ni apagar.
+              Déjelo en cero para facturarle solo a la administradora.
+            </p>
+            <div className="flex gap-2 items-end flex-wrap">
+              <div style={{ width: 180 }}>
+                <Campo label="USD por unidad al mes">
+                  <input className="num" defaultValue={String(servicio?.monto ?? 0)}
+                    onBlur={(e) => guardarServicio(num0(e.target.value))} />
+                </Campo>
+              </div>
+              {servicio && <span style={{ fontSize: 12, color: servicio.activo ? C.acento : C.tenue }}>
+                {servicio.activo ? "activo en los recibos" : "apagado"}</span>}
+            </div>
+          </Panel>
+
+          <Panel>
+            <h3 style={{ margin: "0 0 12px", fontSize: 13, textTransform: "uppercase",
+              letterSpacing: ".08em", color: C.suave }}>Sus edificios</h3>
+            {edificios === null ? <div style={{ color: C.tenue, fontSize: 13 }}>Cargando…</div> : (
+              <div className="scroll-x">
+                <table>
+                  <thead><tr><th>Edificio</th>
+                    <th style={{ textAlign: "right" }}>Unidades</th>
+                    <th style={{ textAlign: "right" }}>Morosidad</th>
+                    <th style={{ textAlign: "right" }}>Por cobrar</th>
+                    <th>Último cierre</th></tr></thead>
+                  <tbody>
+                    {edificios.map((e) => (
+                      <tr key={e.edificio_id}>
+                        <td>{e.nombre}</td>
+                        <td className="num" style={{ textAlign: "right" }}>{e.unidades}</td>
+                        <td className="num" style={{ textAlign: "right",
+                          color: e.morosidad_pct > 30 ? C.rojo : e.morosidad_pct > 15 ? C.ambar : C.suave }}>
+                          {nf(0).format(e.morosidad_pct)}%</td>
+                        <td className="num" style={{ textAlign: "right" }}>{usd(e.por_cobrar)}</td>
+                        <td style={{ fontSize: 12, color: e.ultimo_cierre ? C.suave : C.rojo }}>
+                          {e.ultimo_cierre || "nunca"}</td>
+                      </tr>
+                    ))}
+                    {edificios.length === 0 && (
+                      <tr><td colSpan={5} style={{ color: C.tenue, textAlign: "center", padding: 22 }}>
+                        Todavía no ha cargado ningún edificio.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p style={{ fontSize: 11.5, color: C.tenue, marginBottom: 0, marginTop: 12 }}>
+              Aquí se ven los números del edificio, no sus propietarios ni sus pagos. Ese
+              detalle no es suyo y la base no se lo entrega ni a usted.
+            </p>
+          </Panel>
+
+          <div className="flex gap-2 justify-end flex-wrap" style={{ paddingBottom: 20 }}>
+            <Boton tono="suave" onClick={onCerrar}>Cerrar</Boton>
+            <Boton disabled={ocupado} onClick={guardar}>Guardar</Boton>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function exportar(cartera, notificar) {
+  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const filas = [
+    ["administradora","rif","estado","plan","cuota_mes","edificios","unidades",
+     "proximo_cobro","le_debe","contacto","telefono","correo"].join(","),
+    ...cartera.map((c) => [esc(c.nombre), esc(c.rif), esc(c.estado), esc(PLANES[c.plan]),
+      esc(nf(2).format(c.cuota_mes || 0)), esc(c.edificios), esc(c.unidades),
+      esc(c.proximo_cobro), esc(nf(2).format(c.monto_pendiente || 0)),
+      esc(c.contacto), esc(c.telefono), esc(c.correo)].join(",")),
+  ].join("\n");
+  const url = URL.createObjectURL(new Blob(["﻿" + filas], { type: "text/csv;charset=utf-8;" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = `cartera-${hoyISO()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  notificar("Cartera exportada.");
+}
+
+ReactDOM.createRoot(document.getElementById("raiz")).render(<App />);
+</script>
+</body>
+</html>
