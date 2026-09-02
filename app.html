@@ -1,0 +1,3436 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vecitap</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #FDF7EB; }
+  #raiz { min-height: 100vh; }
+  /* Utilidades mínimas. El prototipo usaba Tailwind; aquí van solo las
+     clases que realmente se usan, para no depender de otro CDN y para que
+     el diseño no cambie si ese CDN falla. */
+  .flex{display:flex}.grid{display:grid}
+  .flex-wrap{flex-wrap:wrap}
+  .items-center{align-items:center}.items-end{align-items:flex-end}.items-start{align-items:flex-start}
+  .justify-between{justify-content:space-between}.justify-center{justify-content:center}
+  .justify-end{justify-content:flex-end}
+  .gap-1{gap:4px}.gap-1\.5{gap:6px}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-5{gap:20px}
+  .mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}.mb-5{margin-bottom:20px}.mb-6{margin-bottom:24px}
+  .mt-5{margin-top:20px}
+
+</style>
+</head>
+<body>
+<div id="raiz"></div>
+
+<script type="text/babel" data-type="module" data-presets="react">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const { useState, useEffect, useMemo, useRef, createElement } = React;
+
+/* ══════════════════════════════════════════════════════════════
+   TOKENS · PUNTO ÚNICO DE CAMBIO DE MARCA
+   Igual que en el prototipo. Al llegar el manual de marca se cambian
+   SOLO estos valores. Los estados (solvente, pendiente, deuda) NO son
+   de marca: significan lo mismo en todos los edificios.
+   ══════════════════════════════════════════════════════════════ */
+const T = {
+  fondo: "#FDF7EB", lienzo: "#FFFFFF", tinta: "#493B34", tinta2: "#7A6B61",
+  tenue: "#A2958A", linea: "#EBE3D6", lineaFuerte: "#DDD2C2",
+  verde: "#3E7A5E", verdeBg: "#EAF1ED",
+  ambar: "#8A5E10", ambarBg: "#F8F1E2",
+  rojo: "#A8402F", rojoBg: "#F8EAE7",
+  azul: "#628083", azulBg: "#EDF1F1",
+  sombra: "0 1px 2px rgba(73,59,52,.04), 0 8px 24px -12px rgba(73,59,52,.12)",
+  sombraAlta: "0 2px 6px rgba(73,59,52,.06), 0 20px 48px -16px rgba(73,59,52,.22)",
+  r: 14, rs: 10, rp: 999,
+};
+const A = { base: "var(--acento)", suave: "var(--acento-suave)",
+            texto: "var(--acento-texto)", sobre: "var(--acento-sobre)" };
+
+const FUENTES = { titulos: "Poppins", texto: "Inter",
+                  numeros: "'IBM Plex Mono', ui-monospace, monospace" };
+
+const PALETAS = [
+  { id: "naranja", nombre: "Naranja", color: "#FA8D4A" },
+  { id: "azul", nombre: "Azul pizarra", color: "#628083" },
+  { id: "marron", nombre: "Marrón", color: "#493B34" },
+  { id: "verde", nombre: "Verde", color: "#2F6B4F" },
+  { id: "vino", nombre: "Vino", color: "#7B3B4A" },
+  { id: "indigo", nombre: "Índigo", color: "#4A4A8F" },
+];
+
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+const METODOS = ["Pago móvil", "Transferencia", "Zelle", "Efectivo $", "Bs", "Otro"];
+
+const BOLSILLOS = {
+  condominio:     { t: "Condominio",     destinoPago: "condominio" },
+  administracion: { t: "Administración", destinoPago: "honorarios" },
+  servicio:       { t: "Servicio",       destinoPago: "servicio" },
+};
+
+const MODOS_COBRO = {
+  presupuesto_alicuota:       "Presupuesto del mes × alícuota",
+  presupuesto_partes_iguales: "Presupuesto del mes ÷ nº de unidades",
+  gasto_alicuota:             "Gasto del mes × alícuota",
+  gasto_partes_iguales:       "Gasto del mes ÷ nº de unidades",
+  monto_por_unidad:           "Un monto igual a cada unidad",
+  monto_por_alicuota:         "Un monto total repartido por alícuota",
+  monto_fijo_repartido:       "Un monto total ÷ nº de unidades",
+  porcentaje_condominio:      "% de lo que paga de condominio",
+};
+
+/* ══════════════════════════════════════════════════════════════
+   UTILIDADES  (idénticas al prototipo)
+   ══════════════════════════════════════════════════════════════ */
+const nf = (d = 2) =>
+  new Intl.NumberFormat("es-VE", { minimumFractionDigits: d, maximumFractionDigits: d });
+const usd = (v) => "$ " + nf(2).format(v || 0);
+const bs  = (v) => "Bs " + nf(2).format(v || 0);
+const pct = (v) => nf(4).format(v || 0) + " %";
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const correoValido = (c) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(c || "").trim());
+
+function normalizarTel(t) {
+  if (!t) return null;
+  const d = String(t).replace(/\D/g, "");
+  if (d.startsWith("58") && d.length === 12) return d;
+  if (d.startsWith("0") && d.length === 11) return "58" + d.slice(1);
+  if (d.length === 10) return "58" + d;
+  return null;
+}
+
+/* Formato venezolano: 1.234,56 y también 1234.56 */
+function parseMonto(v) {
+  if (typeof v === "number") return v;
+  if (v === null || v === undefined) return null;
+  let s = String(v).replace(/[^\d.,-]/g, "").trim();
+  if (!s || s === "-") return null;
+  const coma = s.lastIndexOf(","), punto = s.lastIndexOf(".");
+  if (coma > -1 && punto > -1) {
+    s = coma > punto ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  } else if (coma > -1) {
+    s = /,\d{3}$/.test(s) ? s.replace(/,/g, "") : s.replace(",", ".");
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+/* Para campos de formulario: null si está vacío, número si se entiende */
+const num = (v) => { const n = parseMonto(v); return n === null ? null : n; };
+const num0 = (v) => num(v) || 0;
+
+const extraerRef = (t) => {
+  const m = String(t || "").match(/\d{6,}/g);
+  return m ? m.sort((a, b) => b.length - a.length)[0] : "";
+};
+
+/* ── Contraste: el acento de marca no siempre admite letra blanca ── */
+function luminancia(hex) {
+  const h = String(hex).replace("#", "");
+  if (h.length !== 6) return 0;
+  const n = parseInt(h, 16);
+  if (isNaN(n)) return 0;
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function contraste(a, b) {
+  const L = [luminancia(a), luminancia(b)].sort((x, y) => y - x);
+  return (L[0] + 0.05) / (L[1] + 0.05);
+}
+const letraSobre = (f) =>
+  contraste(f, "#FFFFFF") >= contraste(f, T.tinta) ? "#FFFFFF" : T.tinta;
+
+function versionTexto(hex, fondo = T.fondo, objetivo = 4.5) {
+  const h = String(hex).replace("#", "");
+  if (h.length !== 6) return hex;
+  const n = parseInt(h, 16);
+  if (isNaN(n)) return hex;
+  let [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  for (let i = 0; i < 40; i++) {
+    const c = "#" + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+    if (contraste(c, fondo) >= objetivo) return c;
+    r *= 0.92; g *= 0.92; b *= 0.92;
+  }
+  return T.tinta;
+}
+function mezclarBlanco(hex, p = 0.9) {
+  const h = String(hex).replace("#", "");
+  if (h.length !== 6) return "#F1EEE9";
+  const n = parseInt(h, 16);
+  if (isNaN(n)) return "#F1EEE9";
+  const m = (c) => Math.round(c + (255 - c) * p);
+  return `rgb(${m((n >> 16) & 255)}, ${m((n >> 8) & 255)}, ${m(n & 255)})`;
+}
+
+/* ── Tasa oficial vía DolarAPI ──
+   El BCV publica solo en su web institucional, que se cae seguido. */
+const DOLAR_API = "https://ve.dolarapi.com/v1";
+async function obtenerTasaOficial() {
+  const intentos = [
+    { url: `${DOLAR_API}/dolares/oficial`, lista: false },
+    { url: `${DOLAR_API}/dolares`, lista: true },
+  ];
+  let ultimo = null;
+  for (const it of intentos) {
+    try {
+      const ctrl = new AbortController();
+      const corte = setTimeout(() => ctrl.abort(), 8000);
+      const res = await fetch(it.url, { signal: ctrl.signal });
+      clearTimeout(corte);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const d = it.lista
+        ? (Array.isArray(json) ? json.find((x) => /oficial/i.test(x.nombre || "")) : null)
+        : json;
+      if (!d) throw new Error("sin cotización oficial");
+      const valor = Number(d.promedio ?? d.venta ?? d.compra);
+      if (!valor || !isFinite(valor) || valor <= 0) throw new Error("tasa inválida");
+      return { tasa: valor, fuente: d.fuente || "BCV", actualizada: d.fechaActualizacion || null };
+    } catch (e) { ultimo = e; }
+  }
+  throw new Error(/abort/i.test(String(ultimo?.name || ultimo?.message))
+    ? "La consulta tardó demasiado" : "No se pudo obtener la tasa");
+}
+
+function fechaCorta(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString("es-VE", { day: "2-digit", month: "short" }) + " " +
+    d.toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" });
+}
+
+/* ── Lectura de movimientos bancarios (del prototipo, sin cambios) ── */
+const PISTAS = {
+  referencia: ["referencia","ref","nro","numero","número","documento","operacion","operación","comprobante"],
+  monto: ["monto","importe","credito","crédito","abono","haber","deposito","depósito","valor"],
+  fecha: ["fecha","date","dia","día"],
+  descripcion: ["descripcion","descripción","concepto","detalle","observacion","observación","transaccion","transacción"],
+};
+
+function detectarColumnas(encabezados, filas) {
+  const mapa = { referencia: -1, monto: -1, fecha: -1, descripcion: -1 };
+  const norm = encabezados.map((h) => String(h || "").toLowerCase().trim());
+  Object.keys(PISTAS).forEach((campo) => {
+    let mejor = -1, punt = 0;
+    norm.forEach((h, i) => {
+      if (!h) return;
+      const p = PISTAS[campo].reduce((s, k) => (h.includes(k) ? Math.max(s, k.length) : s), 0);
+      if (p > punt) { punt = p; mejor = i; }
+    });
+    mapa[campo] = mejor;
+  });
+  const muestra = filas.slice(0, 25);
+  const ancho = Math.max(0, ...filas.map((f) => f.length));
+  if (mapa.referencia === -1) {
+    let mejor = -1, punt = 0;
+    for (let i = 0; i < ancho; i++) {
+      const p = muestra.filter((f) => /^\d{6,}$/.test(String(f[i] || "").trim())).length;
+      if (p > punt) { punt = p; mejor = i; }
+    }
+    if (punt >= Math.max(2, muestra.length * 0.3)) mapa.referencia = mejor;
+  }
+  if (mapa.monto === -1) {
+    let mejor = -1, punt = 0;
+    for (let i = 0; i < ancho; i++) {
+      if (i === mapa.referencia) continue;
+      const p = muestra.filter((f) => parseMonto(f[i]) !== null).length;
+      if (p > punt) { punt = p; mejor = i; }
+    }
+    mapa.monto = mejor;
+  }
+  return mapa;
+}
+
+async function leerTabla(file) {
+  if (/\.csv$/i.test(file.name)) {
+    return Papa.parse(await file.text(), { skipEmptyLines: true }).data;
+  }
+  const wb = XLSX.read(await file.arrayBuffer(), { cellDates: false });
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" });
+}
+
+let pdfjsPromesa = null;
+function cargarPdfJs() {
+  if (pdfjsPromesa) return pdfjsPromesa;
+  pdfjsPromesa = new Promise((res, rej) => {
+    if (window.pdfjsLib) return res(window.pdfjsLib);
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = () => {
+      try {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      } catch (e) { /* sigue sin worker */ }
+      res(window.pdfjsLib);
+    };
+    s.onerror = () => rej(new Error("lector no disponible"));
+    document.head.appendChild(s);
+  });
+  return pdfjsPromesa;
+}
+
+async function leerPDF(file) {
+  const pdfjs = await cargarPdfJs();
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const lineas = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const porFila = {};
+    tc.items.forEach((it) => {
+      const y = Math.round(it.transform[5]);
+      (porFila[y] = porFila[y] || []).push({ x: it.transform[4], t: it.str });
+    });
+    Object.keys(porFila).sort((a, b) => b - a).forEach((y) => {
+      const t = porFila[y].sort((a, b) => a.x - b.x).map((i) => i.t)
+        .join(" ").replace(/\s+/g, " ").trim();
+      if (t) lineas.push(t);
+    });
+  }
+  return lineas;
+}
+
+function movimientosDesdeLineas(lineas) {
+  return lineas.map((l) => {
+    const montos = l.match(/-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b/g) || [];
+    return {
+      fecha: (l.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/) || [""])[0],
+      descripcion: l, referencia: extraerRef(l),
+      monto: montos.length ? parseMonto(montos[montos.length - 1]) : null,
+    };
+  }).filter((m) => m.referencia || m.monto !== null);
+}
+
+function redimensionarLogo(file, maxAncho = 320) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const esc = Math.min(1, maxAncho / img.width);
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * esc);
+        cv.height = Math.round(img.height * esc);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        res(cv.toDataURL("image/png"));
+      };
+      img.onerror = () => rej(new Error("imagen inválida"));
+      img.src = fr.result;
+    };
+    fr.onerror = () => rej(new Error("no se pudo leer"));
+    fr.readAsDataURL(file);
+  });
+}
+
+const normaliza = (s) => String(s || "").toUpperCase()
+  .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z0-9]/g, "");
+
+/* ── Iconos ──
+   Se cargan de lucide como datos y se dibujan aquí. Si el CDN falla,
+   la aplicación sigue funcionando: solo se quedan sin icono. */
+let LU = {};
+try { LU = await import('https://cdn.jsdelivr.net/npm/lucide@0.469.0/+esm'); } catch (e) { LU = {}; }
+const Ic = ({ n, size = 16, style, className }) => {
+  const d = LU[n];
+  if (!d || !Array.isArray(d)) return null;
+  const [, attrs, kids] = d;
+  return createElement("svg", { ...attrs, width: size, height: size, style, className },
+    (kids || []).map((k, i) => createElement(k[0], { key: i, ...k[1] })));
+};
+const icono = (n) => (p) => <Ic n={n} {...p} />;
+
+/* ══════════════════════════════════════════════════════════════
+   PIEZAS DE INTERFAZ  (del prototipo, sin cambios de diseño)
+   ══════════════════════════════════════════════════════════════ */
+const Tarjeta = ({ children, className = "", pad = true, style }) => (
+  <div className={className} style={{
+    background: T.lienzo, borderRadius: T.r, boxShadow: T.sombra,
+    padding: pad ? 20 : 0, ...style }}>{children}</div>
+);
+
+const Titulo = ({ children, accion, sub }) => (
+  <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
+    <div>
+      <h2 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 17, color: T.tinta, margin: 0 }}>
+        {children}
+      </h2>
+      {sub && <p style={{ fontSize: 13, color: T.tinta2, margin: "3px 0 0" }}>{sub}</p>}
+    </div>
+    {accion}
+  </div>
+);
+
+function Boton({ children, onClick, tipo = "primario", size = "m", disabled, href, ...r }) {
+  const estilos = {
+    primario: { background: A.base, color: A.sobre, border: "1px solid transparent" },
+    oscuro:   { background: T.tinta, color: "#fff", border: "1px solid transparent" },
+    suave:    { background: T.lienzo, color: T.tinta, border: `1px solid ${T.lineaFuerte}` },
+    fantasma: { background: "transparent", color: T.tinta2, border: "1px solid transparent" },
+    peligro:  { background: "transparent", color: T.rojo, border: `1px solid ${T.rojo}33` },
+  }[tipo];
+  const tam = { s: { padding: "7px 12px", fontSize: 13 },
+                m: { padding: "10px 16px", fontSize: 14 },
+                l: { padding: "13px 22px", fontSize: 15 } }[size];
+  const st = { ...estilos, ...tam, borderRadius: T.rp, fontWeight: 600, fontFamily: "Inter",
+    display: "inline-flex", alignItems: "center", gap: 8,
+    cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
+    transition: "filter .15s", whiteSpace: "nowrap" };
+  const props = { style: st,
+    onMouseEnter: (e) => !disabled && (e.currentTarget.style.filter = "brightness(.95)"),
+    onMouseLeave: (e) => (e.currentTarget.style.filter = "none"), ...r };
+  return href
+    ? <a href={href} target="_blank" rel="noopener noreferrer" {...props}
+        style={{ ...st, textDecoration: "none" }}>{children}</a>
+    : <button onClick={onClick} disabled={disabled} {...props}>{children}</button>;
+}
+
+const Campo = ({ label, children, ayuda, ancho }) => (
+  <label style={{ display: "block", width: ancho || "100%" }}>
+    <span style={{ fontSize: 12.5, fontWeight: 500, color: T.tinta2,
+                   display: "block", marginBottom: 6 }}>{label}</span>
+    {children}
+    {ayuda && <span style={{ fontSize: 11.5, color: T.tenue, display: "block", marginTop: 5 }}>{ayuda}</span>}
+  </label>
+);
+
+const estiloEntrada = (mal) => ({
+  width: "100%", padding: "11px 13px", fontSize: 14, fontFamily: "Inter",
+  color: T.tinta, background: mal ? T.rojoBg : T.fondo,
+  border: `1px solid ${mal ? T.rojo : T.linea}`, borderRadius: T.rs, outline: "none",
+});
+
+/* Todo campo de dinero es de texto, no numérico: en Venezuela se escribe
+   5.630,15 y un input[type=number] descarta la coma y devuelve vacío. */
+const Entrada = ({ mal, mono, ...p }) => (
+  <input {...p} style={{ ...estiloEntrada(mal),
+    fontFamily: mono ? "'IBM Plex Mono', monospace" : "Inter", ...p.style }} />
+);
+
+const Selector = ({ children, ...p }) => (
+  <select {...p} style={{ ...estiloEntrada(false), cursor: "pointer", ...p.style }}>{children}</select>
+);
+
+const Pastilla = ({ tono = "neutro", children, size = "m" }) => {
+  const c = { verde: [T.verdeBg, T.verde], ambar: [T.ambarBg, T.ambar],
+              rojo: [T.rojoBg, T.rojo], azul: [T.azulBg, T.azul],
+              marca: [A.suave, A.texto], neutro: [T.fondo, T.tinta2] }[tono];
+  return (
+    <span style={{ background: c[0], color: c[1], borderRadius: T.rp, fontWeight: 600,
+      padding: size === "s" ? "3px 9px" : "5px 12px", fontSize: size === "s" ? 11.5 : 12.5,
+      display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+      {children}
+    </span>
+  );
+};
+
+function Metrica({ etiqueta, valor, pie, tono, icono: I, onClick }) {
+  const col = tono === "rojo" ? T.rojo : tono === "verde" ? T.verde : T.tinta;
+  return (
+    <Tarjeta style={{ cursor: onClick ? "pointer" : "default" }}>
+      <div onClick={onClick}>
+        <div className="flex items-center gap-2 mb-3">
+          {I && <I size={15} style={{ color: T.tenue }} />}
+          <span style={{ fontSize: 13, color: T.tinta2, fontWeight: 500 }}>{etiqueta}</span>
+        </div>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 27,
+                      fontWeight: 600, color: col, letterSpacing: "-.02em" }}>{valor}</div>
+        {pie && <div style={{ fontSize: 12.5, color: T.tenue, marginTop: 5 }}>{pie}</div>}
+      </div>
+    </Tarjeta>
+  );
+}
+
+function Aviso({ tono = "ambar", icono: I, titulo, children }) {
+  const c = { verde: [T.verdeBg, T.verde], ambar: [T.ambarBg, T.ambar],
+              rojo: [T.rojoBg, T.rojo], azul: [T.azulBg, T.azul] }[tono];
+  const Icono = I || icono(tono === "verde" ? "Check" : "TriangleAlert");
+  return (
+    <div style={{ background: c[0], borderRadius: T.rs, padding: "13px 16px",
+      display: "flex", gap: 11, alignItems: "flex-start" }}>
+      <Icono size={17} style={{ color: c[1], flexShrink: 0, marginTop: 1 }} />
+      <div style={{ fontSize: 13.5, color: c[1], lineHeight: 1.5 }}>
+        {titulo && <div style={{ fontWeight: 700, marginBottom: 2 }}>{titulo}</div>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Vacio({ icono: I, titulo, texto, accion }) {
+  return (
+    <Tarjeta style={{ padding: "56px 32px", textAlign: "center" }}>
+      <div style={{ width: 56, height: 56, borderRadius: T.rp, background: T.fondo,
+        display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px" }}>
+        {I && <I size={24} style={{ color: T.tenue }} />}
+      </div>
+      <h3 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 18,
+                   color: T.tinta, margin: "0 0 8px" }}>{titulo}</h3>
+      <p style={{ fontSize: 14, color: T.tinta2, maxWidth: 420, margin: "0 auto 22px", lineHeight: 1.6 }}>
+        {texto}
+      </p>
+      <div className="flex gap-2 justify-center flex-wrap">{accion}</div>
+    </Tarjeta>
+  );
+}
+
+function Confirmar({ titulo, texto, boton = "Confirmar", tono = "primario", onSi, onNo }) {
+  return (
+    <div onClick={onNo} style={{ position: "fixed", inset: 0, zIndex: 90,
+      background: "rgba(73,59,52,.45)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: T.lienzo,
+        borderRadius: T.r, maxWidth: 460, width: "100%", boxShadow: T.sombraAlta, padding: 26 }}>
+        <h3 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 18,
+          margin: "0 0 8px", color: T.tinta }}>{titulo}</h3>
+        <p style={{ fontSize: 14, color: T.tinta2, lineHeight: 1.6, margin: "0 0 22px" }}>{texto}</p>
+        <div className="flex gap-2 justify-end flex-wrap">
+          <Boton tipo="suave" onClick={onNo}>Cancelar</Boton>
+          <Boton tipo={tono} onClick={onSi}>{boton}</Boton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const Cargando = ({ texto = "Cargando…" }) => (
+  <div style={{ padding: 40, textAlign: "center", color: T.tenue, fontSize: 14 }}>{texto}</div>
+);
+
+/* ══════════════════════════════════════════════════════════════
+   EL EDIFICIO
+   Cada unidad es un bloque coloreado por su estado. Es la forma más
+   rápida de ver quién debe: se lee de un vistazo y se entra con un clic.
+   Ahora los saldos vienen de la vista saldos_actuales, no de una cuenta
+   hecha en el navegador.
+   ══════════════════════════════════════════════════════════════ */
+function Edificio({ saldos, sumaAlicuotas, tolerancia, onUnidad }) {
+  const cuadra = Math.abs(sumaAlicuotas - 100) <= (tolerancia ?? 0.01);
+  const colores = {
+    al_dia:  { bg: T.verdeBg, br: T.verde, tx: T.verde },
+    debe:    { bg: T.rojoBg,  br: T.rojo,  tx: T.rojo },
+    a_favor: { bg: T.azulBg,  br: T.azul,  tx: T.azul },
+  };
+  const cuenta = { al_dia: 0, debe: 0, a_favor: 0 };
+  saldos.forEach((s) => { if (cuenta[s.estado] !== undefined) cuenta[s.estado]++; });
+
+  return (
+    <Tarjeta>
+      <Titulo sub="Cada bloque es una unidad. Haga clic para ver su cuenta.">El edificio</Titulo>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 18 }}>
+        {saldos.map((u) => {
+          const c = colores[u.estado] || colores.al_dia;
+          const s = Number(u.total) || 0;
+          return (
+            <button key={u.unidad_id} onClick={() => onUnidad(u.unidad_id)}
+              title={`${u.codigo} · ${usd(s)}`}
+              style={{ minWidth: 62, padding: "9px 6px", borderRadius: T.rs, cursor: "pointer",
+                background: c.bg, border: `1px solid ${c.br}22`, textAlign: "center",
+                transition: "transform .12s, box-shadow .12s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)";
+                                     e.currentTarget.style.boxShadow = T.sombra; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = "none";
+                                     e.currentTarget.style.boxShadow = "none"; }}>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5,
+                            fontWeight: 600, color: c.tx }}>{u.codigo || "—"}</div>
+              <div style={{ fontSize: 10, color: c.tx, opacity: .75, marginTop: 2 }}>
+                {Math.abs(s) < 0.01 ? "al día" : nf(0).format(Math.abs(s))}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-4 flex-wrap" style={{ fontSize: 12.5 }}>
+        <span className="flex items-center gap-1.5" style={{ color: T.tinta2 }}>
+          <i style={{ width: 9, height: 9, borderRadius: 3, background: T.verde, display: "inline-block" }} />
+          {cuenta.al_dia} al día
+        </span>
+        <span className="flex items-center gap-1.5" style={{ color: T.tinta2 }}>
+          <i style={{ width: 9, height: 9, borderRadius: 3, background: T.rojo, display: "inline-block" }} />
+          {cuenta.debe} con deuda
+        </span>
+        {cuenta.a_favor > 0 && (
+          <span className="flex items-center gap-1.5" style={{ color: T.tinta2 }}>
+            <i style={{ width: 9, height: 9, borderRadius: 3, background: T.azul, display: "inline-block" }} />
+            {cuenta.a_favor} con saldo a favor
+          </span>
+        )}
+        <span style={{ marginLeft: "auto", fontFamily: "'IBM Plex Mono', monospace",
+                       color: cuadra ? T.tenue : T.rojo, fontWeight: 600 }}>
+          alícuotas {pct(sumaAlicuotas)}
+        </span>
+      </div>
+
+      {!cuadra && (
+        <div style={{ marginTop: 14 }}>
+          <Aviso tono="rojo" titulo="Las alícuotas no suman 100%">
+            Faltan {nf(5).format(100 - sumaAlicuotas)} puntos, más de la tolerancia del
+            edificio ({nf(5).format(tolerancia ?? 0.01)}). Mientras no cuadre, el cierre
+            del mes va a ser rechazado. Corríjalo en Propietarios.
+          </Aviso>
+        </div>
+      )}
+    </Tarjeta>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CONEXIÓN
+   La clave anon es pública a propósito: quien protege los datos es
+   el aislamiento de la base (RLS), no el secreto de esta clave.
+   ══════════════════════════════════════════════════════════════ */
+const guardarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const leerLocal = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+
+function Conexion({ onListo }) {
+  const [url, setUrl] = useState(leerLocal("vecitap_url") || "");
+  const [key, setKey] = useState(leerLocal("vecitap_key") || "");
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20, background: T.fondo }}>
+      <Tarjeta style={{ maxWidth: 520, width: "100%", padding: 28 }}>
+        <Titulo sub="Están en Supabase → Project Settings → API Keys. Copie la clave anon o publishable, nunca la service_role.">
+          Conexión con la base
+        </Titulo>
+        <div className="grid gap-3">
+          <Campo label="URL del proyecto">
+            <Entrada value={url} onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://xxxx.supabase.co" mono />
+          </Campo>
+          <Campo label="Clave anon">
+            <Entrada value={key} onChange={(e) => setKey(e.target.value)}
+              placeholder="eyJhbGciOi…" mono />
+          </Campo>
+          <div className="flex gap-2 flex-wrap">
+            <Boton onClick={() => {
+              if (!url.trim() || !key.trim()) return;
+              guardarLocal("vecitap_url", url.trim());
+              guardarLocal("vecitap_key", key.trim());
+              onListo(url.trim(), key.trim());
+            }}>Conectar</Boton>
+            <Boton tipo="suave" onClick={() => {
+              guardarLocal("vecitap_url", ""); guardarLocal("vecitap_key", "");
+              setUrl(""); setKey("");
+            }}>Olvidar</Boton>
+          </div>
+        </div>
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ── Entrar ── */
+function Entrar({ sb, notificar }) {
+  const [correo, setCorreo] = useState("");
+  const [clave, setClave] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+
+  const accion = async (crear) => {
+    if (!correoValido(correo)) return notificar("El correo no parece válido.", "error");
+    if (clave.length < 6) return notificar("La contraseña necesita al menos 6 caracteres.", "error");
+    setOcupado(true);
+    const { error } = crear
+      ? await sb.auth.signUp({ email: correo.trim(), password: clave })
+      : await sb.auth.signInWithPassword({ email: correo.trim(), password: clave });
+    setOcupado(false);
+    if (error) return notificar(error.message, "error");
+    if (crear) notificar("Cuenta creada. Si le pide confirmar por correo, confírmelo y vuelva a entrar.");
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20, background: T.fondo }}>
+      <Tarjeta style={{ maxWidth: 440, width: "100%", padding: 28 }}>
+        <div className="flex items-center gap-3 mb-5">
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: A.base,
+            display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Ic n="Building2" size={19} style={{ color: A.sobre }} />
+          </div>
+          <span style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 19 }}>Vecitap</span>
+        </div>
+        <div className="grid gap-3">
+          <Campo label="Correo">
+            <Entrada type="email" value={correo} autoComplete="username"
+              onChange={(e) => setCorreo(e.target.value)} />
+          </Campo>
+          <Campo label="Contraseña">
+            <Entrada type="password" value={clave} autoComplete="current-password"
+              onChange={(e) => setClave(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && accion(false)} />
+          </Campo>
+          <div className="flex gap-2 flex-wrap">
+            <Boton disabled={ocupado} onClick={() => accion(false)}>Entrar</Boton>
+            <Boton tipo="suave" disabled={ocupado} onClick={() => accion(true)}>Crear cuenta</Boton>
+          </div>
+        </div>
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ── Elegir o crear administradora ── */
+function Organizaciones({ sb, orgs, onElegir, onRecargar, notificar }) {
+  const [nombre, setNombre] = useState("");
+  const [rif, setRif] = useState("");
+  const crear = async () => {
+    if (!nombre.trim()) return notificar("Falta el nombre.", "error");
+    const { error } = await sb.rpc("crear_organizacion",
+      { p_nombre: nombre.trim(), p_rif: rif.trim() || null });
+    if (error) return notificar(error.message, "error");
+    setNombre(""); setRif("");
+    notificar("Administradora creada.");
+    onRecargar();
+  };
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20, background: T.fondo }}>
+      <Tarjeta style={{ maxWidth: 560, width: "100%", padding: 28 }}>
+        <Titulo sub="Una administradora agrupa a todos sus edificios. Sus datos nunca se cruzan con los de otra.">
+          Su administradora
+        </Titulo>
+        {orgs.length > 0 && (
+          <div className="flex gap-2 flex-wrap mb-6">
+            {orgs.map((o) => (
+              <Boton key={o.id} tipo="suave" onClick={() => onElegir(o)}>
+                {o.nombre}{o.rif ? ` · ${o.rif}` : ""}
+              </Boton>
+            ))}
+          </div>
+        )}
+        <div style={{ borderTop: `1px solid ${T.linea}`, paddingTop: 18 }} className="grid gap-3">
+          <Campo label="Nombre de la nueva administradora">
+            <Entrada value={nombre} onChange={(e) => setNombre(e.target.value)}
+              placeholder="Administradora Unión, c.a." />
+          </Campo>
+          <Campo label="RIF (opcional)">
+            <Entrada value={rif} onChange={(e) => setRif(e.target.value)}
+              placeholder="J-40048248-8" mono />
+          </Campo>
+          <div><Boton onClick={crear}>Crear administradora</Boton></div>
+        </div>
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   APLICACIÓN
+   ══════════════════════════════════════════════════════════════ */
+function App() {
+  const [cfg, setCfg] = useState(() => {
+    const u = leerLocal("vecitap_url"), k = leerLocal("vecitap_key");
+    return u && k ? { url: u, key: k } : null;
+  });
+  const sb = useMemo(() => cfg ? createClient(cfg.url, cfg.key) : null, [cfg]);
+
+  const [sesion, setSesion] = useState(undefined);   // undefined = aún no se sabe
+  const [orgs, setOrgs] = useState(null);
+  const [org, setOrg] = useState(null);
+  const [edificios, setEdificios] = useState([]);
+  const [edificio, setEdificio] = useState(null);
+
+  const [unidades, setUnidades] = useState([]);
+  const [saldos, setSaldos] = useState([]);
+  const [conceptos, setConceptos] = useState([]);
+  const [periodos, setPeriodos] = useState([]);
+  const [cargandoEd, setCargandoEd] = useState(false);
+
+  const [vista, setVista] = useState("inicio");
+  const [aviso, setAviso] = useState(null);
+  const [fichaDe, setFichaDe] = useState(null);
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [tasa, setTasa] = useState({ valor: 0, fuente: "", actualizada: null, cargando: false, error: null });
+  const tmp = useRef(null);
+
+  const notificar = (texto, tipo = "ok") => {
+    setAviso({ texto, tipo });
+    if (tmp.current) clearTimeout(tmp.current);
+    tmp.current = setTimeout(() => setAviso(null), 3600);
+  };
+  const fallo = (e) => notificar(e?.message || String(e), "error");
+
+  /* ── Sesión ── */
+  useEffect(() => {
+    if (!sb) return;
+    sb.auth.getSession().then(({ data }) => setSesion(data.session || null));
+    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => {
+      setSesion(s || null);
+      if (!s) { setOrg(null); setOrgs(null); setEdificio(null); setEdificios([]); }
+    });
+    return () => sub?.subscription?.unsubscribe();
+  }, [sb]);
+
+  /* ── Organizaciones ── */
+  const cargarOrgs = async () => {
+    const { data, error } = await sb.from("organizaciones")
+      .select("id,nombre,rif,plan,acento,logo_url").order("nombre");
+    if (error) return fallo(error);
+    setOrgs(data);
+    if (data.length === 1) setOrg(data[0]);
+  };
+  useEffect(() => { if (sb && sesion) cargarOrgs(); }, [sb, sesion]);
+
+  /* ── Edificios de la administradora ── */
+  const cargarEdificios = async (elegir) => {
+    const { data, error } = await sb.from("edificios")
+      .select("id,nombre,rif,direccion,prefijo_recibo,interes_mora,tolerancia_alicuota,activo")
+      .eq("org_id", org.id).order("nombre");
+    if (error) return fallo(error);
+    setEdificios(data);
+    const id = elegir || edificio?.id;
+    setEdificio(data.find((e) => e.id === id) || data[0] || null);
+  };
+  useEffect(() => { if (org) cargarEdificios(); }, [org]);
+
+  /* ── Todo lo del edificio elegido ──
+     Los saldos NUNCA se calculan aquí: vienen de saldos_actuales, que
+     parte de la última instantánea de cierre. Sumarlos por cuenta propia
+     restaría dos veces los pagos ya absorbidos por un cierre. */
+  const cargarEdificio = async () => {
+    if (!edificio) return;
+    setCargandoEd(true);
+    const [u, s, c, p] = await Promise.all([
+      sb.from("unidades")
+        .select("id,codigo,alicuota,saldo_inicial,saldo_inicial_hon,activa," +
+                "vinculos(id,tipo,desde,hasta,enviar_corte,persona_id," +
+                "personas(id,prefijo,nombre,documento,telefono,correo))")
+        .eq("edificio_id", edificio.id).order("codigo"),
+      sb.from("saldos_actuales")
+        .select("unidad_id,codigo,alicuota,condominio,administracion,servicio,total,estado")
+        .eq("edificio_id", edificio.id).order("codigo"),
+      sb.from("conceptos_cobro")
+        .select("id,nombre,bolsillo,modo,monto,iva,orden,activo,edificio_id")
+        .or(`edificio_id.eq.${edificio.id},edificio_id.is.null`).order("orden"),
+      sb.from("periodos")
+        .select("id,anio,mes,etiqueta,estado,tasa_bcv,presupuesto,total_gastos,cerrado_en")
+        .eq("edificio_id", edificio.id)
+        .order("anio", { ascending: false }).order("mes", { ascending: false }),
+    ]);
+    setCargandoEd(false);
+    if (u.error) return fallo(u.error);
+    if (s.error) return fallo(s.error);
+    if (c.error) return fallo(c.error);
+    if (p.error) return fallo(p.error);
+    setUnidades(u.data); setSaldos(s.data); setConceptos(c.data); setPeriodos(p.data);
+  };
+  useEffect(() => { if (edificio) cargarEdificio(); }, [edificio]);
+
+  /* ── Tasa BCV: referencia viva, se congela al abrir el mes ── */
+  const actualizarTasa = async (silencioso = true) => {
+    setTasa((t) => ({ ...t, cargando: true, error: null }));
+    try {
+      const r = await obtenerTasaOficial();
+      setTasa({ valor: r.tasa, fuente: r.fuente, actualizada: r.actualizada,
+                cargando: false, error: null });
+      if (!silencioso) notificar(`Tasa actualizada: ${nf(2).format(r.tasa)} Bs/USD`);
+    } catch (e) {
+      setTasa((t) => ({ ...t, cargando: false, error: e.message }));
+      if (!silencioso) fallo(e);
+    }
+  };
+  useEffect(() => { if (sesion) actualizarTasa(true); }, [sesion]);
+
+  /* ── Derivados ── */
+  const sumaAlicuotas = useMemo(
+    () => unidades.filter((u) => u.activa).reduce((s, u) => s + (Number(u.alicuota) || 0), 0),
+    [unidades]);
+  const porCobrar = saldos.reduce((s, v) => s + Math.max(0, Number(v.total) || 0), 0);
+  const aFavor    = saldos.reduce((s, v) => s + Math.min(0, Number(v.total) || 0), 0);
+  const conDeuda  = saldos.filter((v) => (Number(v.total) || 0) > 0.01).length;
+  const periodoAbierto = periodos.find((p) => p.estado === "abierto") || null;
+  const acento = org?.acento || "#FA8D4A";
+
+  /* ── Pantallas previas a la aplicación ── */
+  if (!cfg) return <Conexion onListo={(url, key) => setCfg({ url, key })} />;
+  if (sesion === undefined) return <Cargando texto="Comprobando la sesión…" />;
+  if (!sesion) return <Entrar sb={sb} notificar={notificar} />;
+  if (orgs === null) return <Cargando texto="Cargando su administradora…" />;
+  if (!org) return <Organizaciones sb={sb} orgs={orgs} notificar={notificar}
+    onElegir={setOrg} onRecargar={cargarOrgs} />;
+
+  const menu = [
+    { id: "inicio", label: "Inicio", icono: "House" },
+    { id: "propietarios", label: "Propietarios", icono: "Users" },
+    { id: "cobros", label: "Cobros", icono: "ListChecks" },
+    { id: "mes", label: "Cierre del mes", icono: "ReceiptText" },
+    { id: "pagos", label: "Pagos", icono: "Wallet" },
+    { id: "cortes", label: "Cortes de cuenta", icono: "Send" },
+  ];
+  const menuBajo = [
+    { id: "marca", label: "Marca", icono: "Palette" },
+    { id: "ajustes", label: "Ajustes", icono: "Settings2" },
+  ];
+
+  const comun = { sb, org, edificio, unidades, saldos, conceptos, periodos, periodoAbierto,
+    sumaAlicuotas, porCobrar, aFavor, conDeuda, tasa, notificar, fallo,
+    recargar: cargarEdificio, recargarEdificios: cargarEdificios,
+    setVista, verFicha: setFichaDe };
+
+  return (
+    <div style={{ background: T.fondo, minHeight: "100vh", color: T.tinta }}>
+      <style>{`
+        :root {
+          --acento: ${acento};
+          --acento-suave: ${mezclarBlanco(acento, 0.9)};
+          --acento-sobre: ${letraSobre(acento)};
+          --acento-texto: ${versionTexto(acento)};
+        }
+        .app { font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+        input:focus, select:focus, textarea:focus {
+          border-color: var(--acento) !important; box-shadow: 0 0 0 3px var(--acento-suave); }
+        .nav:hover, .fila:hover { background: ${T.fondo}; }
+        table { border-collapse: collapse; width: 100%; }
+        th { font-size: 11.5px; font-weight: 600; color: ${T.tenue}; text-align: left;
+             padding: 10px 14px; border-bottom: 1px solid ${T.linea}; white-space: nowrap; }
+        td { padding: 13px 14px; border-bottom: 1px solid ${T.linea}; font-size: 13.5px; }
+        tbody tr:last-child td { border-bottom: none; }
+        .solo-movil { display: none; }
+        .lateral { display: flex; position: sticky; }
+        .cerrar-menu { display: none; }
+        .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .fila-gasto { display: grid; gap: 10px; align-items: end;
+          grid-template-columns: minmax(140px,2fr) minmax(110px,1fr) 118px 132px 108px 36px; }
+        .fila-partida { display: grid; gap: 8px; align-items: center;
+          grid-template-columns: minmax(140px,2fr) minmax(110px,1fr) 118px 34px; }
+        @media (max-width: 900px) {
+          .lateral { display: none; position: fixed; left: 0; box-shadow: 0 0 40px rgba(73,59,52,.25); }
+          .lateral.abierto { display: flex; }
+          .cerrar-menu { display: inline-flex; }
+          .solo-movil { display: inline-flex !important; }
+          .relleno { padding: 16px !important; }
+          .cabecera { padding: 14px 16px !important; }
+        }
+        @media (max-width: 720px) {
+          .fila-gasto, .fila-partida { grid-template-columns: 1fr 1fr;
+            padding: 12px; background: ${T.fondo}; border-radius: ${T.rs}px; }
+          .fila-gasto > *:first-child, .fila-partida > *:first-child { grid-column: 1 / -1; }
+          .cabecera-fila { display: none !important; }
+          .apila-movil { grid-template-columns: 1fr !important; }
+          td, th { padding: 10px 11px; font-size: 12.5px; }
+        }
+        @media (max-width: 520px) {
+          .fila-gasto, .fila-partida { grid-template-columns: 1fr; }
+          .tasa-cabecera { width: 100%; text-align: left !important; }
+        }
+      `}</style>
+
+      <div className="app" style={{ display: "flex", minHeight: "100vh" }}>
+        <aside className={`lateral ${menuAbierto ? "abierto" : ""}`} style={{
+          width: 244, flexShrink: 0, background: T.lienzo, borderRight: `1px solid ${T.linea}`,
+          flexDirection: "column", padding: "22px 14px", gap: 4, top: 0, height: "100vh", zIndex: 40 }}>
+          <div style={{ padding: "0 10px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+            <button className="cerrar-menu" onClick={() => setMenuAbierto(false)}
+              style={{ order: 9, marginLeft: "auto", border: "none", background: "transparent",
+                cursor: "pointer", color: T.tenue, padding: 4 }}>
+              <Ic n="X" size={20} />
+            </button>
+            {org.logo_url
+              ? <img src={org.logo_url} alt="" style={{ maxHeight: 34, maxWidth: 130 }} />
+              : <>
+                  <div style={{ width: 32, height: 32, borderRadius: 9, background: A.base,
+                    display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Ic n="Building2" size={17} style={{ color: A.sobre }} />
+                  </div>
+                  <span style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 15 }}>
+                    {org.nombre.slice(0, 16)}
+                  </span>
+                </>}
+          </div>
+
+          {/* Selector de edificio: el prototipo era de un solo edificio */}
+          <div style={{ padding: "0 6px 14px" }}>
+            <Selector value={edificio?.id || ""} style={{ fontSize: 13, padding: "9px 11px" }}
+              onChange={(e) => setEdificio(edificios.find((x) => x.id === e.target.value))}>
+              {edificios.length === 0 && <option value="">Sin edificios</option>}
+              {edificios.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+            </Selector>
+          </div>
+
+          {menu.map((m) => {
+            const on = vista === m.id;
+            return (
+              <button key={m.id} className="nav"
+                onClick={() => { setVista(m.id); setMenuAbierto(false); }}
+                style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px",
+                  borderRadius: T.rs, border: "none", cursor: "pointer", width: "100%",
+                  textAlign: "left", fontSize: 14, fontWeight: on ? 600 : 500, fontFamily: "Inter",
+                  background: on ? A.suave : "transparent", color: on ? A.texto : T.tinta2 }}>
+                <Ic n={m.icono} size={17} /> {m.label}
+              </button>
+            );
+          })}
+
+          <div style={{ marginTop: "auto", paddingTop: 14, borderTop: `1px solid ${T.linea}` }}>
+            {menuBajo.map((m) => {
+              const on = vista === m.id;
+              return (
+                <button key={m.id} className="nav"
+                  onClick={() => { setVista(m.id); setMenuAbierto(false); }}
+                  style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px",
+                    borderRadius: T.rs, border: "none", cursor: "pointer", width: "100%",
+                    textAlign: "left", fontSize: 14, fontWeight: on ? 600 : 500, fontFamily: "Inter",
+                    background: on ? A.suave : "transparent", color: on ? A.texto : T.tinta2 }}>
+                  <Ic n={m.icono} size={17} /> {m.label}
+                </button>
+              );
+            })}
+            <button className="nav" onClick={() => sb.auth.signOut()}
+              style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px",
+                borderRadius: T.rs, border: "none", cursor: "pointer", width: "100%",
+                textAlign: "left", fontSize: 14, fontWeight: 500, fontFamily: "Inter",
+                background: "transparent", color: T.tinta2 }}>
+              <Ic n="LogOut" size={17} /> Salir
+            </button>
+          </div>
+        </aside>
+
+        {menuAbierto && <div onClick={() => setMenuAbierto(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(73,59,52,.35)", zIndex: 35 }} />}
+
+        <main style={{ flex: 1, minWidth: 0 }}>
+          <header className="cabecera" style={{ padding: "18px 28px", display: "flex",
+            alignItems: "center", gap: 16, borderBottom: `1px solid ${T.linea}`,
+            background: T.fondo, position: "sticky", top: 0, zIndex: 20, flexWrap: "wrap" }}>
+            <button onClick={() => setMenuAbierto(true)} className="solo-movil"
+              style={{ border: "none", background: "transparent", cursor: "pointer",
+                color: T.tinta, padding: 6, alignItems: "center" }}>
+              <Ic n="Menu" size={20} />
+            </button>
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 20, margin: 0, color: T.tinta }}>
+                {edificio?.nombre || "Sin edificios todavía"}
+              </h1>
+              <p style={{ fontSize: 12.5, color: T.tenue, margin: "2px 0 0" }}>
+                {edificio?.direccion || org.nombre}
+              </p>
+            </div>
+            <div className="tasa-cabecera" style={{ marginLeft: "auto", display: "flex",
+              alignItems: "center", gap: 14 }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 11.5, color: T.tenue, display: "flex",
+                  alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                  Tasa BCV de hoy
+                  <button onClick={() => actualizarTasa(false)} disabled={tasa.cargando}
+                    title="Actualizar" style={{ border: "none", background: "transparent",
+                      cursor: "pointer", color: A.texto, padding: 0, opacity: tasa.cargando ? .4 : 1 }}>
+                    <Ic n="RefreshCw" size={12} />
+                  </button>
+                </div>
+                <div className="mono" style={{ fontSize: 16, fontWeight: 600 }}>
+                  {tasa.valor ? nf(2).format(tasa.valor) : "—"}
+                </div>
+                <div style={{ fontSize: 10.5, color: tasa.error ? T.rojo : T.tenue }}>
+                  {tasa.cargando ? "consultando…" : tasa.error ? tasa.error
+                    : tasa.actualizada ? `${tasa.fuente} · ${fechaCorta(tasa.actualizada)}` : "referencia"}
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <div className="relleno" style={{ padding: 28, maxWidth: 1180 }}>
+            {aviso && (
+              <div style={{ marginBottom: 20 }}>
+                <Aviso tono={aviso.tipo === "error" ? "rojo" : "verde"}>{aviso.texto}</Aviso>
+              </div>
+            )}
+
+            {!edificio ? (
+              <PrimerEdificio {...comun} />
+            ) : cargandoEd && !unidades.length ? (
+              <Cargando />
+            ) : (
+              <>
+                {vista === "inicio" && <Inicio {...comun} />}
+                {vista === "propietarios" && <Propietarios {...comun} />}
+                {vista === "cobros" && <Cobros {...comun} />}
+                {vista === "mes" && <CierreMes {...comun} />}
+                {vista === "pagos" && <Pagos {...comun} />}
+                {vista === "cortes" && <Cortes {...comun} />}
+                {vista === "marca" && <Marca {...comun} setOrg={setOrg} cargarOrgs={cargarOrgs} />}
+                {vista === "ajustes" && <Ajustes {...comun} />}
+              </>
+            )}
+          </div>
+        </main>
+      </div>
+
+      {fichaDe && <Ficha {...comun} unidadId={fichaDe} onCerrar={() => setFichaDe(null)} />}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PRIMER EDIFICIO
+   ══════════════════════════════════════════════════════════════ */
+function PrimerEdificio({ sb, org, notificar, fallo, recargarEdificios }) {
+  const [f, setF] = useState({ nombre: "", prefijo: "CON1", mora: "0", tolerancia: "0,01",
+                               rif: "", direccion: "" });
+  const set = (k, v) => setF({ ...f, [k]: v });
+  const crear = async () => {
+    if (!f.nombre.trim()) return notificar("Falta el nombre del edificio.", "error");
+    const { data, error } = await sb.from("edificios").insert({
+      org_id: org.id, nombre: f.nombre.trim(), rif: f.rif.trim() || null,
+      direccion: f.direccion.trim() || null,
+      prefijo_recibo: (f.prefijo.trim() || "CON1").toUpperCase(),
+      interes_mora: num0(f.mora), tolerancia_alicuota: num0(f.tolerancia) || 0.01,
+      honorario_monto: 0,
+    }).select("id").single();
+    if (error) return fallo(error);
+    notificar("Edificio creado con sus cobros por omisión.");
+    recargarEdificios(data.id);
+  };
+  return (
+    <Tarjeta style={{ maxWidth: 620 }}>
+      <Titulo sub="Un edificio, una urbanización de casas o un centro de oficinas: para el sistema es lo mismo.">
+        Registre su primer edificio
+      </Titulo>
+      <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Campo label="Nombre">
+            <Entrada value={f.nombre} onChange={(e) => set("nombre", e.target.value)}
+              placeholder="Edificio Administradora Unión" />
+          </Campo>
+        </div>
+        <Campo label="Prefijo del recibo" ayuda="Único dentro de la administradora. Sale en cada número de recibo.">
+          <Entrada mono value={f.prefijo} onChange={(e) => set("prefijo", e.target.value)} />
+        </Campo>
+        <Campo label="Interés de mora mensual %" ayuda="Cero si el condominio no cobra intereses.">
+          <Entrada mono value={f.mora} onChange={(e) => set("mora", e.target.value)} />
+        </Campo>
+        <Campo label="Tolerancia de alícuotas"
+          ayuda="Los documentos de condominio rara vez suman 100 exacto. 0,01 es un margen razonable.">
+          <Entrada mono value={f.tolerancia} onChange={(e) => set("tolerancia", e.target.value)} />
+        </Campo>
+        <Campo label="RIF (opcional)">
+          <Entrada mono value={f.rif} onChange={(e) => set("rif", e.target.value)} />
+        </Campo>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Campo label="Dirección (opcional)">
+            <Entrada value={f.direccion} onChange={(e) => set("direccion", e.target.value)} />
+          </Campo>
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}><Boton size="l" onClick={crear}>Crear edificio</Boton></div>
+    </Tarjeta>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INICIO
+   ══════════════════════════════════════════════════════════════ */
+function Inicio({ unidades, saldos, sumaAlicuotas, porCobrar, aFavor, conDeuda,
+                  edificio, periodoAbierto, periodos, conceptos, setVista, verFicha }) {
+  if (!unidades.length) {
+    return (
+      <Vacio icono={icono("Building2")} titulo="Empiece por cargar los propietarios"
+        texto="Registre las unidades con su alícuota y el saldo que arrastran hoy. Puede pegarlos desde su hoja de cálculo."
+        accion={<Boton size="l" onClick={() => setVista("propietarios")}>Ir a Propietarios</Boton>} />
+    );
+  }
+
+  const cerrados = periodos.filter((p) => p.estado === "cerrado");
+  const ultimo = cerrados[0];
+  const hayConceptos = conceptos.some((c) => c.activo);
+  const usaPresupuesto = conceptos.some((c) => c.activo && c.modo.startsWith("presupuesto"));
+  const morosos = [...saldos].filter((s) => (Number(s.total) || 0) > 0.01)
+    .sort((a, b) => b.total - a.total).slice(0, 6);
+
+  return (
+    <div className="grid gap-5">
+      <div className="grid gap-4 apila-movil" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
+        <Metrica etiqueta="Por cobrar" valor={usd(porCobrar)} tono={porCobrar > 0 ? "rojo" : "verde"}
+          icono={icono("TrendingDown")}
+          pie={`${conDeuda} de ${saldos.length} unidades con deuda`} />
+        <Metrica etiqueta="Saldos a favor" valor={usd(Math.abs(aFavor))} icono={icono("CircleDollarSign")}
+          pie="Anticipos que ya pagaron" />
+        <Metrica etiqueta="Último mes cerrado" valor={ultimo ? ultimo.etiqueta : "—"}
+          icono={icono("ReceiptText")}
+          pie={ultimo ? `${cerrados.length} meses cerrados` : "Todavía no se ha cerrado ninguno"} />
+        <Metrica etiqueta="Mes abierto" valor={periodoAbierto ? periodoAbierto.etiqueta : "ninguno"}
+          icono={icono("CalendarClock")} onClick={() => setVista("mes")}
+          pie={periodoAbierto
+            ? (usaPresupuesto
+                ? (periodoAbierto.presupuesto ? `presupuesto ${usd(periodoAbierto.presupuesto)}` : "falta el presupuesto")
+                : `gastos ${usd(periodoAbierto.total_gastos)}`)
+            : "Abrir el mes para empezar"} />
+      </div>
+
+      {!hayConceptos && (
+        <Aviso tono="rojo" titulo="Este edificio no tiene cobros configurados">
+          Sin al menos un cobro activo el mes no se puede cerrar. Vaya a Cobros y defina
+          qué se le cobra a cada unidad.
+        </Aviso>
+      )}
+      {periodoAbierto && usaPresupuesto && !periodoAbierto.presupuesto && (
+        <Aviso tono="ambar" titulo="Falta el presupuesto del mes">
+          Este edificio cobra repartiendo un presupuesto, no el gasto ejecutado. Escriba el
+          monto en Cierre del mes antes de cerrar.
+        </Aviso>
+      )}
+
+      <Edificio saldos={saldos} sumaAlicuotas={sumaAlicuotas}
+        tolerancia={edificio?.tolerancia_alicuota} onUnidad={verFicha} />
+
+      {morosos.length > 0 && (
+        <Tarjeta pad={false}>
+          <div style={{ padding: "20px 20px 0" }}>
+            <Titulo sub="Los seis saldos más altos. Haga clic para ver la cuenta completa.">
+              Quién debe más
+            </Titulo>
+          </div>
+          <div className="scroll-x">
+            <table>
+              <thead><tr><th>Unidad</th><th>Condominio</th><th>Administración</th>
+                <th>Servicio</th><th style={{ textAlign: "right" }}>Total</th><th></th></tr></thead>
+              <tbody>
+                {morosos.map((m) => (
+                  <tr key={m.unidad_id} className="fila" style={{ cursor: "pointer" }}
+                    onClick={() => verFicha(m.unidad_id)}>
+                    <td className="mono" style={{ fontWeight: 600 }}>{m.codigo}</td>
+                    <td className="mono">{usd(m.condominio)}</td>
+                    <td className="mono">{usd(m.administracion)}</td>
+                    <td className="mono">{usd(m.servicio)}</td>
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: T.rojo }}>
+                      {usd(m.total)}
+                    </td>
+                    <td style={{ width: 28 }}><Ic n="ChevronRight" size={15} style={{ color: T.tenue }} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Tarjeta>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PROPIETARIOS
+   El prototipo guardaba el propietario aplanado dentro de la unidad.
+   La base los separa en personas + vínculos con vigencia, porque la ley
+   obliga al propietario del momento: quien era dueño en marzo responde
+   por marzo aunque venda en junio.
+   ══════════════════════════════════════════════════════════════ */
+const vigente = (u, tipo) =>
+  (u.vinculos || []).find((v) => v.tipo === tipo && !v.hasta) || null;
+const nombreDe = (v) => v?.personas
+  ? [v.personas.prefijo, v.personas.nombre].filter(Boolean).join(" ") : "";
+
+function Propietarios({ sb, org, edificio, unidades, saldos, sumaAlicuotas,
+                        notificar, fallo, recargar, verFicha }) {
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState("todos");
+  const [alta, setAlta] = useState(false);
+  const [pantalla, setPantalla] = useState("lista");   // lista | importar | saldos
+
+  const mapaSaldo = useMemo(() => {
+    const m = {}; saldos.forEach((s) => (m[s.unidad_id] = s)); return m;
+  }, [saldos]);
+
+  if (pantalla === "importar")
+    return <ImportarUnidades {...{ sb, org, edificio, unidades, notificar, fallo, recargar }}
+      onVolver={() => setPantalla("lista")} />;
+  if (pantalla === "saldos")
+    return <ImportarSaldos {...{ sb, edificio, unidades, notificar, fallo, recargar }}
+      onVolver={() => setPantalla("lista")} />;
+
+  const visibles = unidades.filter((u) => {
+    const s = mapaSaldo[u.id];
+    const total = Number(s?.total) || 0;
+    if (filtro === "deuda" && !(total > 0.01)) return false;
+    if (filtro === "aldia" && !(Math.abs(total) <= 0.01)) return false;
+    if (filtro === "favor" && !(total < -0.01)) return false;
+    if (filtro === "sinduenio" && vigente(u, "propietario")) return false;
+    if (!busca) return true;
+    const t = [u.codigo, nombreDe(vigente(u, "propietario")),
+               nombreDe(vigente(u, "inquilino"))].join(" ").toLowerCase();
+    return t.includes(busca.toLowerCase());
+  });
+
+  return (
+    <div className="grid gap-5">
+      <Tarjeta pad={false}>
+        <div style={{ padding: "20px 20px 0" }}>
+          <Titulo sub={`${unidades.length} unidades · las alícuotas suman ${pct(sumaAlicuotas)}`}
+            accion={
+              <div className="flex gap-2 flex-wrap">
+                <Boton tipo="suave" size="s" onClick={() => setPantalla("saldos")}>
+                  <Ic n="FileSpreadsheet" size={14} /> Cargar saldos
+                </Boton>
+                <Boton tipo="suave" size="s" onClick={() => setPantalla("importar")}>
+                  <Ic n="Upload" size={14} /> Importar unidades
+                </Boton>
+                <Boton size="s" onClick={() => setAlta(true)}>
+                  <Ic n="Plus" size={14} /> Nueva unidad
+                </Boton>
+              </div>
+            }>
+            Propietarios
+          </Titulo>
+
+          <div className="flex gap-2 flex-wrap items-center" style={{ marginBottom: 14 }}>
+            <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+              <Ic n="Search" size={15} style={{ position: "absolute", left: 12, top: 13, color: T.tenue }} />
+              <Entrada value={busca} onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por unidad o por nombre" style={{ paddingLeft: 34 }} />
+            </div>
+            {[["todos", "Todas"], ["deuda", "Con deuda"], ["aldia", "Al día"],
+              ["favor", "A favor"], ["sinduenio", "Sin propietario"]].map(([k, t]) => (
+              <Boton key={k} size="s" tipo={filtro === k ? "oscuro" : "suave"}
+                onClick={() => setFiltro(k)}>{t}</Boton>
+            ))}
+          </div>
+        </div>
+
+        <div className="scroll-x">
+          <table>
+            <thead><tr>
+              <th>Unidad</th><th>Alícuota</th><th>Propietario</th><th>Inquilino</th>
+              <th style={{ textAlign: "right" }}>Saldo</th><th></th>
+            </tr></thead>
+            <tbody>
+              {visibles.map((u) => {
+                const s = mapaSaldo[u.id];
+                const total = Number(s?.total) || 0;
+                const p = vigente(u, "propietario"), i = vigente(u, "inquilino");
+                return (
+                  <tr key={u.id} className="fila" style={{ cursor: "pointer" }}
+                    onClick={() => verFicha(u.id)}>
+                    <td className="mono" style={{ fontWeight: 600 }}>
+                      {u.codigo}{!u.activa && <span style={{ color: T.tenue }}> · inactiva</span>}
+                    </td>
+                    <td className="mono">{nf(5).format(u.alicuota)}</td>
+                    <td>{nombreDe(p) || <span style={{ color: T.tenue }}>sin registrar</span>}
+                      {p?.personas?.telefono && (
+                        <div style={{ fontSize: 11.5, color: T.tenue }} className="mono">
+                          {p.personas.telefono}
+                        </div>
+                      )}
+                    </td>
+                    <td>{nombreDe(i) || <span style={{ color: T.tenue }}>—</span>}</td>
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 600,
+                      color: total > 0.01 ? T.rojo : total < -0.01 ? T.azul : T.verde }}>
+                      {usd(total)}
+                    </td>
+                    <td style={{ width: 28 }}><Ic n="ChevronRight" size={15} style={{ color: T.tenue }} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {visibles.length === 0 && (
+            <div style={{ padding: 34, textAlign: "center", color: T.tenue, fontSize: 14 }}>
+              Ninguna unidad coincide con el filtro.
+            </div>
+          )}
+        </div>
+      </Tarjeta>
+
+      {alta && <AltaUnidad {...{ sb, org, edificio, notificar, fallo, recargar }}
+        onCerrar={() => setAlta(false)} />}
+    </div>
+  );
+}
+
+/* ── Alta de una unidad con su propietario ── */
+function AltaUnidad({ sb, org, edificio, notificar, fallo, recargar, onCerrar }) {
+  const [f, setF] = useState({ codigo: "", alicuota: "", saldo: "", saldoHon: "",
+    prefijo: "Sr.", nombre: "", documento: "", telefono: "", correo: "" });
+  const set = (k, v) => setF({ ...f, [k]: v });
+  const [ocupado, setOcupado] = useState(false);
+
+  const crear = async () => {
+    if (!f.codigo.trim()) return notificar("Falta el código de la unidad.", "error");
+    setOcupado(true);
+    const { data: u, error: e1 } = await sb.from("unidades").insert({
+      org_id: org.id, edificio_id: edificio.id, codigo: f.codigo.trim(),
+      alicuota: num0(f.alicuota), saldo_inicial: num0(f.saldo),
+      saldo_inicial_hon: num0(f.saldoHon),
+    }).select("id").single();
+    if (e1) { setOcupado(false); return fallo(e1); }
+
+    if (f.nombre.trim()) {
+      const { data: p, error: e2 } = await sb.from("personas").insert({
+        org_id: org.id, prefijo: f.prefijo || null, nombre: f.nombre.trim(),
+        documento: f.documento.trim() || null, telefono: f.telefono.trim() || null,
+        correo: f.correo.trim() || null,
+      }).select("id").single();
+      if (e2) { setOcupado(false); return fallo(e2); }
+      const { error: e3 } = await sb.from("vinculos").insert({
+        org_id: org.id, unidad_id: u.id, persona_id: p.id, tipo: "propietario" });
+      if (e3) { setOcupado(false); return fallo(e3); }
+    }
+    setOcupado(false);
+    notificar("Unidad registrada.");
+    onCerrar(); recargar();
+  };
+
+  return (
+    <div onClick={onCerrar} style={{ position: "fixed", inset: 0, zIndex: 90,
+      background: "rgba(73,59,52,.45)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: T.lienzo,
+        borderRadius: T.r, maxWidth: 560, width: "100%", maxHeight: "92vh", overflow: "auto",
+        boxShadow: T.sombraAlta, padding: 26 }}>
+        <Titulo sub="La alícuota es el porcentaje del gasto que le toca a esta unidad.">
+          Nueva unidad
+        </Titulo>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <Campo label="Código"><Entrada mono value={f.codigo}
+            onChange={(e) => set("codigo", e.target.value)} placeholder="01A" /></Campo>
+          <Campo label="Alícuota %"><Entrada mono value={f.alicuota}
+            onChange={(e) => set("alicuota", e.target.value)} placeholder="2,41144" /></Campo>
+          <Campo label="Saldo inicial de condominio"
+            ayuda="Lo que arrastra del sistema anterior.">
+            <Entrada mono value={f.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="0,00" />
+          </Campo>
+          <Campo label="Saldo inicial de administración">
+            <Entrada mono value={f.saldoHon} onChange={(e) => set("saldoHon", e.target.value)} placeholder="0,00" />
+          </Campo>
+          <div style={{ gridColumn: "1 / -1", borderTop: `1px solid ${T.linea}`, paddingTop: 14 }}>
+            <span style={{ fontSize: 12.5, color: T.tinta2, fontWeight: 600 }}>Propietario (opcional)</span>
+          </div>
+          <Campo label="Tratamiento">
+            <Selector value={f.prefijo} onChange={(e) => set("prefijo", e.target.value)}>
+              {["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""].map((p) =>
+                <option key={p} value={p}>{p || "sin tratamiento"}</option>)}
+            </Selector>
+          </Campo>
+          <Campo label="Nombre"><Entrada value={f.nombre}
+            onChange={(e) => set("nombre", e.target.value)} /></Campo>
+          <Campo label="Cédula o RIF"><Entrada mono value={f.documento}
+            onChange={(e) => set("documento", e.target.value)} /></Campo>
+          <Campo label="Teléfono"><Entrada mono value={f.telefono}
+            onChange={(e) => set("telefono", e.target.value)} placeholder="0414-1234567" /></Campo>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Campo label="Correo"><Entrada value={f.correo}
+              onChange={(e) => set("correo", e.target.value)} /></Campo>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-5 flex-wrap">
+          <Boton tipo="suave" onClick={onCerrar}>Cancelar</Boton>
+          <Boton disabled={ocupado} onClick={crear}>Registrar</Boton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IMPORTAR UNIDADES
+   Siempre con previa antes de aplicar: pegar 54 filas a ciegas y
+   descubrir después que una alícuota entró mal cuesta un mes de cierre.
+   ══════════════════════════════════════════════════════════════ */
+function ImportarUnidades({ sb, org, edificio, unidades, notificar, fallo, recargar, onVolver }) {
+  const [texto, setTexto] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+
+  const previa = useMemo(() => {
+    const filas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
+    const existentes = new Set(unidades.map((u) => normaliza(u.codigo)));
+    const vistos = new Set();
+    return filas.map((l) => {
+      const p = l.split(/[\t;,]/).map((x) => x.trim());
+      const codigo = p[0] || "";
+      const alicuota = num(p[1]);
+      const saldo = num(p[2]);
+      const nombre = p[3] || "";
+      const telefono = p[4] || "";
+      const correo = p[5] || "";
+      const k = normaliza(codigo);
+      const errores = [];
+      if (!codigo) errores.push("sin código");
+      if (alicuota === null) errores.push("alícuota ilegible");
+      if (existentes.has(k)) errores.push("ya existe en el edificio");
+      if (vistos.has(k)) errores.push("repetida en el pegado");
+      if (correo && !correoValido(correo)) errores.push("correo inválido");
+      vistos.add(k);
+      return { codigo, alicuota, saldo, nombre, telefono, correo, errores };
+    });
+  }, [texto, unidades]);
+
+  const buenas = previa.filter((f) => !f.errores.length);
+  const suma = buenas.reduce((s, f) => s + (f.alicuota || 0), 0)
+    + unidades.filter((u) => u.activa).reduce((s, u) => s + Number(u.alicuota || 0), 0);
+  const tol = edificio?.tolerancia_alicuota ?? 0.01;
+
+  const aplicar = async () => {
+    if (!buenas.length) return;
+    setOcupado(true);
+    const { data: nuevas, error } = await sb.from("unidades").insert(
+      buenas.map((f) => ({ org_id: org.id, edificio_id: edificio.id, codigo: f.codigo,
+        alicuota: f.alicuota || 0, saldo_inicial: f.saldo || 0 }))
+    ).select("id,codigo");
+    if (error) { setOcupado(false); return fallo(error); }
+
+    /* Personas y vínculos, solo para las filas que traían nombre */
+    const conNombre = buenas.map((f, i) => ({ ...f, id: nuevas[i]?.id }))
+      .filter((f) => f.nombre && f.id);
+    if (conNombre.length) {
+      const { data: pers, error: e2 } = await sb.from("personas").insert(
+        conNombre.map((f) => ({ org_id: org.id, nombre: f.nombre,
+          telefono: f.telefono || null, correo: f.correo || null }))
+      ).select("id");
+      if (e2) { setOcupado(false); return fallo(e2); }
+      const { error: e3 } = await sb.from("vinculos").insert(
+        conNombre.map((f, i) => ({ org_id: org.id, unidad_id: f.id,
+          persona_id: pers[i].id, tipo: "propietario" })));
+      if (e3) { setOcupado(false); return fallo(e3); }
+    }
+    setOcupado(false);
+    notificar(`${buenas.length} unidades cargadas.`);
+    setTexto(""); recargar(); onVolver();
+  };
+
+  return (
+    <div className="grid gap-5">
+      <Tarjeta>
+        <Titulo accion={<Boton tipo="suave" size="s" onClick={onVolver}>Volver</Boton>}
+          sub="Una unidad por línea. Separe con coma, punto y coma o tabulación — puede pegar directo desde Excel.">
+          Importar unidades
+        </Titulo>
+        <div style={{ background: T.fondo, borderRadius: T.rs, padding: "12px 14px",
+          fontSize: 12.5, color: T.tinta2, marginBottom: 14 }} className="mono">
+          código, alícuota, saldo inicial, propietario, teléfono, correo
+        </div>
+        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={9}
+          placeholder={"01A, 2,41144, 0, Grecia González, 0414-1234567, grecia@correo.com\n01B, 2,50809, 145,50"}
+          style={{ ...estiloEntrada(false), fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }} />
+        <p style={{ fontSize: 12, color: T.tenue, marginTop: 8 }}>
+          Del tercer campo en adelante todo es opcional. Los montos aceptan coma o punto.
+        </p>
+      </Tarjeta>
+
+      {previa.length > 0 && (
+        <Tarjeta pad={false}>
+          <div style={{ padding: "20px 20px 0" }}>
+            <Titulo sub={`${buenas.length} de ${previa.length} filas se pueden cargar`}>
+              Previa
+            </Titulo>
+            {Math.abs(suma - 100) > tol && (
+              <div style={{ marginBottom: 14 }}>
+                <Aviso tono="ambar" titulo="Con estas filas las alícuotas no van a cuadrar">
+                  Quedarían en {pct(suma)}. La tolerancia del edificio es {nf(5).format(tol)}.
+                  Puede cargarlas igual y corregir después, pero el mes no cerrará hasta que cuadre.
+                </Aviso>
+              </div>
+            )}
+          </div>
+          <div className="scroll-x" style={{ maxHeight: 380 }}>
+            <table>
+              <thead><tr><th>Código</th><th>Alícuota</th><th>Saldo</th>
+                <th>Propietario</th><th>Estado</th></tr></thead>
+              <tbody>
+                {previa.map((f, i) => (
+                  <tr key={i} style={{ background: f.errores.length ? T.rojoBg : "transparent" }}>
+                    <td className="mono">{f.codigo || "—"}</td>
+                    <td className="mono">{f.alicuota === null ? "—" : nf(5).format(f.alicuota)}</td>
+                    <td className="mono">{f.saldo === null ? "—" : nf(2).format(f.saldo)}</td>
+                    <td>{f.nombre || <span style={{ color: T.tenue }}>—</span>}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {f.errores.length
+                        ? <span style={{ color: T.rojo }}>{f.errores.join(" · ")}</span>
+                        : <span style={{ color: T.verde }}>lista</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: 20, borderTop: `1px solid ${T.linea}` }} className="flex gap-2 flex-wrap">
+            <Boton disabled={!buenas.length || ocupado} onClick={aplicar}>
+              Cargar {buenas.length} unidades
+            </Boton>
+            <Boton tipo="suave" onClick={() => setTexto("")}>Limpiar</Boton>
+          </div>
+        </Tarjeta>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CARGAR SALDOS DESDE UN ARCHIVO
+   El saldo inicial solo manda hasta el primer cierre: después el saldo
+   parte de la última instantánea. Por eso esta pantalla avisa.
+   ══════════════════════════════════════════════════════════════ */
+function ImportarSaldos({ sb, edificio, unidades, notificar, fallo, recargar, onVolver }) {
+  const [filas, setFilas] = useState([]);
+  const [leyendo, setLeyendo] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [hayCierres, setHayCierres] = useState(null);
+
+  useEffect(() => {
+    sb.from("periodos").select("id", { count: "exact", head: true })
+      .eq("edificio_id", edificio.id).eq("estado", "cerrado")
+      .then(({ count }) => setHayCierres((count || 0) > 0));
+  }, [edificio]);
+
+  const porCodigo = useMemo(() => {
+    const m = {}; unidades.forEach((u) => (m[normaliza(u.codigo)] = u)); return m;
+  }, [unidades]);
+
+  const leer = async (file) => {
+    if (!file) return;
+    setLeyendo(true);
+    try {
+      let crudas = [];
+      if (/\.pdf$/i.test(file.name)) {
+        const lineas = await leerPDF(file);
+        crudas = lineas.map((l) => {
+          const montos = l.match(/-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b/g) || [];
+          const cod = (l.match(/^[A-Za-z0-9ºª.\- ]{1,12}/) || [""])[0].trim();
+          return [cod, montos.length ? montos[montos.length - 1] : ""];
+        });
+      } else {
+        crudas = await leerTabla(file);
+      }
+      /* Se descartan las filas de total: en las planillas reales siempre
+         hay una al final que si entra, se carga como si fuera una unidad. */
+      const limpias = crudas
+        .map((f) => (Array.isArray(f) ? f : Object.values(f)))
+        .filter((f) => f.length >= 2)
+        .filter((f) => !/total|suma|deuda total/i.test(String(f[0] || "")));
+
+      const res = limpias.map((f) => {
+        const cod = String(f[0] || "").trim();
+        let monto = null;
+        for (let i = f.length - 1; i >= 1 && monto === null; i--) monto = parseMonto(f[i]);
+        const u = porCodigo[normaliza(cod)];
+        return { cod, monto, unidad: u || null };
+      }).filter((r) => r.cod && r.monto !== null);
+
+      setFilas(res);
+      const cruzan = res.filter((r) => r.unidad).length;
+      notificar(`${res.length} filas leídas, ${cruzan} cruzan con una unidad.`,
+        cruzan ? "ok" : "error");
+    } catch (e) { fallo(e); }
+    setLeyendo(false);
+  };
+
+  const cruzan = filas.filter((f) => f.unidad);
+
+  const aplicar = async () => {
+    setOcupado(true);
+    for (const f of cruzan) {
+      const { error } = await sb.from("unidades")
+        .update({ saldo_inicial: f.monto }).eq("id", f.unidad.id);
+      if (error) { setOcupado(false); return fallo(error); }
+    }
+    setOcupado(false);
+    notificar(`${cruzan.length} saldos aplicados.`);
+    setFilas([]); recargar(); onVolver();
+  };
+
+  return (
+    <div className="grid gap-5">
+      <Tarjeta>
+        <Titulo accion={<Boton tipo="suave" size="s" onClick={onVolver}>Volver</Boton>}
+          sub="Excel, CSV o PDF. Se cruza por el código de la unidad, sin importar puntos ni espacios.">
+          Cargar saldos iniciales
+        </Titulo>
+
+        {hayCierres && (
+          <div style={{ marginBottom: 14 }}>
+            <Aviso tono="rojo" titulo="Este edificio ya tiene meses cerrados">
+              El saldo inicial solo se usa mientras no exista ningún cierre. Después, el saldo
+              parte de la última instantánea y cambiar este número no lo mueve. Si necesita
+              corregir una deuda de un mes ya cerrado, use una exoneración o un cargo puntual.
+            </Aviso>
+          </div>
+        )}
+
+        <input type="file" accept=".xlsx,.xls,.csv,.pdf" disabled={leyendo}
+          onChange={(e) => leer(e.target.files?.[0])}
+          style={{ ...estiloEntrada(false), padding: 10 }} />
+        <p style={{ fontSize: 12, color: T.tenue, marginTop: 8 }}>
+          Del archivo se toma la primera columna como código y el último número de la fila
+          como monto. La lectura de Excel y CSV es exacta; la de PDF es interpretada, así que
+          revise la previa con más cuidado.
+        </p>
+      </Tarjeta>
+
+      {filas.length > 0 && (
+        <Tarjeta pad={false}>
+          <div style={{ padding: "20px 20px 0" }}>
+            <Titulo sub={`${cruzan.length} de ${filas.length} filas cruzan con una unidad`}>Previa</Titulo>
+          </div>
+          <div className="scroll-x" style={{ maxHeight: 380 }}>
+            <table>
+              <thead><tr><th>Código del archivo</th><th>Unidad</th>
+                <th style={{ textAlign: "right" }}>Saldo a aplicar</th></tr></thead>
+              <tbody>
+                {filas.map((f, i) => (
+                  <tr key={i} style={{ background: f.unidad ? "transparent" : T.ambarBg }}>
+                    <td className="mono">{f.cod}</td>
+                    <td className="mono">{f.unidad ? f.unidad.codigo
+                      : <span style={{ color: T.ambar }}>no se encontró</span>}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{nf(2).format(f.monto)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: 20, borderTop: `1px solid ${T.linea}` }} className="flex gap-2 flex-wrap">
+            <Boton disabled={!cruzan.length || ocupado} onClick={aplicar}>
+              Aplicar {cruzan.length} saldos
+            </Boton>
+            <Boton tipo="suave" onClick={() => setFilas([])}>Descartar</Boton>
+          </div>
+        </Tarjeta>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FICHA DE LA UNIDAD
+   El historial ya no se arma en el navegador: lo devuelve
+   historial_unidad(). Los pagos reportados sin conciliar se agregan
+   aquí solo para mostrarlos — no mueven el saldo, porque todavía no
+   se confirmó que el dinero entró.
+   ══════════════════════════════════════════════════════════════ */
+function imprimirEstado({ edificio, org, unidad, propietario, inquilino, filas, saldoFinal, tasa }) {
+  const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const filasHtml = filas.map((f) => `
+    <tr><td>${esc(f.fecha || "—")}</td>
+    <td><b>${esc(f.concepto)}</b>${f.detalle ? `<br><span class="d">${esc(f.detalle)}</span>` : ""}</td>
+    <td class="n">${f.cargo ? nf(2).format(f.cargo) : ""}</td>
+    <td class="n ${f.tipo === "pendiente" ? "p" : "a"}">${f.abono ? nf(2).format(f.abono)
+      : f.tipo === "pendiente" ? "(" + nf(2).format(f.monto || 0) + ")" : ""}</td>
+    <td class="n s">${f.tipo === "pendiente" ? "" : nf(2).format(f.saldo)}</td></tr>`).join("");
+
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>Estado de cuenta ${esc(unidad.codigo)}</title><style>
+*{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#493B34;margin:32px;font-size:12px}
+h1{font-size:19px;margin:0 0 2px} .sub{color:#7A6B61;font-size:12px;margin-bottom:18px}
+.caja{border:1px solid #EBE3D6;padding:12px 14px;margin-bottom:18px;background:#FDF7EB;border-radius:8px}
+.caja b{display:inline-block;min-width:96px;color:#7A6B61;font-weight:400}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th{background:#493B34;color:#fff;text-align:left;padding:7px 9px;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+td{padding:7px 9px;border-bottom:1px solid #EBE3D6;vertical-align:top}
+.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap} .a{color:#3E7A5E} .p{color:#8A5E10} .s{font-weight:bold}
+.d{color:#7A6B61;font-size:10.5px}
+.tot{margin-top:18px;border-top:2px solid #493B34;padding-top:12px;display:flex;justify-content:space-between;align-items:baseline}
+.tot .v{font-size:22px;font-weight:bold}
+.pie{margin-top:26px;color:#7A6B61;font-size:10px;border-top:1px solid #EBE3D6;padding-top:10px}
+@media print{body{margin:14mm}.noimp{display:none}}
+</style></head><body>
+<h1>${esc(edificio.nombre || "Estado de cuenta")}</h1>
+<div class="sub">${esc(edificio.rif ? "RIF " + edificio.rif + " · " : "")}${esc(edificio.direccion || org.nombre || "")}</div>
+<div class="caja">
+  <div><b>Unidad</b> ${esc(unidad.codigo)}</div>
+  <div><b>Propietario</b> ${esc(propietario || "sin registrar")}</div>
+  ${inquilino ? `<div><b>Inquilino</b> ${esc(inquilino)}</div>` : ""}
+  <div><b>Alícuota</b> ${nf(4).format(unidad.alicuota || 0)} %</div>
+  <div><b>Emitido</b> ${new Date().toLocaleDateString("es-VE", { day: "2-digit", month: "long", year: "numeric" })}</div>
+</div>
+<table><thead><tr><th>Fecha</th><th>Concepto</th><th class="n">Cargo</th>
+<th class="n">Abono</th><th class="n">Saldo</th></tr></thead>
+<tbody>${filasHtml || '<tr><td colspan="5">Sin movimientos registrados.</td></tr>'}</tbody></table>
+<div class="tot"><span>${saldoFinal > 0.009 ? "Saldo pendiente"
+  : saldoFinal < -0.009 ? "Saldo a favor del propietario" : "Unidad solvente"}</span>
+<span class="v">$ ${nf(2).format(Math.abs(saldoFinal))}</span></div>
+${tasa ? `<div style="text-align:right;color:#7A6B61;margin-top:4px">Equivalente: Bs ${nf(2).format(Math.abs(saldoFinal) * tasa)} · tasa ${nf(2).format(tasa)}</div>` : ""}
+<div class="pie">Documento generado a partir de los movimientos registrados. Los montos en bolívares son referenciales.</div>
+<div class="noimp" style="margin-top:22px"><button onclick="window.print()"
+  style="padding:10px 18px;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid #DDD2C2;background:#fff">
+  Imprimir o guardar como PDF</button></div>
+</body></html>`;
+  const v = window.open("", "_blank");
+  if (!v) return false;
+  v.document.write(html); v.document.close();
+  return true;
+}
+
+function Ficha({ sb, org, edificio, unidades, saldos, unidadId, tasa,
+                 notificar, fallo, recargar, onCerrar }) {
+  const u = unidades.find((x) => x.id === unidadId);
+  const s = saldos.find((x) => x.unidad_id === unidadId);
+  const [pest, setPest] = useState("cuenta");
+  const [filas, setFilas] = useState(null);
+  const [pendientes, setPendientes] = useState([]);
+  const [editando, setEditando] = useState(false);
+
+  useEffect(() => {
+    if (!unidadId) return;
+    setFilas(null);
+    Promise.all([
+      sb.rpc("historial_unidad", { p_unidad: unidadId }),
+      sb.from("pagos").select("id,fecha,monto_usd,metodo,referencia,destino")
+        .eq("unidad_id", unidadId).eq("estado", "reportado").order("fecha"),
+    ]).then(([h, p]) => {
+      if (h.error) return fallo(h.error);
+      setFilas(h.data || []);
+      setPendientes(p.data || []);
+    });
+  }, [unidadId]);
+
+  if (!u) return null;
+  const prop = vigente(u, "propietario"), inq = vigente(u, "inquilino");
+  const total = Number(s?.total) || 0;
+
+  const filasImpresion = [
+    ...(filas || []),
+    ...pendientes.map((p) => ({ fecha: p.fecha, concepto: "Pago reportado, sin conciliar",
+      detalle: [p.metodo, p.referencia ? `ref ${p.referencia}` : ""].filter(Boolean).join(" · "),
+      cargo: 0, abono: 0, monto: p.monto_usd, saldo: 0, tipo: "pendiente" })),
+  ];
+
+  const tarjeta = (etiqueta, valor, color) => (
+    <div style={{ background: T.fondo, borderRadius: T.rs, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11.5, color: T.tinta2 }}>{etiqueta}</div>
+      <div className="mono" style={{ fontSize: 17, fontWeight: 700, color }}>{usd(valor)}</div>
+    </div>
+  );
+
+  return (
+    <div onClick={onCerrar} style={{ position: "fixed", inset: 0, zIndex: 80,
+      background: "rgba(73,59,52,.45)", display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: T.fondo,
+        width: "100%", maxWidth: 720, height: "100%", overflow: "auto",
+        boxShadow: T.sombraAlta }}>
+        <div style={{ padding: "20px 24px", background: T.lienzo,
+          borderBottom: `1px solid ${T.linea}`, position: "sticky", top: 0, zIndex: 5 }}
+          className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="mono" style={{ fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: 22, fontWeight: 700, margin: 0 }}>{u.codigo}</h2>
+              <Pastilla tono={total > 0.01 ? "rojo" : total < -0.01 ? "azul" : "verde"}>
+                {total > 0.01 ? "debe" : total < -0.01 ? "a favor" : "al día"} {usd(Math.abs(total))}
+              </Pastilla>
+            </div>
+            <p style={{ fontSize: 13, color: T.tinta2, margin: "4px 0 0" }}>
+              {nombreDe(prop) || "Sin propietario registrado"} · alícuota {pct(u.alicuota)}
+            </p>
+          </div>
+          <button onClick={onCerrar} style={{ border: "none", background: "transparent",
+            cursor: "pointer", color: T.tenue }}><Ic n="X" size={20} /></button>
+        </div>
+
+        <div style={{ padding: "16px 24px 0" }} className="flex gap-2 flex-wrap">
+          <Boton size="s" tipo={pest === "cuenta" ? "oscuro" : "suave"}
+            onClick={() => setPest("cuenta")}>Estado de cuenta</Boton>
+          <Boton size="s" tipo={pest === "datos" ? "oscuro" : "suave"}
+            onClick={() => setPest("datos")}>Datos</Boton>
+        </div>
+
+        <div style={{ padding: 24 }} className="grid gap-4">
+          {pest === "cuenta" && (
+            <>
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+                {tarjeta("Condominio", s?.condominio, T.tinta)}
+                {tarjeta("Administración", s?.administracion, T.tinta)}
+                {tarjeta("Servicio", s?.servicio, T.tinta)}
+                {tarjeta("Total", total, total > 0.01 ? T.rojo : total < -0.01 ? T.azul : T.verde)}
+              </div>
+
+              {pendientes.length > 0 && (
+                <Aviso tono="ambar" titulo="Hay pagos reportados sin conciliar">
+                  {pendientes.length} pago(s) por {usd(pendientes.reduce((a, p) => a + Number(p.monto_usd), 0))}.
+                  No bajan el saldo hasta que se confirme que el dinero entró.
+                </Aviso>
+              )}
+
+              <Tarjeta pad={false}>
+                <div className="scroll-x">
+                  {filas === null ? <Cargando /> : (
+                    <table>
+                      <thead><tr><th>Fecha</th><th>Concepto</th>
+                        <th style={{ textAlign: "right" }}>Cargo</th>
+                        <th style={{ textAlign: "right" }}>Abono</th>
+                        <th style={{ textAlign: "right" }}>Saldo</th></tr></thead>
+                      <tbody>
+                        {filasImpresion.map((f, i) => (
+                          <tr key={i}>
+                            <td className="mono" style={{ color: T.tinta2, whiteSpace: "nowrap" }}>
+                              {f.fecha || "—"}</td>
+                            <td>
+                              <div style={{ fontWeight: 600,
+                                color: f.tipo === "pendiente" ? T.ambar : T.tinta }}>{f.concepto}</div>
+                              {f.detalle && <div style={{ fontSize: 11.5, color: T.tenue }}>{f.detalle}</div>}
+                            </td>
+                            <td className="mono" style={{ textAlign: "right" }}>
+                              {Number(f.cargo) ? nf(2).format(f.cargo) : ""}</td>
+                            <td className="mono" style={{ textAlign: "right",
+                              color: f.tipo === "pendiente" ? T.ambar : T.verde }}>
+                              {Number(f.abono) ? nf(2).format(f.abono)
+                                : f.tipo === "pendiente" ? `(${nf(2).format(f.monto)})` : ""}</td>
+                            <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>
+                              {f.tipo === "pendiente" ? "" : nf(2).format(f.saldo)}</td>
+                          </tr>
+                        ))}
+                        {filasImpresion.length === 0 && (
+                          <tr><td colSpan={5} style={{ textAlign: "center", color: T.tenue, padding: 28 }}>
+                            Sin movimientos registrados.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </Tarjeta>
+
+              <div className="flex gap-2 flex-wrap">
+                <Boton tipo="suave" onClick={() => imprimirEstado({
+                  edificio, org, unidad: u, propietario: nombreDe(prop), inquilino: nombreDe(inq),
+                  filas: filasImpresion, saldoFinal: total, tasa: tasa.valor })}>
+                  <Ic n="Printer" size={15} /> Imprimir o guardar en PDF
+                </Boton>
+                {prop?.personas?.telefono && normalizarTel(prop.personas.telefono) && (
+                  <Boton tipo="suave"
+                    href={`https://wa.me/${normalizarTel(prop.personas.telefono)}?text=` +
+                      encodeURIComponent(`Hola ${nombreDe(prop)}. Le escribimos de ${edificio.nombre} ` +
+                        `sobre la unidad ${u.codigo}. Su saldo actual es ${usd(total)}.`)}>
+                    <Ic n="MessageCircle" size={15} /> WhatsApp
+                  </Boton>
+                )}
+              </div>
+            </>
+          )}
+
+          {pest === "datos" && (
+            <DatosUnidad {...{ sb, org, unidad: u, prop, inq, notificar, fallo, recargar }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Datos de la unidad, propietario e inquilino ── */
+function DatosUnidad({ sb, org, unidad, prop, inq, notificar, fallo, recargar }) {
+  const [u, setU] = useState({ codigo: unidad.codigo, alicuota: String(unidad.alicuota),
+    saldo: String(unidad.saldo_inicial), saldoHon: String(unidad.saldo_inicial_hon),
+    activa: unidad.activa });
+  const persona = (v) => ({ prefijo: v?.personas?.prefijo || "Sr.", nombre: v?.personas?.nombre || "",
+    documento: v?.personas?.documento || "", telefono: v?.personas?.telefono || "",
+    correo: v?.personas?.correo || "", enviar: v ? v.enviar_corte : true });
+  const [p, setP] = useState(persona(prop));
+  const [i, setI] = useState(persona(inq));
+  const [ocupado, setOcupado] = useState(false);
+
+  const guardarVinculo = async (tipo, f, actual) => {
+    if (!f.nombre.trim()) return;
+    const campos = { org_id: org.id, prefijo: f.prefijo || null, nombre: f.nombre.trim(),
+      documento: f.documento.trim() || null, telefono: f.telefono.trim() || null,
+      correo: f.correo.trim() || null };
+    if (actual?.personas?.id) {
+      const { error } = await sb.from("personas").update(campos).eq("id", actual.personas.id);
+      if (error) throw error;
+      const { error: e2 } = await sb.from("vinculos")
+        .update({ enviar_corte: f.enviar }).eq("id", actual.id);
+      if (e2) throw e2;
+    } else {
+      const { data, error } = await sb.from("personas").insert(campos).select("id").single();
+      if (error) throw error;
+      const { error: e2 } = await sb.from("vinculos").insert({ org_id: org.id,
+        unidad_id: unidad.id, persona_id: data.id, tipo, enviar_corte: f.enviar });
+      if (e2) throw e2;
+    }
+  };
+
+  const guardar = async () => {
+    setOcupado(true);
+    try {
+      const { error } = await sb.from("unidades").update({
+        codigo: u.codigo.trim(), alicuota: num0(u.alicuota),
+        saldo_inicial: num0(u.saldo), saldo_inicial_hon: num0(u.saldoHon),
+        activa: u.activa }).eq("id", unidad.id);
+      if (error) throw error;
+      await guardarVinculo("propietario", p, prop);
+      await guardarVinculo("inquilino", i, inq);
+      notificar("Datos guardados.");
+      recargar();
+    } catch (e) { fallo(e); }
+    setOcupado(false);
+  };
+
+  const bloque = (titulo, f, setF, ayuda) => (
+    <Tarjeta>
+      <Titulo sub={ayuda}>{titulo}</Titulo>
+      <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <Campo label="Tratamiento">
+          <Selector value={f.prefijo} onChange={(e) => setF({ ...f, prefijo: e.target.value })}>
+            {["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""].map((x) =>
+              <option key={x} value={x}>{x || "sin tratamiento"}</option>)}
+          </Selector>
+        </Campo>
+        <Campo label="Nombre"><Entrada value={f.nombre}
+          onChange={(e) => setF({ ...f, nombre: e.target.value })} /></Campo>
+        <Campo label="Cédula o RIF"><Entrada mono value={f.documento}
+          onChange={(e) => setF({ ...f, documento: e.target.value })} /></Campo>
+        <Campo label="Teléfono"><Entrada mono value={f.telefono}
+          onChange={(e) => setF({ ...f, telefono: e.target.value })} /></Campo>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Campo label="Correo"
+            mal={f.correo && !correoValido(f.correo)}>
+            <Entrada value={f.correo} mal={!!f.correo && !correoValido(f.correo)}
+              onChange={(e) => setF({ ...f, correo: e.target.value })} />
+          </Campo>
+        </div>
+        <label className="flex items-center gap-2" style={{ gridColumn: "1 / -1", fontSize: 13.5 }}>
+          <input type="checkbox" checked={f.enviar}
+            onChange={(e) => setF({ ...f, enviar: e.target.checked })} />
+          Enviarle el corte de cuenta
+        </label>
+      </div>
+    </Tarjeta>
+  );
+
+  return (
+    <div className="grid gap-4">
+      <Tarjeta>
+        <Titulo sub="El código sale en el número de cada recibo, así que cambiarlo cambia la numeración de los recibos futuros.">
+          La unidad
+        </Titulo>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <Campo label="Código"><Entrada mono value={u.codigo}
+            onChange={(e) => setU({ ...u, codigo: e.target.value })} /></Campo>
+          <Campo label="Alícuota %"><Entrada mono value={u.alicuota}
+            onChange={(e) => setU({ ...u, alicuota: e.target.value })} /></Campo>
+          <Campo label="Saldo inicial de condominio"
+            ayuda="Solo cuenta mientras el edificio no tenga ningún mes cerrado.">
+            <Entrada mono value={u.saldo} onChange={(e) => setU({ ...u, saldo: e.target.value })} />
+          </Campo>
+          <Campo label="Saldo inicial de administración">
+            <Entrada mono value={u.saldoHon} onChange={(e) => setU({ ...u, saldoHon: e.target.value })} />
+          </Campo>
+          <label className="flex items-center gap-2" style={{ gridColumn: "1 / -1", fontSize: 13.5 }}>
+            <input type="checkbox" checked={u.activa}
+              onChange={(e) => setU({ ...u, activa: e.target.checked })} />
+            Unidad activa · una unidad inactiva no se factura, pero conserva su historia
+          </label>
+        </div>
+      </Tarjeta>
+
+      {bloque("Propietario", p, setP,
+        "La ley obliga al propietario del momento: quien era dueño en marzo responde por marzo, aunque venda en junio.")}
+      {bloque("Inquilino", i, setI,
+        "Se registra para poder enviarle el corte, pero la deuda sigue siendo del propietario.")}
+
+      <div><Boton disabled={ocupado} onClick={guardar}>Guardar cambios</Boton></div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COBROS
+   Pantalla nueva: no existía en el prototipo. Es la que reemplaza al
+   honorario de tres modos fijos. Cada fila dice cómo se calcula, cuánto,
+   con qué IVA y a qué bolsillo va el dinero.
+   ══════════════════════════════════════════════════════════════ */
+function Cobros({ sb, org, edificio, conceptos, notificar, fallo, recargar }) {
+  const [nuevo, setNuevo] = useState({ nombre: "", bolsillo: "condominio",
+    modo: "presupuesto_alicuota", monto: "0", iva: "0" });
+  const [borrar, setBorrar] = useState(null);
+
+  const editar = async (id, cambios) => {
+    const { error } = await sb.from("conceptos_cobro").update(cambios).eq("id", id);
+    if (error) return fallo(error);
+    notificar("Guardado."); recargar();
+  };
+  const agregar = async () => {
+    if (!nuevo.nombre.trim()) return notificar("Falta el nombre.", "error");
+    const { error } = await sb.from("conceptos_cobro").insert({
+      org_id: org.id, edificio_id: edificio.id, nombre: nuevo.nombre.trim(),
+      bolsillo: nuevo.bolsillo, modo: nuevo.modo,
+      monto: num0(nuevo.monto), iva: num0(nuevo.iva), orden: 5 });
+    if (error) return fallo(error);
+    setNuevo({ ...nuevo, nombre: "", monto: "0" });
+    notificar("Cobro agregado."); recargar();
+  };
+  const eliminar = async () => {
+    const { error } = await sb.from("conceptos_cobro").delete().eq("id", borrar.id);
+    setBorrar(null);
+    if (error) return fallo(error);
+    notificar("Cobro eliminado."); recargar();
+  };
+
+  const usaPresupuesto = conceptos.some((c) => c.activo && c.modo.startsWith("presupuesto"));
+  const usaGasto = conceptos.some((c) => c.activo && c.modo.startsWith("gasto"));
+
+  return (
+    <div className="grid gap-5">
+      <Tarjeta pad={false}>
+        <div style={{ padding: "20px 20px 0" }}>
+          <Titulo sub="Todo lo que aparece en el recibo sale de esta lista. Agregar un cobro nuevo es agregar una fila, no programar.">
+            Qué se le cobra a cada unidad
+          </Titulo>
+          {!conceptos.some((c) => c.activo) && (
+            <div style={{ marginBottom: 14 }}>
+              <Aviso tono="rojo" titulo="Sin cobros activos el mes no se puede cerrar">
+                Un edificio necesita al menos un cobro encendido.
+              </Aviso>
+            </div>
+          )}
+          {usaPresupuesto && usaGasto && (
+            <div style={{ marginBottom: 14 }}>
+              <Aviso tono="ambar" titulo="Este edificio mezcla presupuesto y gasto ejecutado">
+                Se puede hacer, pero conviene revisarlo: normalmente un condominio cobra de
+                una forma o de la otra, no de las dos a la vez.
+              </Aviso>
+            </div>
+          )}
+        </div>
+
+        <div className="scroll-x">
+          <table>
+            <thead><tr><th>Nombre en el recibo</th><th>Bolsillo</th><th>Cómo se calcula</th>
+              <th style={{ textAlign: "right" }}>Monto o %</th>
+              <th style={{ textAlign: "right" }}>IVA %</th><th></th><th></th></tr></thead>
+            <tbody>
+              {conceptos.map((c) => {
+                const deVecitap = c.bolsillo === "servicio";
+                return (
+                  <tr key={c.id} style={{ opacity: c.activo ? 1 : .5 }}>
+                    <td>
+                      <Entrada value={c.nombre} disabled={deVecitap}
+                        onChange={(e) => editar(c.id, { nombre: e.target.value })}
+                        style={{ padding: "7px 9px", fontSize: 13 }} />
+                    </td>
+                    <td><Pastilla tono={c.bolsillo === "condominio" ? "neutro"
+                      : c.bolsillo === "administracion" ? "azul" : "marca"} size="s">
+                      {BOLSILLOS[c.bolsillo]?.t}</Pastilla></td>
+                    <td>
+                      <Selector value={c.modo} disabled={deVecitap}
+                        onChange={(e) => editar(c.id, { modo: e.target.value })}
+                        style={{ padding: "7px 9px", fontSize: 13 }}>
+                        {Object.entries(MODOS_COBRO).map(([k, v]) =>
+                          <option key={k} value={k}>{v}</option>)}
+                      </Selector>
+                    </td>
+                    <td style={{ width: 110 }}>
+                      <Entrada mono defaultValue={String(c.monto)} disabled={deVecitap}
+                        onBlur={(e) => { const v = num0(e.target.value);
+                          if (v !== Number(c.monto)) editar(c.id, { monto: v }); }}
+                        style={{ padding: "7px 9px", fontSize: 13, textAlign: "right" }} />
+                    </td>
+                    <td style={{ width: 84 }}>
+                      <Entrada mono defaultValue={String(c.iva)} disabled={deVecitap}
+                        onBlur={(e) => { const v = num0(e.target.value);
+                          if (v !== Number(c.iva)) editar(c.id, { iva: v }); }}
+                        style={{ padding: "7px 9px", fontSize: 13, textAlign: "right" }} />
+                    </td>
+                    <td style={{ width: 96 }}>
+                      <Boton size="s" tipo="suave" disabled={deVecitap}
+                        onClick={() => editar(c.id, { activo: !c.activo })}>
+                        {c.activo ? "Apagar" : "Encender"}
+                      </Boton>
+                    </td>
+                    <td style={{ width: 34 }}>
+                      {!deVecitap && (
+                        <button onClick={() => setBorrar(c)} title="Eliminar"
+                          style={{ border: "none", background: "transparent", cursor: "pointer", color: T.tenue }}>
+                          <Ic n="Trash2" size={15} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {conceptos.some((c) => c.bolsillo === "servicio") && (
+          <div style={{ padding: "0 20px 18px" }}>
+            <p style={{ fontSize: 12, color: T.tenue }}>
+              El cobro del servicio lo define Vecitap desde su consola y no se puede editar
+              ni apagar desde aquí. Aparece en el recibo para que el propietario sepa qué paga.
+            </p>
+          </div>
+        )}
+      </Tarjeta>
+
+      <Tarjeta>
+        <Titulo sub="Un fondo de reserva, una cuota extraordinaria, vigilancia adicional: todo se modela igual.">
+          Agregar un cobro
+        </Titulo>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "2fr 1fr 2fr 1fr 1fr auto", alignItems: "end" }}
+          >
+          <Campo label="Nombre en el recibo"><Entrada value={nuevo.nombre}
+            onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })}
+            placeholder="Fondo de reserva" /></Campo>
+          <Campo label="Bolsillo">
+            <Selector value={nuevo.bolsillo} onChange={(e) => setNuevo({ ...nuevo, bolsillo: e.target.value })}>
+              <option value="condominio">Condominio</option>
+              <option value="administracion">Administración</option>
+            </Selector>
+          </Campo>
+          <Campo label="Cómo se calcula">
+            <Selector value={nuevo.modo} onChange={(e) => setNuevo({ ...nuevo, modo: e.target.value })}>
+              {Object.entries(MODOS_COBRO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Selector>
+          </Campo>
+          <Campo label="Monto o %"><Entrada mono value={nuevo.monto}
+            onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} /></Campo>
+          <Campo label="IVA %"><Entrada mono value={nuevo.iva}
+            onChange={(e) => setNuevo({ ...nuevo, iva: e.target.value })} /></Campo>
+          <Boton onClick={agregar}><Ic n="Plus" size={15} /> Agregar</Boton>
+        </div>
+      </Tarjeta>
+
+      {borrar && <Confirmar titulo="Eliminar este cobro"
+        texto={`"${borrar.nombre}" dejará de aparecer en los recibos que se emitan de ahora en adelante. Los recibos ya emitidos no cambian.`}
+        boton="Eliminar" tono="peligro" onSi={eliminar} onNo={() => setBorrar(null)} />}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CIERRE DEL MES
+   Ya no calcula nada: abre, carga gastos y le pide a la base que
+   cierre. La previa del reparto la devuelve simular_cierre(), para que
+   lo que se ve antes de cerrar sea exactamente lo que se va a emitir.
+   ══════════════════════════════════════════════════════════════ */
+function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAbierto,
+                     tasa, notificar, fallo, recargar }) {
+  const [gastos, setGastos] = useState([]);
+  const [nuevo, setNuevo] = useState({ concepto: "", referencia: "", monto: "",
+    tipo: "comun", unidad: "", bolsillo: "condominio", categoria: "" });
+  const [categorias, setCategorias] = useState([]);
+  const [abrir, setAbrir] = useState({ anio: new Date().getFullYear(),
+    mes: new Date().getMonth() + 1, tasa: "", presupuesto: "" });
+  const [correccion, setCorreccion] = useState({ presupuesto: "", tasa: "" });
+  const [previa, setPrevia] = useState(null);
+  const [simulable, setSimulable] = useState(true);
+  const [confirma, setConfirma] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  const usaPresupuesto = conceptos.some((c) => c.activo && c.modo.startsWith("presupuesto"));
+  const usaGasto = conceptos.some((c) => c.activo && c.modo.startsWith("gasto"));
+  const cerrados = periodos.filter((p) => p.estado === "cerrado");
+
+  useEffect(() => {
+    sb.from("categorias").select("id,nombre,orden").eq("edificio_id", edificio.id)
+      .order("orden").then(({ data }) => setCategorias(data || []));
+  }, [edificio]);
+
+  useEffect(() => {
+    if (!periodoAbierto) { setGastos([]); return; }
+    setCorreccion({ presupuesto: periodoAbierto.presupuesto ?? "",
+                    tasa: periodoAbierto.tasa_bcv ?? "" });
+    cargarGastos();
+  }, [periodoAbierto?.id]);
+
+  const cargarGastos = async () => {
+    const { data, error } = await sb.from("gastos")
+      .select("id,concepto,referencia,monto,tipo,unidad_id,bolsillo,categoria_id")
+      .eq("periodo_id", periodoAbierto.id).order("creado_en");
+    if (error) return fallo(error);
+    setGastos(data);
+  };
+
+  const comunes = gastos.filter((g) => g.tipo === "comun")
+    .reduce((s, g) => s + Number(g.monto), 0);
+
+  const abrirMes = async () => {
+    setOcupado(true);
+    const { error } = await sb.rpc("abrir_periodo", {
+      p_edificio: edificio.id, p_anio: Number(abrir.anio), p_mes: Number(abrir.mes),
+      p_etiqueta: `${MESES[Number(abrir.mes) - 1]} ${abrir.anio}`,
+      p_tasa: num0(abrir.tasa) || tasa.valor || 1,
+      p_presupuesto: num(abrir.presupuesto) });
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar("Mes abierto. Las partidas fijas entraron solas.");
+    recargar();
+  };
+
+  const corregir = async () => {
+    const { error } = await sb.from("periodos").update({
+      presupuesto: num(correccion.presupuesto),
+      tasa_bcv: num0(correccion.tasa) || 1 }).eq("id", periodoAbierto.id);
+    if (error) return fallo(error);
+    notificar("Mes actualizado."); recargar();
+  };
+
+  const agregarGasto = async () => {
+    const monto = num(nuevo.monto);
+    if (monto === null) return notificar("Falta el monto.", "error");
+    if (nuevo.tipo === "directo" && !nuevo.unidad)
+      return notificar("Un gasto directo tiene que decir a qué unidad se le carga.", "error");
+    const { error } = await sb.from("gastos").insert({
+      org_id: org.id, periodo_id: periodoAbierto.id,
+      categoria_id: nuevo.categoria || null,
+      concepto: nuevo.concepto.trim() || "Sin concepto",
+      referencia: nuevo.referencia.trim() || null, monto,
+      tipo: nuevo.tipo, unidad_id: nuevo.tipo === "directo" ? nuevo.unidad : null,
+      bolsillo: nuevo.tipo === "directo" ? nuevo.bolsillo : "condominio" });
+    if (error) return fallo(error);
+    setNuevo({ ...nuevo, concepto: "", referencia: "", monto: "" });
+    cargarGastos();
+  };
+
+  const quitarGasto = async (id) => {
+    const { error } = await sb.from("gastos").delete().eq("id", id);
+    if (error) return fallo(error);
+    cargarGastos();
+  };
+
+  /* Las partidas fijas se comparan con lo ya cargado: se agregan las que
+     faltan y se rellenan las que están en cero, sin pisar lo editado. */
+  const traerFijas = async () => {
+    const { data: pf, error } = await sb.from("partidas_fijas")
+      .select("id,concepto,referencia,monto,categoria_id,categorias!inner(edificio_id)")
+      .eq("categorias.edificio_id", edificio.id);
+    if (error) return fallo(error);
+    const clave = (x) => [x.categoria_id || "", (x.concepto || "").trim().toLowerCase(),
+                          (x.referencia || "").trim().toLowerCase()].join("|");
+    const actuales = new Map(gastos.filter((g) => g.tipo === "comun").map((g) => [clave(g), g]));
+    const nuevas = [], rellenar = [];
+    (pf || []).forEach((p) => {
+      const g = actuales.get(clave(p));
+      if (!g) nuevas.push({ org_id: org.id, periodo_id: periodoAbierto.id,
+        categoria_id: p.categoria_id, concepto: p.concepto, referencia: p.referencia,
+        monto: p.monto, tipo: "comun", bolsillo: "condominio" });
+      else if (Number(g.monto) === 0 && Number(p.monto) !== 0) rellenar.push([g.id, p.monto]);
+    });
+    if (nuevas.length) {
+      const { error: e1 } = await sb.from("gastos").insert(nuevas);
+      if (e1) return fallo(e1);
+    }
+    for (const [id, monto] of rellenar) await sb.from("gastos").update({ monto }).eq("id", id);
+    if (!nuevas.length && !rellenar.length) return notificar("No faltaba ninguna partida fija.");
+    notificar(`${nuevas.length} partidas agregadas, ${rellenar.length} rellenadas.`);
+    cargarGastos();
+  };
+
+  const simular = async () => {
+    const { data, error } = await sb.rpc("simular_cierre", { p_periodo: periodoAbierto.id });
+    if (error) {
+      if (/does not exist|función|function/i.test(error.message)) { setSimulable(false); return; }
+      return fallo(error);
+    }
+    setPrevia(data);
+  };
+  useEffect(() => { if (periodoAbierto && simulable) simular(); },
+    [periodoAbierto?.id, gastos.length, periodoAbierto?.presupuesto]);
+
+  const cerrar = async () => {
+    setOcupado(true);
+    const { data, error } = await sb.rpc("cerrar_periodo", { p_periodo: periodoAbierto.id });
+    setOcupado(false); setConfirma(null);
+    if (error) return fallo(error);
+    const r = Array.isArray(data) ? data[0] : data;
+    notificar(`${periodoAbierto.etiqueta} cerrado: ${r.recibos_emitidos} recibos por ${usd(r.total_facturado)}.`);
+    recargar();
+  };
+
+  const reabrir = async () => {
+    const ult = cerrados[0];
+    setConfirma(null);
+    if (!ult) return;
+    const { error } = await sb.rpc("reabrir_periodo", { p_periodo: ult.id });
+    if (error) return fallo(error);
+    notificar(`${ult.etiqueta} reabierto. Sus recibos quedaron anulados.`);
+    recargar();
+  };
+
+  return (
+    <div className="grid gap-5">
+      {!periodoAbierto ? (
+        <Tarjeta>
+          <Titulo sub={cerrados.length
+            ? `El último cerrado fue ${cerrados[0].etiqueta}.`
+            : "Todavía no se ha cerrado ningún mes en este edificio."}>
+            Abrir un mes
+          </Titulo>
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+            <Campo label="Año"><Entrada mono value={abrir.anio}
+              onChange={(e) => setAbrir({ ...abrir, anio: e.target.value })} /></Campo>
+            <Campo label="Mes">
+              <Selector value={abrir.mes} onChange={(e) => setAbrir({ ...abrir, mes: e.target.value })}>
+                {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </Selector>
+            </Campo>
+            <Campo label="Tasa BCV del mes" ayuda={tasa.valor ? `hoy: ${nf(2).format(tasa.valor)}` : ""}>
+              <Entrada mono value={abrir.tasa} placeholder={tasa.valor ? nf(2).format(tasa.valor) : "0,00"}
+                onChange={(e) => setAbrir({ ...abrir, tasa: e.target.value })} />
+            </Campo>
+            {usaPresupuesto && (
+              <Campo label="Presupuesto del mes USD"
+                ayuda="Este edificio reparte un presupuesto, no el gasto ejecutado.">
+                <Entrada mono value={abrir.presupuesto} placeholder="5.630,15"
+                  onChange={(e) => setAbrir({ ...abrir, presupuesto: e.target.value })} />
+              </Campo>
+            )}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Boton size="l" disabled={ocupado} onClick={abrirMes}>Abrir el mes</Boton>
+          </div>
+        </Tarjeta>
+      ) : (
+        <>
+          <Tarjeta>
+            <Titulo sub={usaPresupuesto
+              ? "Se reparte el presupuesto. Los gastos se cargan igual, para la rendición y para ver el sobrante o el faltante."
+              : "Se reparte lo que se gastó este mes."}
+              accion={<Pastilla tono="marca">{periodoAbierto.etiqueta}</Pastilla>}>
+              El mes abierto
+            </Titulo>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", alignItems: "end" }}>
+              {usaPresupuesto && (
+                <Campo label="Presupuesto del mes USD">
+                  <Entrada mono value={correccion.presupuesto}
+                    onChange={(e) => setCorreccion({ ...correccion, presupuesto: e.target.value })} />
+                </Campo>
+              )}
+              <Campo label="Tasa BCV del mes">
+                <Entrada mono value={correccion.tasa}
+                  onChange={(e) => setCorreccion({ ...correccion, tasa: e.target.value })} />
+              </Campo>
+              <div><Boton tipo="suave" onClick={corregir}>Guardar</Boton></div>
+            </div>
+            {usaPresupuesto && !periodoAbierto.presupuesto && (
+              <div style={{ marginTop: 14 }}>
+                <Aviso tono="rojo" titulo="Falta el presupuesto">
+                  Sin él la base rechaza el cierre.
+                </Aviso>
+              </div>
+            )}
+            {usaPresupuesto && periodoAbierto.presupuesto > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <Aviso tono={comunes > periodoAbierto.presupuesto ? "ambar" : "verde"}
+                  titulo={comunes > periodoAbierto.presupuesto ? "El mes va en déficit" : "El mes va con sobrante"}>
+                  Presupuestado {usd(periodoAbierto.presupuesto)} · ejecutado {usd(comunes)} ·
+                  diferencia {usd(periodoAbierto.presupuesto - comunes)}. Esto no lo mostraba
+                  la planilla en ningún lado.
+                </Aviso>
+              </div>
+            )}
+          </Tarjeta>
+
+          <Tarjeta pad={false}>
+            <div style={{ padding: "20px 20px 0" }}>
+              <Titulo sub="Los gastos comunes se reparten entre todos. Los directos se le cargan solo a una unidad."
+                accion={<Boton tipo="suave" size="s" onClick={traerFijas}>
+                  <Ic n="RotateCcw" size={14} /> Traer partidas fijas</Boton>}>
+                Gastos del mes
+              </Titulo>
+
+              <div className="fila-gasto" style={{ marginBottom: 14 }}>
+                <Campo label="Concepto"><Entrada value={nuevo.concepto}
+                  onChange={(e) => setNuevo({ ...nuevo, concepto: e.target.value })}
+                  placeholder="Vigilancia" /></Campo>
+                <Campo label="Referencia"><Entrada mono value={nuevo.referencia}
+                  onChange={(e) => setNuevo({ ...nuevo, referencia: e.target.value })} /></Campo>
+                <Campo label="Categoría">
+                  <Selector value={nuevo.categoria}
+                    onChange={(e) => setNuevo({ ...nuevo, categoria: e.target.value })}>
+                    <option value="">Sin categoría</option>
+                    {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </Selector>
+                </Campo>
+                <Campo label="Tipo">
+                  <Selector value={nuevo.tipo} onChange={(e) => setNuevo({ ...nuevo, tipo: e.target.value })}>
+                    <option value="comun">Se reparte entre todos</option>
+                    <option value="directo">Solo a una unidad</option>
+                  </Selector>
+                </Campo>
+                <Campo label="Monto USD"><Entrada mono value={nuevo.monto}
+                  onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} /></Campo>
+                <Boton onClick={agregarGasto}><Ic n="Plus" size={15} /></Boton>
+              </div>
+
+              {nuevo.tipo === "directo" && (
+                <div className="fila-partida" style={{ marginBottom: 14 }}>
+                  <Campo label="¿A qué unidad?">
+                    <Selector value={nuevo.unidad} onChange={(e) => setNuevo({ ...nuevo, unidad: e.target.value })}>
+                      <option value="">Elija la unidad</option>
+                      {unidades.map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
+                    </Selector>
+                  </Campo>
+                  <Campo label="¿De quién es ese dinero?"
+                    ayuda="Una reparación es del condominio. Un recargo por gestión de cobranza es de quien administra.">
+                    <Selector value={nuevo.bolsillo} onChange={(e) => setNuevo({ ...nuevo, bolsillo: e.target.value })}>
+                      <option value="condominio">Condominio</option>
+                      <option value="administracion">Administración</option>
+                    </Selector>
+                  </Campo>
+                  <div /><div />
+                </div>
+              )}
+            </div>
+
+            <div className="scroll-x">
+              <table>
+                <thead><tr><th>Concepto</th><th>Tipo</th><th>Bolsillo</th>
+                  <th style={{ textAlign: "right" }}>Monto</th><th></th></tr></thead>
+                <tbody>
+                  {gastos.map((g) => (
+                    <tr key={g.id}>
+                      <td>{g.concepto}
+                        {g.referencia && <div style={{ fontSize: 11.5, color: T.tenue }} className="mono">
+                          {g.referencia}</div>}
+                      </td>
+                      <td>{g.tipo === "comun" ? "común"
+                        : `solo ${unidades.find((u) => u.id === g.unidad_id)?.codigo || "—"}`}</td>
+                      <td>{BOLSILLOS[g.bolsillo]?.t || "Condominio"}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{usd(g.monto)}</td>
+                      <td style={{ width: 34 }}>
+                        <button onClick={() => quitarGasto(g.id)}
+                          style={{ border: "none", background: "transparent", cursor: "pointer", color: T.tenue }}>
+                          <Ic n="Trash2" size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr><td colSpan={3} style={{ fontWeight: 700 }}>Gastos comunes del mes</td>
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>{usd(comunes)}</td>
+                    <td /></tr>
+                </tbody>
+              </table>
+            </div>
+          </Tarjeta>
+
+          {previa && previa.length > 0 && (
+            <Tarjeta pad={false}>
+              <div style={{ padding: "20px 20px 0" }}>
+                <Titulo sub="Esto es exactamente lo que se va a emitir. Lo calcula la base, no el navegador.">
+                  Cómo se reparte
+                </Titulo>
+              </div>
+              <div className="scroll-x" style={{ maxHeight: 420 }}>
+                <table>
+                  <thead><tr><th>Unidad</th><th>Alícuota</th><th>Condominio</th>
+                    <th>Administración</th><th>Servicio</th><th>Anterior</th><th>Mora</th>
+                    <th style={{ textAlign: "right" }}>Total del recibo</th></tr></thead>
+                  <tbody>
+                    {previa.map((r) => (
+                      <tr key={r.codigo}>
+                        <td className="mono" style={{ fontWeight: 600 }}>{r.codigo}</td>
+                        <td className="mono">{nf(5).format(r.alicuota)}</td>
+                        <td className="mono">{usd(r.condominio)}</td>
+                        <td className="mono">{usd(r.administracion)}</td>
+                        <td className="mono">{usd(r.servicio)}</td>
+                        <td className="mono">{usd(r.anterior)}</td>
+                        <td className="mono">{usd(r.mora)}</td>
+                        <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>{usd(r.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Tarjeta>
+          )}
+
+          {!simulable && (
+            <Aviso tono="azul" titulo="La previa del reparto no está disponible">
+              Falta instalar la función <b>simular_cierre</b> en la base (archivo 10). Sin ella
+              no se puede mostrar el reparto sin emitir los recibos. El cierre funciona igual.
+            </Aviso>
+          )}
+
+          <div className="flex gap-2 flex-wrap">
+            <Boton size="l" disabled={ocupado}
+              onClick={() => setConfirma({ que: "cerrar" })}>
+              <Ic n="ReceiptText" size={16} /> Cerrar el mes y emitir recibos
+            </Boton>
+            {cerrados.length > 0 && (
+              <Boton tipo="suave" onClick={() => setConfirma({ que: "reabrir" })}>
+                <Ic n="RotateCcw" size={15} /> Reabrir {cerrados[0].etiqueta}
+              </Boton>
+            )}
+          </div>
+        </>
+      )}
+
+      {cerrados.length > 0 && (
+        <Tarjeta pad={false}>
+          <div style={{ padding: "20px 20px 0" }}><Titulo>Meses cerrados</Titulo></div>
+          <div className="scroll-x">
+            <table>
+              <thead><tr><th>Mes</th><th style={{ textAlign: "right" }}>Presupuesto</th>
+                <th style={{ textAlign: "right" }}>Gastos</th>
+                <th style={{ textAlign: "right" }}>Tasa</th></tr></thead>
+              <tbody>
+                {cerrados.slice(0, 12).map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.etiqueta}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>
+                      {p.presupuesto ? usd(p.presupuesto) : "—"}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{usd(p.total_gastos)}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{nf(2).format(p.tasa_bcv)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Tarjeta>
+      )}
+
+      {confirma?.que === "cerrar" && <Confirmar titulo={`Cerrar ${periodoAbierto.etiqueta}`}
+        texto="Se emiten los recibos de todas las unidades activas y se guarda la instantánea de saldos. Se puede reabrir después, pero los recibos emitidos quedarían anulados."
+        boton="Cerrar y emitir" onSi={cerrar} onNo={() => setConfirma(null)} />}
+      {confirma?.que === "reabrir" && <Confirmar titulo={`Reabrir ${cerrados[0].etiqueta}`}
+        texto="Se anulan sus recibos y su instantánea. Si ya se los envió a los propietarios, van a tener un documento que dejó de existir."
+        boton="Reabrir" tono="peligro" onSi={reabrir} onNo={() => setConfirma(null)} />}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PAGOS
+   ══════════════════════════════════════════════════════════════ */
+function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }) {
+  const [pagos, setPagos] = useState([]);
+  const [filtro, setFiltro] = useState("reportado");
+  const [pest, setPest] = useState("registrar");
+  const [f, setF] = useState({ unidad: "", fecha: hoyISO(), monto: "", moneda: "USD",
+    tasa: "", metodo: "Pago móvil", destino: "condominio", referencia: "", banco: "" });
+  const [ex, setEx] = useState({ unidad: "", monto: "", motivo: "", destino: "condominio" });
+  const [mov, setMov] = useState(null);
+  const [mapa, setMapa] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  const ids = useMemo(() => unidades.map((u) => u.id), [unidades]);
+  const codigo = (id) => unidades.find((u) => u.id === id)?.codigo || "—";
+
+  const cargar = async () => {
+    if (!ids.length) return;
+    const { data, error } = await sb.from("pagos")
+      .select("id,unidad_id,fecha,monto,moneda,tasa_aplicada,monto_usd,metodo,destino," +
+              "referencia,banco,estado,periodo_cierre_id,nota")
+      .in("unidad_id", ids).order("fecha", { ascending: false }).limit(300);
+    if (error) return fallo(error);
+    setPagos(data);
+  };
+  useEffect(() => { cargar(); }, [ids.length]);
+
+  const registrar = async () => {
+    if (!f.unidad) return notificar("Elija la unidad.", "error");
+    const monto = num(f.monto);
+    if (monto === null || monto <= 0) return notificar("El monto no se entiende.", "error");
+    const t = num(f.tasa) || tasa.valor || null;
+    if (f.moneda === "VES" && !t) return notificar("Un pago en bolívares necesita la tasa.", "error");
+    const usdv = f.moneda === "VES" ? monto / t : monto;
+    setOcupado(true);
+    const { error } = await sb.from("pagos").insert({
+      org_id: org.id, unidad_id: f.unidad, fecha: f.fecha, monto,
+      moneda: f.moneda, tasa_aplicada: f.moneda === "VES" ? t : null,
+      monto_usd: Math.round(usdv * 10000) / 10000, metodo: f.metodo,
+      destino: f.destino, referencia: f.referencia.trim() || null,
+      banco: f.banco.trim() || null, estado: "reportado" });
+    setOcupado(false);
+    if (error) return fallo(error);
+    setF({ ...f, monto: "", referencia: "" });
+    notificar("Pago registrado como reportado. Falta conciliarlo.");
+    cargar();
+  };
+
+  const cambiarEstado = async (p, estado) => {
+    const campos = estado === "conciliado"
+      ? { estado, conciliado_en: new Date().toISOString() }
+      : { estado };
+    const { error } = await sb.from("pagos").update(campos).eq("id", p.id);
+    if (error) return fallo(error);
+    cargar(); recargar();
+  };
+
+  const exonerar = async () => {
+    if (!ex.unidad) return notificar("Elija la unidad.", "error");
+    const monto = num(ex.monto);
+    if (monto === null || monto === 0) return notificar("El monto no se entiende.", "error");
+    if (!ex.motivo.trim()) return notificar("Escriba el motivo: queda en la auditoría.", "error");
+    const { error } = await sb.from("ajustes").insert({
+      org_id: org.id, unidad_id: ex.unidad, fecha: hoyISO(), monto,
+      motivo: ex.motivo.trim(), destino: ex.destino });
+    if (error) return fallo(error);
+    setEx({ ...ex, monto: "", motivo: "" });
+    notificar("Exoneración registrada."); cargar(); recargar();
+  };
+
+  /* ── Conciliación contra el archivo del banco ── */
+  const leerBanco = async (file) => {
+    if (!file) return;
+    try {
+      let filas, encabezados;
+      if (/\.pdf$/i.test(file.name)) {
+        setMov(movimientosDesdeLineas(await leerPDF(file)));
+        setMapa(null);
+        return;
+      }
+      const crudas = await leerTabla(file);
+      encabezados = crudas[0] || [];
+      filas = crudas.slice(1);
+      const m = detectarColumnas(encabezados, filas);
+      setMapa({ ...m, encabezados });
+      setMov(filas.map((fila) => ({
+        fecha: m.fecha > -1 ? String(fila[m.fecha] || "") : "",
+        referencia: m.referencia > -1 ? extraerRef(fila[m.referencia]) : "",
+        monto: m.monto > -1 ? parseMonto(fila[m.monto]) : null,
+        descripcion: m.descripcion > -1 ? String(fila[m.descripcion] || "") : "",
+      })).filter((x) => x.referencia || x.monto !== null));
+    } catch (e) { fallo(e); }
+  };
+
+  const cruce = useMemo(() => {
+    if (!mov) return null;
+    const reportados = pagos.filter((p) => p.estado === "reportado");
+    const casan = [], dudosos = [], huerfanos = [];
+    const usados = new Set();
+    mov.forEach((m) => {
+      const cand = reportados.find((p) => {
+        if (usados.has(p.id)) return false;
+        const a = String(p.referencia || ""), b = String(m.referencia || "");
+        if (!a || !b) return false;
+        return a === b || a.endsWith(b) || b.endsWith(a);
+      });
+      if (!cand) { huerfanos.push(m); return; }
+      usados.add(cand.id);
+      const dif = Math.abs(Number(cand.monto) - Number(m.monto || 0));
+      const tol = Math.max(1, Number(cand.monto) * 0.01);
+      (dif <= tol ? casan : dudosos).push({ mov: m, pago: cand, dif });
+    });
+    return { casan, dudosos, huerfanos,
+      sinCruzar: reportados.filter((p) => !usados.has(p.id)) };
+  }, [mov, pagos]);
+
+  const conciliarLote = async () => {
+    setOcupado(true);
+    for (const c of cruce.casan) {
+      const { error } = await sb.from("pagos").update({ estado: "conciliado",
+        conciliado_en: new Date().toISOString(),
+        banco: c.pago.banco || null }).eq("id", c.pago.id);
+      if (error) { setOcupado(false); return fallo(error); }
+    }
+    setOcupado(false);
+    notificar(`${cruce.casan.length} pagos conciliados.`);
+    setMov(null); cargar(); recargar();
+  };
+
+  const visibles = pagos.filter((p) => filtro === "todos" || p.estado === filtro);
+
+  return (
+    <div className="grid gap-5">
+      <div className="flex gap-2 flex-wrap">
+        {[["registrar", "Registrar"], ["conciliar", "Conciliar con el banco"],
+          ["exonerar", "Exoneraciones"]].map(([k, t]) => (
+          <Boton key={k} size="s" tipo={pest === k ? "oscuro" : "suave"}
+            onClick={() => setPest(k)}>{t}</Boton>
+        ))}
+      </div>
+
+      {pest === "registrar" && (
+        <Tarjeta>
+          <Titulo sub="Un pago entra como reportado y no baja el saldo hasta que se confirme que el dinero llegó.">
+            Registrar un pago
+          </Titulo>
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+            <Campo label="Unidad">
+              <Selector value={f.unidad} onChange={(e) => setF({ ...f, unidad: e.target.value })}>
+                <option value="">Elija</option>
+                {unidades.map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
+              </Selector>
+            </Campo>
+            <Campo label="Fecha del pago">
+              <Entrada type="date" value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
+            </Campo>
+            <Campo label="Moneda">
+              <Selector value={f.moneda} onChange={(e) => setF({ ...f, moneda: e.target.value })}>
+                <option value="USD">Dólares</option><option value="VES">Bolívares</option>
+              </Selector>
+            </Campo>
+            <Campo label={f.moneda === "VES" ? "Monto en Bs" : "Monto en USD"}>
+              <Entrada mono value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} />
+            </Campo>
+            {f.moneda === "VES" && (
+              <Campo label="Tasa del día del pago"
+                ayuda={tasa.valor ? `hoy: ${nf(2).format(tasa.valor)}` : "escríbala a mano"}>
+                <Entrada mono value={f.tasa} placeholder={tasa.valor ? nf(2).format(tasa.valor) : ""}
+                  onChange={(e) => setF({ ...f, tasa: e.target.value })} />
+              </Campo>
+            )}
+            <Campo label="Método">
+              <Selector value={f.metodo} onChange={(e) => setF({ ...f, metodo: e.target.value })}>
+                {METODOS.map((m) => <option key={m}>{m}</option>)}
+              </Selector>
+            </Campo>
+            <Campo label="Abona a">
+              <Selector value={f.destino} onChange={(e) => setF({ ...f, destino: e.target.value })}>
+                <option value="condominio">Condominio</option>
+                <option value="honorarios">Administración</option>
+                <option value="servicio">Servicio</option>
+              </Selector>
+            </Campo>
+            <Campo label="Referencia"><Entrada mono value={f.referencia}
+              onChange={(e) => setF({ ...f, referencia: e.target.value })} /></Campo>
+            <Campo label="Banco" ayuda="Ayuda a distinguir referencias repetidas.">
+              <Entrada value={f.banco} onChange={(e) => setF({ ...f, banco: e.target.value })}
+                placeholder="Banesco" />
+            </Campo>
+          </div>
+          {f.moneda === "VES" && num(f.monto) && (num(f.tasa) || tasa.valor) && (
+            <p style={{ fontSize: 12.5, color: T.tinta2, marginTop: 10 }}>
+              Equivale a <b>{usd(num(f.monto) / (num(f.tasa) || tasa.valor))}</b>. Se guarda
+              la tasa usada, para que el cálculo se pueda reproducir dentro de dos años.
+            </p>
+          )}
+          <div style={{ marginTop: 16 }}>
+            <Boton disabled={ocupado} onClick={registrar}>Registrar como reportado</Boton>
+          </div>
+        </Tarjeta>
+      )}
+
+      {pest === "exonerar" && (
+        <Tarjeta>
+          <Titulo sub="Una exoneración baja el saldo sin que haya entrado dinero. Queda registrada en la auditoría con su motivo.">
+            Exoneración o nota de crédito
+          </Titulo>
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+            <Campo label="Unidad">
+              <Selector value={ex.unidad} onChange={(e) => setEx({ ...ex, unidad: e.target.value })}>
+                <option value="">Elija</option>
+                {unidades.map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
+              </Selector>
+            </Campo>
+            <Campo label="Monto USD" ayuda="Positivo baja la deuda. Negativo la sube.">
+              <Entrada mono value={ex.monto} onChange={(e) => setEx({ ...ex, monto: e.target.value })} />
+            </Campo>
+            <Campo label="Aplica a">
+              <Selector value={ex.destino} onChange={(e) => setEx({ ...ex, destino: e.target.value })}>
+                <option value="condominio">Condominio</option>
+                <option value="honorarios">Administración</option>
+                <option value="servicio">Servicio</option>
+              </Selector>
+            </Campo>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Campo label="Motivo"><Entrada value={ex.motivo}
+                onChange={(e) => setEx({ ...ex, motivo: e.target.value })}
+                placeholder="Acuerdo de junta del 12 de marzo" /></Campo>
+            </div>
+          </div>
+          <div style={{ marginTop: 16 }}><Boton onClick={exonerar}>Registrar</Boton></div>
+        </Tarjeta>
+      )}
+
+      {pest === "conciliar" && (
+        <>
+          <Tarjeta>
+            <Titulo sub="Suba el archivo del banco: Excel, CSV o PDF. Se cruza por referencia contra los pagos reportados.">
+              Conciliar con el banco
+            </Titulo>
+            <input type="file" accept=".xlsx,.xls,.csv,.pdf"
+              onChange={(e) => leerBanco(e.target.files?.[0])}
+              style={{ ...estiloEntrada(false), padding: 10 }} />
+            {mapa && (
+              <div style={{ marginTop: 14 }} className="grid gap-3">
+                <p style={{ fontSize: 12.5, color: T.tinta2 }}>
+                  Columnas detectadas. Si adivinó mal, corríjalo aquí.
+                </p>
+                <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+                  {["referencia", "monto", "fecha", "descripcion"].map((campo) => (
+                    <Campo key={campo} label={campo}>
+                      <Selector value={mapa[campo]} onChange={(e) => {
+                        const m = { ...mapa, [campo]: Number(e.target.value) };
+                        setMapa(m);
+                      }}>
+                        <option value={-1}>— ninguna —</option>
+                        {(mapa.encabezados || []).map((h, i) =>
+                          <option key={i} value={i}>{String(h || `columna ${i + 1}`)}</option>)}
+                      </Selector>
+                    </Campo>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Tarjeta>
+
+          {cruce && (
+            <>
+              <div className="grid gap-4 apila-movil" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+                <Metrica etiqueta="Cuadran" valor={String(cruce.casan.length)} tono="verde"
+                  pie="misma referencia y mismo monto" />
+                <Metrica etiqueta="Monto distinto" valor={String(cruce.dudosos.length)}
+                  pie="la referencia coincide, el monto no" />
+                <Metrica etiqueta="Del banco, sin pago reportado" valor={String(cruce.huerfanos.length)}
+                  tono={cruce.huerfanos.length ? "rojo" : undefined}
+                  pie="plata que entró y no se sabe de quién es" />
+              </div>
+
+              {cruce.casan.length > 0 && (
+                <Tarjeta pad={false}>
+                  <div style={{ padding: "20px 20px 0" }}>
+                    <Titulo sub="Listos para conciliar de una vez.">Cuadran</Titulo>
+                  </div>
+                  <div className="scroll-x" style={{ maxHeight: 300 }}>
+                    <table>
+                      <thead><tr><th>Referencia</th><th>Unidad</th>
+                        <th style={{ textAlign: "right" }}>Reportado</th>
+                        <th style={{ textAlign: "right" }}>Banco</th></tr></thead>
+                      <tbody>
+                        {cruce.casan.map((c, i) => (
+                          <tr key={i}>
+                            <td className="mono">{c.mov.referencia}</td>
+                            <td className="mono">{codigo(c.pago.unidad_id)}</td>
+                            <td className="mono" style={{ textAlign: "right" }}>{nf(2).format(c.pago.monto)}</td>
+                            <td className="mono" style={{ textAlign: "right" }}>{nf(2).format(c.mov.monto || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ padding: 20, borderTop: `1px solid ${T.linea}` }}>
+                    <Boton disabled={ocupado} onClick={conciliarLote}>
+                      Conciliar {cruce.casan.length} pagos
+                    </Boton>
+                  </div>
+                </Tarjeta>
+              )}
+
+              {cruce.huerfanos.length > 0 && (
+                <Tarjeta pad={false}>
+                  <div style={{ padding: "20px 20px 0" }}>
+                    <Titulo sub="Entró dinero al banco y ningún propietario lo reportó. Hay que averiguar de quién es.">
+                      Movimientos del banco sin pago reportado
+                    </Titulo>
+                  </div>
+                  <div className="scroll-x" style={{ maxHeight: 300 }}>
+                    <table>
+                      <thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th>
+                        <th style={{ textAlign: "right" }}>Monto</th></tr></thead>
+                      <tbody>
+                        {cruce.huerfanos.map((m, i) => (
+                          <tr key={i}>
+                            <td className="mono">{m.fecha || "—"}</td>
+                            <td className="mono">{m.referencia || "—"}</td>
+                            <td style={{ fontSize: 12, color: T.tinta2 }}>
+                              {(m.descripcion || "").slice(0, 70)}</td>
+                            <td className="mono" style={{ textAlign: "right" }}>
+                              {m.monto === null ? "—" : nf(2).format(m.monto)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Tarjeta>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      <Tarjeta pad={false}>
+        <div style={{ padding: "20px 20px 0" }}>
+          <Titulo accion={
+            <div className="flex gap-2 flex-wrap">
+              {[["reportado", "Reportados"], ["conciliado", "Conciliados"],
+                ["anulado", "Anulados"], ["todos", "Todos"]].map(([k, t]) => (
+                <Boton key={k} size="s" tipo={filtro === k ? "oscuro" : "suave"}
+                  onClick={() => setFiltro(k)}>{t}</Boton>
+              ))}
+            </div>
+          }>Movimientos registrados</Titulo>
+        </div>
+        <div className="scroll-x">
+          <table>
+            <thead><tr><th>Fecha</th><th>Unidad</th><th>Método</th><th>Ref.</th>
+              <th>Abona a</th><th style={{ textAlign: "right" }}>USD</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              {visibles.map((p) => (
+                <tr key={p.id}>
+                  <td className="mono">{p.fecha}</td>
+                  <td className="mono">{codigo(p.unidad_id)}</td>
+                  <td>{p.metodo}{p.moneda === "VES" &&
+                    <div style={{ fontSize: 11.5, color: T.tenue }} className="mono">
+                      {bs(p.monto)} a {nf(2).format(p.tasa_aplicada)}</div>}</td>
+                  <td className="mono">{p.referencia || "—"}</td>
+                  <td>{BOLSILLOS[p.destino === "honorarios" ? "administracion" : p.destino]?.t}</td>
+                  <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{usd(p.monto_usd)}</td>
+                  <td>
+                    <Pastilla size="s" tono={p.estado === "conciliado" ? "verde"
+                      : p.estado === "anulado" ? "rojo" : "ambar"}>
+                      {p.estado}{p.periodo_cierre_id ? " · en cierre" : ""}
+                    </Pastilla>
+                  </td>
+                  <td style={{ width: 150 }}>
+                    {p.estado === "reportado" && (
+                      <div className="flex gap-1 flex-wrap">
+                        <Boton size="s" onClick={() => cambiarEstado(p, "conciliado")}>Conciliar</Boton>
+                        <Boton size="s" tipo="suave" onClick={() => cambiarEstado(p, "anulado")}>Anular</Boton>
+                      </div>
+                    )}
+                    {p.estado === "conciliado" && !p.periodo_cierre_id && (
+                      <Boton size="s" tipo="suave" onClick={() => cambiarEstado(p, "anulado")}>Anular</Boton>
+                    )}
+                    {p.periodo_cierre_id && (
+                      <span style={{ fontSize: 11.5, color: T.tenue }}>
+                        ya está dentro de un cierre
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {visibles.length === 0 && (
+            <div style={{ padding: 34, textAlign: "center", color: T.tenue, fontSize: 14 }}>
+              No hay pagos con ese filtro.
+            </div>
+          )}
+        </div>
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CORTES DE CUENTA
+   ══════════════════════════════════════════════════════════════ */
+const PLANTILLA = "Hola {nombre}. Le enviamos el estado de cuenta de la unidad {unidad} " +
+  "correspondiente a {periodo}.\n\nRecibo N° {recibo}\nCuota del mes: {cuota}\n" +
+  "Saldo anterior: {anterior}\nInterés de mora: {mora}\nTOTAL A PAGAR: {total}\n" +
+  "Equivalente: {totalBs} (tasa BCV {tasa})\n\n" +
+  "Al transferir, por favor responda con el número de referencia.";
+
+function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo, verFicha }) {
+  const cerrados = periodos.filter((p) => p.estado === "cerrado");
+  const [periodoId, setPeriodoId] = useState(cerrados[0]?.id || "");
+  const [recibos, setRecibos] = useState([]);
+  const [plantilla, setPlantilla] = useState(() => leerLocal("vecitap_plantilla") || PLANTILLA);
+  const [cargando, setCargando] = useState(false);
+
+  useEffect(() => { if (!periodoId && cerrados[0]) setPeriodoId(cerrados[0].id); }, [cerrados.length]);
+
+  useEffect(() => {
+    if (!periodoId) return;
+    setCargando(true);
+    sb.from("recibos").select("id,unidad_id,numero,cuota,directos,anterior,a_favor,mora," +
+        "honorario,servicio,anterior_hon,anterior_serv,total,conceptos")
+      .eq("periodo_id", periodoId).then(({ data, error }) => {
+        setCargando(false);
+        if (error) return fallo(error);
+        setRecibos(data || []);
+      });
+  }, [periodoId]);
+
+  const periodo = cerrados.find((p) => p.id === periodoId);
+
+  const textoDe = (r) => {
+    const u = unidades.find((x) => x.id === r.unidad_id);
+    const p = vigente(u, "propietario");
+    const t = Number(r.total) || 0;
+    return plantilla
+      .replace(/{nombre}/g, nombreDe(p) || "estimado propietario")
+      .replace(/{unidad}/g, u?.codigo || "")
+      .replace(/{periodo}/g, periodo?.etiqueta || "")
+      .replace(/{recibo}/g, r.numero)
+      .replace(/{cuota}/g, usd(r.cuota))
+      .replace(/{anterior}/g, usd(Number(r.anterior) + Number(r.anterior_hon) + Number(r.anterior_serv)))
+      .replace(/{mora}/g, usd(r.mora))
+      .replace(/{total}/g, usd(t))
+      .replace(/{totalBs}/g, periodo?.tasa_bcv ? bs(t * periodo.tasa_bcv) : "—")
+      .replace(/{tasa}/g, periodo?.tasa_bcv ? nf(2).format(periodo.tasa_bcv) : "—");
+  };
+
+  const exportarCSV = () => {
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const filas = [
+      ["unidad", "propietario", "telefono", "correo", "recibo", "cuota", "directos",
+       "mora", "administracion", "servicio", "anterior", "total"].join(","),
+      ...recibos.map((r) => {
+        const u = unidades.find((x) => x.id === r.unidad_id);
+        const p = vigente(u, "propietario");
+        return [esc(u?.codigo), esc(nombreDe(p)), esc(p?.personas?.telefono),
+          esc(p?.personas?.correo), esc(r.numero), esc(nf(2).format(r.cuota)),
+          esc(nf(2).format(r.directos)), esc(nf(2).format(r.mora)),
+          esc(nf(2).format(r.honorario)), esc(nf(2).format(r.servicio)),
+          esc(nf(2).format(Number(r.anterior) + Number(r.anterior_hon) + Number(r.anterior_serv))),
+          esc(nf(2).format(r.total))].join(",");
+      })].join("\n");
+    const url = URL.createObjectURL(new Blob(["﻿" + filas], { type: "text/csv;charset=utf-8;" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `cortes-${periodo?.etiqueta || "mes"}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    notificar("Listado exportado.");
+  };
+
+  if (!cerrados.length) {
+    return <Vacio icono={icono("Send")} titulo="Todavía no hay recibos que enviar"
+      texto="Los cortes de cuenta se arman con los recibos de un mes ya cerrado." />;
+  }
+
+  return (
+    <div className="grid gap-5">
+      <Tarjeta>
+        <Titulo sub="Los recibos ya emitidos. El envío masivo por correo necesita un servidor propio, que todavía no está montado; mientras tanto, WhatsApp y la impresión funcionan hoy.">
+          Cortes de cuenta
+        </Titulo>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+          <Campo label="Mes">
+            <Selector value={periodoId} onChange={(e) => setPeriodoId(e.target.value)}>
+              {cerrados.map((p) => <option key={p.id} value={p.id}>{p.etiqueta}</option>)}
+            </Selector>
+          </Campo>
+          <div style={{ alignSelf: "end" }} className="flex gap-2 flex-wrap">
+            <Boton tipo="suave" onClick={exportarCSV}>
+              <Ic n="Download" size={15} /> Exportar el listado
+            </Boton>
+          </div>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Campo label="Mensaje" ayuda="Entre llaves van los datos que se reemplazan en cada envío.">
+            <textarea rows={7} value={plantilla}
+              onChange={(e) => { setPlantilla(e.target.value); guardarLocal("vecitap_plantilla", e.target.value); }}
+              style={{ ...estiloEntrada(false), fontSize: 13 }} />
+          </Campo>
+          <p style={{ fontSize: 11.5, color: T.tenue, marginTop: 6 }} className="mono">
+            {"{nombre} {unidad} {periodo} {recibo} {cuota} {anterior} {mora} {total} {totalBs} {tasa}"}
+          </p>
+        </div>
+      </Tarjeta>
+
+      <Tarjeta pad={false}>
+        <div style={{ padding: "20px 20px 0" }}>
+          <Titulo sub={`${recibos.length} recibos emitidos en ${periodo?.etiqueta || ""}`}>
+            A quién se le envía
+          </Titulo>
+        </div>
+        {cargando ? <Cargando /> : (
+          <div className="scroll-x">
+            <table>
+              <thead><tr><th>Unidad</th><th>Recibo</th><th>Propietario</th>
+                <th style={{ textAlign: "right" }}>Total</th><th></th></tr></thead>
+              <tbody>
+                {recibos.map((r) => {
+                  const u = unidades.find((x) => x.id === r.unidad_id);
+                  const p = vigente(u, "propietario");
+                  const tel = normalizarTel(p?.personas?.telefono);
+                  return (
+                    <tr key={r.id}>
+                      <td className="mono" style={{ fontWeight: 600 }}>{u?.codigo}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{r.numero}</td>
+                      <td>{nombreDe(p) || <span style={{ color: T.tenue }}>sin registrar</span>}
+                        {p?.personas?.correo && <div style={{ fontSize: 11.5, color: T.tenue }}>
+                          {p.personas.correo}</div>}</td>
+                      <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>{usd(r.total)}</td>
+                      <td style={{ width: 210 }}>
+                        <div className="flex gap-1 flex-wrap">
+                          {tel && <Boton size="s" tipo="suave"
+                            href={`https://wa.me/${tel}?text=${encodeURIComponent(textoDe(r))}`}>
+                            <Ic n="MessageCircle" size={13} /> WhatsApp</Boton>}
+                          {p?.personas?.correo && <Boton size="s" tipo="suave"
+                            href={`mailto:${p.personas.correo}?subject=${encodeURIComponent(
+                              `Estado de cuenta · ${u?.codigo} · ${periodo?.etiqueta}`)}&body=${
+                              encodeURIComponent(textoDe(r))}`}>
+                            <Ic n="Mail" size={13} /> Correo</Boton>}
+                          <Boton size="s" tipo="fantasma" onClick={() => verFicha(r.unidad_id)}>
+                            Ver</Boton>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MARCA
+   Los estados no cambian con la marca del cliente: si el acento
+   pudiera volverse rojo, el rojo dejaría de significar deuda.
+   ══════════════════════════════════════════════════════════════ */
+function Marca({ sb, org, notificar, fallo, cargarOrgs }) {
+  const [acento, setAcento] = useState(org.acento || "#FA8D4A");
+  const [logo, setLogo] = useState(org.logo_url || "");
+  const [ocupado, setOcupado] = useState(false);
+
+  const guardar = async () => {
+    setOcupado(true);
+    const { error } = await sb.from("organizaciones")
+      .update({ acento, logo_url: logo || null }).eq("id", org.id);
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar("Marca guardada."); cargarOrgs();
+  };
+
+  const subirLogo = async (file) => {
+    if (!file) return;
+    try { setLogo(await redimensionarLogo(file)); }
+    catch (e) { fallo(e); }
+  };
+
+  return (
+    <div className="grid gap-5" style={{ maxWidth: 720 }}>
+      <Tarjeta>
+        <Titulo sub="Cambie el acento y toda la aplicación, los estados de cuenta y los recibos lo siguen.">
+          Color de la marca
+        </Titulo>
+        <div className="flex gap-2 flex-wrap" style={{ marginBottom: 16 }}>
+          {PALETAS.map((p) => (
+            <button key={p.id} onClick={() => setAcento(p.color)}
+              style={{ width: 74, padding: 10, borderRadius: T.rs, cursor: "pointer",
+                background: acento === p.color ? mezclarBlanco(p.color, .85) : T.fondo,
+                border: `1px solid ${acento === p.color ? p.color : T.linea}` }}>
+              <div style={{ height: 22, borderRadius: 6, background: p.color, marginBottom: 6 }} />
+              <div style={{ fontSize: 11, color: T.tinta2 }}>{p.nombre}</div>
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+          <Campo label="Color propio">
+            <div className="flex gap-2 items-center">
+              <input type="color" value={acento} onChange={(e) => setAcento(e.target.value)}
+                style={{ width: 46, height: 40, border: `1px solid ${T.linea}`,
+                  borderRadius: T.rs, background: T.fondo, cursor: "pointer" }} />
+              <Entrada mono value={acento} onChange={(e) => setAcento(e.target.value)} />
+            </div>
+          </Campo>
+          <Campo label="Logo" ayuda="Se reduce a 320 px de ancho. Formatos PNG o JPG.">
+            <input type="file" accept="image/*" onChange={(e) => subirLogo(e.target.files?.[0])}
+              style={{ ...estiloEntrada(false), padding: 9 }} />
+          </Campo>
+        </div>
+
+        <div style={{ marginTop: 18, padding: 18, borderRadius: T.rs,
+          background: mezclarBlanco(acento, .92), border: `1px solid ${T.linea}` }}>
+          <div className="flex items-center gap-3 flex-wrap">
+            {logo
+              ? <img src={logo} alt="" style={{ maxHeight: 34, maxWidth: 140 }} />
+              : <div style={{ width: 32, height: 32, borderRadius: 9, background: acento,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: letraSobre(acento), fontWeight: 700 }}>V</div>}
+            <span style={{ fontFamily: "Poppins", fontWeight: 600 }}>{org.nombre}</span>
+            <span style={{ marginLeft: "auto" }} className="flex gap-2 flex-wrap">
+              <span style={{ background: acento, color: letraSobre(acento), padding: "7px 14px",
+                borderRadius: T.rp, fontWeight: 600, fontSize: 13 }}>Botón principal</span>
+              <span style={{ color: versionTexto(acento, mezclarBlanco(acento, .92)),
+                fontWeight: 600, fontSize: 13, alignSelf: "center" }}>Texto de marca</span>
+            </span>
+          </div>
+          <div className="flex gap-2 flex-wrap" style={{ marginTop: 14 }}>
+            <Pastilla tono="verde">solvente</Pastilla>
+            <Pastilla tono="ambar">pendiente</Pastilla>
+            <Pastilla tono="rojo">con deuda</Pastilla>
+            <Pastilla tono="azul">a favor</Pastilla>
+          </div>
+          <p style={{ fontSize: 12, color: T.tinta2, marginTop: 12, marginBottom: 0 }}>
+            Contraste del texto sobre el acento: {nf(2).format(contraste(acento, letraSobre(acento)))}:1.
+            La letra la elige el sistema, no se escoge a mano: el naranja no admite blanco.
+          </p>
+        </div>
+
+        <div style={{ marginTop: 18 }}>
+          <Boton disabled={ocupado} onClick={guardar}>Guardar marca</Boton>
+        </div>
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AJUSTES
+   ══════════════════════════════════════════════════════════════ */
+function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdificios }) {
+  const [e, setE] = useState({ nombre: edificio.nombre, rif: edificio.rif || "",
+    direccion: edificio.direccion || "", prefijo: edificio.prefijo_recibo,
+    mora: String(edificio.interes_mora), tolerancia: String(edificio.tolerancia_alicuota) });
+  const [cats, setCats] = useState([]);
+  const [nuevaCat, setNuevaCat] = useState("");
+  const [nuevoEd, setNuevoEd] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+
+  const cargarCats = async () => {
+    const { data, error } = await sb.from("categorias")
+      .select("id,nombre,orden,partidas_fijas(id,concepto,referencia,monto)")
+      .eq("edificio_id", edificio.id).order("orden");
+    if (error) return fallo(error);
+    setCats(data || []);
+  };
+  useEffect(() => { cargarCats(); setE({ nombre: edificio.nombre, rif: edificio.rif || "",
+    direccion: edificio.direccion || "", prefijo: edificio.prefijo_recibo,
+    mora: String(edificio.interes_mora), tolerancia: String(edificio.tolerancia_alicuota) });
+  }, [edificio.id]);
+
+  const guardarEdificio = async () => {
+    setOcupado(true);
+    const { error } = await sb.from("edificios").update({
+      nombre: e.nombre.trim(), rif: e.rif.trim() || null, direccion: e.direccion.trim() || null,
+      prefijo_recibo: e.prefijo.trim().toUpperCase(), interes_mora: num0(e.mora),
+      tolerancia_alicuota: num0(e.tolerancia) || 0.01 }).eq("id", edificio.id);
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar("Edificio actualizado."); recargarEdificios(edificio.id);
+  };
+
+  const agregarCat = async () => {
+    if (!nuevaCat.trim()) return;
+    const { error } = await sb.from("categorias").insert({ org_id: org.id,
+      edificio_id: edificio.id, nombre: nuevaCat.trim(), orden: cats.length + 1 });
+    if (error) return fallo(error);
+    setNuevaCat(""); cargarCats();
+  };
+
+  const agregarPartida = async (catId) => {
+    const { error } = await sb.from("partidas_fijas").insert({ org_id: org.id,
+      categoria_id: catId, concepto: "", referencia: null, monto: 0 });
+    if (error) return fallo(error);
+    cargarCats();
+  };
+
+  const editarPartida = async (id, campos) => {
+    const { error } = await sb.from("partidas_fijas").update(campos).eq("id", id);
+    if (error) return fallo(error);
+    cargarCats();
+  };
+
+  const borrarPartida = async (id) => {
+    const { error } = await sb.from("partidas_fijas").delete().eq("id", id);
+    if (error) return fallo(error);
+    cargarCats();
+  };
+
+  return (
+    <div className="grid gap-5" style={{ maxWidth: 860 }}>
+      <Tarjeta>
+        <Titulo sub="El prefijo debe ser único dentro de la administradora: es lo que distingue el recibo de un edificio del de otro."
+          accion={<Boton size="s" tipo="suave" onClick={() => setNuevoEd(true)}>
+            <Ic n="Plus" size={14} /> Otro edificio</Boton>}>
+          Datos del edificio
+        </Titulo>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
+          <Campo label="Nombre"><Entrada value={e.nombre}
+            onChange={(x) => setE({ ...e, nombre: x.target.value })} /></Campo>
+          <Campo label="RIF"><Entrada mono value={e.rif}
+            onChange={(x) => setE({ ...e, rif: x.target.value })} /></Campo>
+          <Campo label="Prefijo del recibo"><Entrada mono value={e.prefijo}
+            onChange={(x) => setE({ ...e, prefijo: x.target.value })} /></Campo>
+          <Campo label="Interés de mora mensual %"
+            ayuda="Se calcula sobre todo el saldo previo de condominio, así que el interés del mes pasado también genera interés.">
+            <Entrada mono value={e.mora} onChange={(x) => setE({ ...e, mora: x.target.value })} />
+          </Campo>
+          <Campo label="Tolerancia de alícuotas">
+            <Entrada mono value={e.tolerancia}
+              onChange={(x) => setE({ ...e, tolerancia: x.target.value })} />
+          </Campo>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Campo label="Dirección"><Entrada value={e.direccion}
+              onChange={(x) => setE({ ...e, direccion: x.target.value })} /></Campo>
+          </div>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Boton disabled={ocupado} onClick={guardarEdificio}>Guardar</Boton>
+        </div>
+      </Tarjeta>
+
+      <Tarjeta>
+        <Titulo sub="Los gastos que se repiten todos los meses. Al abrir un mes entran solos con su monto, y ahí se ajusta lo que haya cambiado.">
+          Categorías y partidas fijas
+        </Titulo>
+
+        {cats.map((c) => (
+          <div key={c.id} style={{ borderTop: `1px solid ${T.linea}`, paddingTop: 14, marginTop: 14 }}>
+            <div className="flex items-center justify-between gap-2 flex-wrap" style={{ marginBottom: 10 }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{c.nombre}</span>
+              <Boton size="s" tipo="suave" onClick={() => agregarPartida(c.id)}>
+                <Ic n="Plus" size={13} /> Partida
+              </Boton>
+            </div>
+            {(c.partidas_fijas || []).map((p) => (
+              <div key={p.id} className="fila-partida" style={{ marginBottom: 8 }}>
+                <Entrada defaultValue={p.concepto} placeholder="Concepto"
+                  onBlur={(x) => x.target.value !== p.concepto &&
+                    editarPartida(p.id, { concepto: x.target.value })} />
+                <Entrada mono defaultValue={p.referencia || ""} placeholder="Referencia"
+                  onBlur={(x) => x.target.value !== (p.referencia || "") &&
+                    editarPartida(p.id, { referencia: x.target.value || null })} />
+                <Entrada mono defaultValue={String(p.monto)} placeholder="0,00"
+                  style={{ textAlign: "right" }}
+                  onBlur={(x) => num0(x.target.value) !== Number(p.monto) &&
+                    editarPartida(p.id, { monto: num0(x.target.value) })} />
+                <button onClick={() => borrarPartida(p.id)}
+                  style={{ border: "none", background: "transparent", cursor: "pointer", color: T.tenue }}>
+                  <Ic n="Trash2" size={15} />
+                </button>
+              </div>
+            ))}
+            {(c.partidas_fijas || []).length === 0 && (
+              <p style={{ fontSize: 12.5, color: T.tenue }}>Sin partidas fijas.</p>
+            )}
+          </div>
+        ))}
+
+        <div style={{ borderTop: `1px solid ${T.linea}`, paddingTop: 14, marginTop: 14 }}
+          className="flex gap-2 flex-wrap items-end">
+          <Campo label="Nueva categoría" ancho="260px">
+            <Entrada value={nuevaCat} onChange={(x) => setNuevaCat(x.target.value)}
+              placeholder="Servicios" />
+          </Campo>
+          <Boton tipo="suave" onClick={agregarCat}>Agregar</Boton>
+        </div>
+      </Tarjeta>
+
+      {nuevoEd && <NuevoEdificio {...{ sb, org, notificar, fallo, recargarEdificios }}
+        onCerrar={() => setNuevoEd(false)} />}
+    </div>
+  );
+}
+
+function NuevoEdificio({ sb, org, notificar, fallo, recargarEdificios, onCerrar }) {
+  const [f, setF] = useState({ nombre: "", prefijo: "", mora: "0", tolerancia: "0,01" });
+  const crear = async () => {
+    if (!f.nombre.trim() || !f.prefijo.trim())
+      return notificar("Hacen falta el nombre y el prefijo.", "error");
+    const { data, error } = await sb.from("edificios").insert({
+      org_id: org.id, nombre: f.nombre.trim(), prefijo_recibo: f.prefijo.trim().toUpperCase(),
+      interes_mora: num0(f.mora), tolerancia_alicuota: num0(f.tolerancia) || 0.01,
+      honorario_monto: 0 }).select("id").single();
+    if (error) return fallo(error);
+    notificar("Edificio creado."); onCerrar(); recargarEdificios(data.id);
+  };
+  return (
+    <div onClick={onCerrar} style={{ position: "fixed", inset: 0, zIndex: 90,
+      background: "rgba(73,59,52,.45)", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20 }}>
+      <div onClick={(x) => x.stopPropagation()} style={{ background: T.lienzo,
+        borderRadius: T.r, maxWidth: 500, width: "100%", boxShadow: T.sombraAlta, padding: 26 }}>
+        <Titulo sub="Cada edificio lleva sus propias unidades, sus cobros y su numeración de recibos.">
+          Otro edificio
+        </Titulo>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Campo label="Nombre"><Entrada value={f.nombre}
+              onChange={(x) => setF({ ...f, nombre: x.target.value })} /></Campo>
+          </div>
+          <Campo label="Prefijo del recibo"><Entrada mono value={f.prefijo}
+            onChange={(x) => setF({ ...f, prefijo: x.target.value })} placeholder="CON2" /></Campo>
+          <Campo label="Interés de mora %"><Entrada mono value={f.mora}
+            onChange={(x) => setF({ ...f, mora: x.target.value })} /></Campo>
+        </div>
+        <div className="flex gap-2 justify-end mt-5">
+          <Boton tipo="suave" onClick={onCerrar}>Cancelar</Boton>
+          <Boton onClick={crear}>Crear</Boton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════ */
+ReactDOM.createRoot(document.getElementById("raiz")).render(<App />);
+</script>
+</body>
+</html>
