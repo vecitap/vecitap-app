@@ -786,7 +786,8 @@ function App() {
   /* ── Edificios de la administradora ── */
   const cargarEdificios = async (elegir) => {
     const { data, error } = await sb.from("edificios")
-      .select("id,nombre,rif,direccion,prefijo_recibo,interes_mora,tolerancia_alicuota,activo")
+      .select("id,nombre,rif,direccion,prefijo_recibo,interes_mora,tolerancia_alicuota," +
+              "tolerancia_redondeo,activo")
       .eq("org_id", org.id).order("nombre");
     if (error) return fallo(error);
     setEdificios(data);
@@ -831,11 +832,27 @@ function App() {
   /* ── Tasa BCV: referencia viva, se congela al abrir el mes ── */
   const actualizarTasa = async (silencioso = true) => {
     setTasa((t) => ({ ...t, cargando: true, error: null }));
+
+    // La base es la fuente. Es la misma tasa con la que se convierten los
+    // pagos, así que la pantalla no puede mostrar una y el cálculo usar otra.
+    // La trae sola una tarea diaria desde el BCV.
+    const { data, error } = await sb.rpc("tasa_atrasada");
+    const fila = Array.isArray(data) ? data[0] : data;
+    if (!error && fila && Number(fila.tasa) > 0) {
+      setTasa({ valor: Number(fila.tasa), fuente: "BCV",
+                actualizada: fila.fecha, dias: fila.dias,
+                cargando: false, error: null });
+      if (!silencioso) notificar(`Tasa del BCV: ${nf(2).format(fila.tasa)} Bs/USD`);
+      return;
+    }
+
+    // Respaldo: si la base todavía no tiene ninguna, se consulta afuera solo
+    // para mostrarla. No se usa para convertir nada.
     try {
       const r = await obtenerTasaOficial();
-      setTasa({ valor: r.tasa, fuente: r.fuente, actualizada: r.actualizada,
-                cargando: false, error: null });
-      if (!silencioso) notificar(`Tasa actualizada: ${nf(2).format(r.tasa)} Bs/USD`);
+      setTasa({ valor: r.tasa, fuente: r.fuente + " (referencia)",
+                actualizada: r.actualizada, cargando: false, error: null });
+      if (!silencioso) notificar(`Tasa de referencia: ${nf(2).format(r.tasa)} Bs/USD`);
     } catch (e) {
       setTasa((t) => ({ ...t, cargando: false, error: e.message }));
       if (!silencioso) fallo(e);
@@ -1033,8 +1050,10 @@ function App() {
                 <div className="mono" style={{ fontSize: 16, fontWeight: 600 }}>
                   {tasa.valor ? nf(2).format(tasa.valor) : "—"}
                 </div>
-                <div style={{ fontSize: 10.5, color: tasa.error ? T.rojo : T.tenue }}>
+                <div style={{ fontSize: 10.5,
+                  color: tasa.error ? T.rojo : tasa.dias > 2 ? T.rojo : T.tenue }}>
                   {tasa.cargando ? "consultando…" : tasa.error ? tasa.error
+                    : tasa.dias > 2 ? `atrasada ${tasa.dias} días`
                     : tasa.actualizada ? `${tasa.fuente} · ${fechaCorta(tasa.actualizada)}` : "referencia"}
                 </div>
               </div>
@@ -2245,7 +2264,8 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
     const { error } = await sb.rpc("abrir_periodo", {
       p_edificio: edificio.id, p_anio: Number(abrir.anio), p_mes: Number(abrir.mes),
       p_etiqueta: `${MESES[Number(abrir.mes) - 1]} ${abrir.anio}`,
-      p_tasa: num0(abrir.tasa) || tasa.valor || 1,
+      // En blanco: el cierre toma la del BCV del último día del mes.
+      p_tasa: num0(abrir.tasa) || 0,
       p_presupuesto: num(abrir.presupuesto) });
     setOcupado(false);
     if (error) return fallo(error);
@@ -2360,7 +2380,8 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
                 {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
               </Selector>
             </Campo>
-            <Campo label="Tasa BCV del mes" ayuda={tasa.valor ? `hoy: ${nf(2).format(tasa.valor)}` : ""}>
+            <Campo label="Tasa BCV del mes"
+              ayuda="Déjela en blanco y el sistema usa la del BCV del último día del mes.">
               <Entrada mono value={abrir.tasa} placeholder={tasa.valor ? nf(2).format(tasa.valor) : "0,00"}
                 onChange={(e) => setAbrir({ ...abrir, tasa: e.target.value })} />
             </Campo>
@@ -2594,7 +2615,9 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
   const [filtro, setFiltro] = useState("reportado");
   const [pest, setPest] = useState("registrar");
   const [f, setF] = useState({ unidad: "", fecha: hoyISO(), monto: "", moneda: "USD",
-    tasa: "", metodo: "Pago móvil", destino: "condominio", referencia: "", banco: "" });
+    metodo: "Pago móvil", destino: "condominio", referencia: "", banco: "" });
+  // Tasa del BCV de la fecha del pago. No la elige nadie: la pone la base.
+  const [tasaFecha, setTasaFecha] = useState(null);
   const [ex, setEx] = useState({ unidad: "", monto: "", motivo: "", destino: "condominio" });
   const [mov, setMov] = useState(null);
   const [mapa, setMapa] = useState(null);
@@ -2614,18 +2637,28 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
   };
   useEffect(() => { cargar(); }, [ids.length]);
 
+  useEffect(() => {
+    let vivo = true;
+    if (f.moneda !== "VES") { setTasaFecha(null); return; }
+    sb.rpc("tasa_del_dia", { p_fecha: f.fecha }).then(({ data }) => {
+      if (vivo) setTasaFecha(data ? Number(data) : null);
+    });
+    return () => { vivo = false; };
+  }, [f.fecha, f.moneda]);
+
   const registrar = async () => {
     if (!f.unidad) return notificar("Elija la unidad.", "error");
     const monto = num(f.monto);
     if (monto === null || monto <= 0) return notificar("El monto no se entiende.", "error");
-    const t = num(f.tasa) || tasa.valor || null;
-    if (f.moneda === "VES" && !t) return notificar("Un pago en bolívares necesita la tasa.", "error");
-    const usdv = f.moneda === "VES" ? monto / t : monto;
+    if (f.moneda === "VES" && !tasaFecha)
+      return notificar("No hay tasa del BCV cargada para esa fecha ni antes.", "error");
     setOcupado(true);
+    // monto_usd y tasa_aplicada los calcula la base con la tasa del día del
+    // pago. Mandarlos desde aquí sería dejar que el navegador decida cuánto
+    // vale un pago, y el navegador se puede manipular.
     const { error } = await sb.from("pagos").insert({
       org_id: org.id, unidad_id: f.unidad, fecha: f.fecha, monto,
-      moneda: f.moneda, tasa_aplicada: f.moneda === "VES" ? t : null,
-      monto_usd: Math.round(usdv * 10000) / 10000, metodo: f.metodo,
+      moneda: f.moneda, monto_usd: 0, metodo: f.metodo,
       destino: f.destino, referencia: f.referencia.trim() || null,
       banco: f.banco.trim() || null, estado: "reportado" });
     setOcupado(false);
@@ -2752,10 +2785,13 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
               <Entrada mono value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} />
             </Campo>
             {f.moneda === "VES" && (
-              <Campo label="Tasa del día del pago"
-                ayuda={tasa.valor ? `hoy: ${nf(2).format(tasa.valor)}` : "escríbala a mano"}>
-                <Entrada mono value={f.tasa} placeholder={tasa.valor ? nf(2).format(tasa.valor) : ""}
-                  onChange={(e) => setF({ ...f, tasa: e.target.value })} />
+              <Campo label="Tasa del BCV de esa fecha"
+                ayuda="La pone el sistema. No se escribe a mano.">
+                <div className="mono" style={{ padding: "9px 11px", borderRadius: 8,
+                  border: `1px solid ${T.linea}`, background: T.fondo2,
+                  color: tasaFecha ? T.tinta : T.rojo, fontSize: 13.5 }}>
+                  {tasaFecha ? nf(2).format(tasaFecha) : "sin tasa para esa fecha"}
+                </div>
               </Campo>
             )}
             <Campo label="Método">
@@ -2777,10 +2813,12 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
                 placeholder="Banesco" />
             </Campo>
           </div>
-          {f.moneda === "VES" && num(f.monto) && (num(f.tasa) || tasa.valor) && (
+          {f.moneda === "VES" && num(f.monto) && tasaFecha && (
             <p style={{ fontSize: 12.5, color: T.tinta2, marginTop: 10 }}>
-              Equivale a <b>{usd(num(f.monto) / (num(f.tasa) || tasa.valor))}</b>. Se guarda
-              la tasa usada, para que el cálculo se pueda reproducir dentro de dos años.
+              Equivale a <b>{usd(num(f.monto) / tasaFecha)}</b> a la tasa del BCV
+              del {f.fecha}. Vale esa y no la de hoy: si el propietario transfirió
+              el lunes y usted concilia el jueves, cobrarle a tasa de jueves sería
+              cobrarle de más.
             </p>
           )}
           <div style={{ marginTop: 16 }}>
@@ -3247,7 +3285,8 @@ function Marca({ sb, org, notificar, fallo, cargarOrgs }) {
 function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdificios }) {
   const [e, setE] = useState({ nombre: edificio.nombre, rif: edificio.rif || "",
     direccion: edificio.direccion || "", prefijo: edificio.prefijo_recibo,
-    mora: String(edificio.interes_mora), tolerancia: String(edificio.tolerancia_alicuota) });
+    mora: String(edificio.interes_mora), tolerancia: String(edificio.tolerancia_alicuota),
+    redondeo: String(edificio.tolerancia_redondeo ?? 0.5) });
   const [cats, setCats] = useState([]);
   const [nuevaCat, setNuevaCat] = useState("");
   const [nuevoEd, setNuevoEd] = useState(false);
@@ -3262,7 +3301,8 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
   };
   useEffect(() => { cargarCats(); setE({ nombre: edificio.nombre, rif: edificio.rif || "",
     direccion: edificio.direccion || "", prefijo: edificio.prefijo_recibo,
-    mora: String(edificio.interes_mora), tolerancia: String(edificio.tolerancia_alicuota) });
+    mora: String(edificio.interes_mora), tolerancia: String(edificio.tolerancia_alicuota),
+    redondeo: String(edificio.tolerancia_redondeo ?? 0.5) });
   }, [edificio.id]);
 
   const guardarEdificio = async () => {
@@ -3270,7 +3310,8 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
     const { error } = await sb.from("edificios").update({
       nombre: e.nombre.trim(), rif: e.rif.trim() || null, direccion: e.direccion.trim() || null,
       prefijo_recibo: e.prefijo.trim().toUpperCase(), interes_mora: num0(e.mora),
-      tolerancia_alicuota: num0(e.tolerancia) || 0.01 }).eq("id", edificio.id);
+      tolerancia_alicuota: num0(e.tolerancia) || 0.01,
+      tolerancia_redondeo: num0(e.redondeo) }).eq("id", edificio.id);
     setOcupado(false);
     if (error) return fallo(error);
     notificar("Edificio actualizado."); recargarEdificios(edificio.id);
@@ -3325,6 +3366,11 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
           <Campo label="Tolerancia de alícuotas">
             <Entrada mono value={e.tolerancia}
               onChange={(x) => setE({ ...e, tolerancia: x.target.value })} />
+          </Campo>
+          <Campo label="Perdón de centavos USD"
+            ayuda="Al cerrar el mes, una deuda menor a este monto se perdona sola y queda como ajuste con su motivo. En 0 queda apagado.">
+            <Entrada mono value={e.redondeo}
+              onChange={(x) => setE({ ...e, redondeo: x.target.value })} />
           </Campo>
           <div style={{ gridColumn: "1 / -1" }}>
             <Campo label="Dirección"><Entrada value={e.direccion}
