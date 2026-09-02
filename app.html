@@ -737,7 +737,12 @@ function App() {
     const u = leerLocal("vecitap_url"), k = leerLocal("vecitap_key");
     return u && k ? { url: u, key: k } : null;
   });
-  const sb = useMemo(() => cfg ? createClient(cfg.url, cfg.key) : null, [cfg]);
+  /* Cada página guarda su sesión con una llave propia. Las tres viven en
+     el mismo dominio, y con la llave por omisión entrar como residente en
+     una pisaba la sesión de administrador en la otra: la aplicación se
+     quedaba viendo una sola unidad sin que nadie entendiera por qué. */
+  const sb = useMemo(() => cfg ? createClient(cfg.url, cfg.key,
+    { auth: { storageKey: "vecitap-admin" } }) : null, [cfg]);
 
   const [sesion, setSesion] = useState(undefined);   // undefined = aún no se sabe
   const [orgs, setOrgs] = useState(null);

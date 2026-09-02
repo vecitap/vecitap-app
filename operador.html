@@ -112,7 +112,12 @@ function App() {
     const u = leerLocal("vecitap_url"), k = leerLocal("vecitap_key");
     return u && k ? { url: u, key: k } : null;
   });
-  const sb = useMemo(() => cfg ? createClient(cfg.url, cfg.key) : null, [cfg]);
+  /* Cada página guarda su sesión con una llave propia. Las tres viven en
+     el mismo dominio, y con la llave por omisión entrar como residente en
+     una pisaba la sesión de administrador en la otra: la aplicación se
+     quedaba viendo una sola unidad sin que nadie entendiera por qué. */
+  const sb = useMemo(() => cfg ? createClient(cfg.url, cfg.key,
+    { auth: { storageKey: "vecitap-operador" } }) : null, [cfg]);
   const [sesion, setSesion] = useState(undefined);
   const [esOperador, setEsOperador] = useState(null);
   const [cartera, setCartera] = useState(null);
@@ -122,6 +127,10 @@ function App() {
   const [aviso, setAviso] = useState(null);
   const [tarea, setTarea] = useState(null);
   const [corriendo, setCorriendo] = useState(false);
+  const [tasa, setTasa] = useState(null);
+  const [tasaTarea, setTasaTarea] = useState(null);
+  const [buscandoTasa, setBuscandoTasa] = useState(false);
+  const [tasaManual, setTasaManual] = useState("");
 
   const notificar = (t, tipo = "ok") => { setAviso({ t, tipo });
     setTimeout(() => setAviso(null), 3600); };
@@ -145,6 +154,12 @@ function App() {
     const { data: log } = await sb.from("tareas_log").select("corrida_en,detalle")
       .eq("tarea", "cobros_suscripcion").order("corrida_en", { ascending: false }).limit(1);
     setTarea((log && log[0]) || null);
+
+    const { data: t } = await sb.rpc("tasa_atrasada");
+    setTasa((Array.isArray(t) ? t[0] : t) || null);
+    const { data: lt } = await sb.from("tareas_log").select("corrida_en,detalle")
+      .eq("tarea", "tasa_bcv").order("corrida_en", { ascending: false }).limit(1);
+    setTasaTarea((lt && lt[0]) || null);
   };
 
   const correrAhora = async () => {
@@ -156,6 +171,30 @@ function App() {
       (data.marcadas_vencidas ? `, ${data.marcadas_vencidas} marcadas vencidas.` : "."));
     cargar();
   };
+
+  const traerTasa = async () => {
+    setBuscandoTasa(true);
+    const { data, error } = await sb.rpc("correr_tasa_ahora");
+    setBuscandoTasa(false);
+    if (error) return fallo(error);
+    notificar(data?.error ? `La API respondió: ${data.error}`
+      : data?.estado === "pedida"
+        ? "Pedido enviado. La respuesta se recoge en la próxima corrida; vuelva a darle en un minuto."
+        : `Tasa al día${data?.tasa ? `: ${nf(2).format(data.tasa)}` : ""}.`,
+      data?.error ? "error" : "ok");
+    cargar();
+  };
+
+  const cargarTasaAMano = async () => {
+    const v = num(tasaManual);
+    if (!v || v <= 0) return notificar("Esa tasa no se entiende.", "error");
+    const { error } = await sb.rpc("cargar_tasa", { p_fecha: hoyISO(), p_tasa: v });
+    if (error) return fallo(error);
+    setTasaManual("");
+    notificar("Tasa cargada a mano. La tarea automática ya no la va a pisar.");
+    cargar();
+  };
+
   useEffect(() => { if (sb && sesion) cargar(); }, [sb, sesion]);
 
   if (!cfg) return <Conexion onListo={(url, key) => setCfg({ url, key })} />;
@@ -186,6 +225,7 @@ function App() {
   const porCobrarClientes = cartera.reduce((s, c) => s + (Number(c.por_cobrar) || 0), 0);
   const pendiente = cartera.reduce((s, c) => s + (Number(c.monto_pendiente) || 0), 0);
   const cobrosPend = cartera.reduce((s, c) => s + (c.cobros_pendientes || 0), 0);
+  const diasTasa = tasa ? Number(tasa.dias) : null;
 
   const visibles = cartera
     .filter((c) => filtro === "todos" || c.estado === filtro)
@@ -249,6 +289,61 @@ function App() {
               Ese es el tamaño del problema que resuelve el producto, no dinero suyo.
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* ── Tasa del BCV ────────────────────────────────────────────
+          Si esto se atrasa, ningún cliente puede registrar un pago en
+          bolívares. Es la pieza más silenciosa y la que más rompe. */}
+      <div className="mb-6" style={{ padding: "14px 18px", background: C.panel,
+        border: `1px solid ${C.borde}`,
+        borderLeft: `3px solid ${diasTasa === null ? C.rojo : diasTasa > 2 ? C.rojo
+                                 : diasTasa > 0 ? C.ambar : C.acento}`,
+        borderRadius: 5 }}>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div style={{ minWidth: 240 }}>
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
+              color: C.tenue, marginBottom: 3 }}>Tasa del Banco Central</div>
+            {tasa ? (
+              <>
+                <div className="num" style={{ fontSize: 22, fontWeight: 700,
+                  color: diasTasa > 2 ? C.rojo : C.texto }}>{nf(4).format(tasa.tasa)}</div>
+                <div style={{ fontSize: 12.5, color: diasTasa > 2 ? C.rojo : C.tenue }}>
+                  del {tasa.fecha}
+                  {diasTasa === 0 ? " · al día"
+                    : diasTasa === 1 ? " · de ayer"
+                    : ` · atrasada ${diasTasa} días`}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 13.5, color: C.rojo }}>
+                No hay ninguna tasa cargada. Sus clientes no pueden registrar pagos en bolívares.
+              </div>
+            )}
+            {tasaTarea && (
+              <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 4 }}>
+                Última corrida {new Date(tasaTarea.corrida_en).toLocaleString("es-VE")}
+                {tasaTarea.detalle?.error ? ` · ${tasaTarea.detalle.error}` : ""}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 items-end flex-wrap">
+            <div style={{ width: 150 }}>
+              <Campo label="Cargarla a mano">
+                <input className="num" value={tasaManual} placeholder="Bs por dólar"
+                  onChange={(e) => setTasaManual(e.target.value)} />
+              </Campo>
+            </div>
+            <Boton tono="suave" onClick={cargarTasaAMano}>Guardar la de hoy</Boton>
+            <Boton tono="suave" disabled={buscandoTasa} onClick={traerTasa}>
+              {buscandoTasa ? "Buscando…" : "Traer ahora"}</Boton>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 8 }}>
+          Se trae sola cada media hora entre las 8:00 y las 12:30 de Caracas desde DolarAPI.
+          Una tasa cargada a mano nunca la pisa la tarea automática. Los fines de semana y
+          feriados no hay publicación: ahí se usa la del último día hábil y no es un problema.
         </div>
       </div>
 
