@@ -170,8 +170,8 @@
           <option value="monto_fijo_repartido">Un monto total ÷ nº de unidades</option>
           <option value="porcentaje_condominio">% de lo que paga de condominio</option>
         </select></div>
-        <div><label>Monto o %</label><input id="coMonto" type="number" step="0.0001" value="0"></div>
-        <div><label>IVA %</label><input id="coIva" type="number" step="0.001" value="0"></div>
+        <div><label>Monto o %</label><input id="coMonto" type="text" inputmode="decimal" value="0"></div>
+        <div><label>IVA %</label><input id="coIva" type="text" inputmode="decimal" value="0"></div>
       </div>
       <button id="bCobro">Agregar cobro</button>
     </section>
@@ -183,14 +183,14 @@
       <div class="fila">
         <div><label>Año</label><input id="mAnio" type="number" value="2026"></div>
         <div><label>Mes</label><input id="mMes" type="number" min="1" max="12" value="9"></div>
-        <div><label>Tasa BCV</label><input id="mTasa" type="number" step="0.000001" value="1"></div>
-        <div><label>Presupuesto USD</label><input id="mPresu" type="number" step="0.01" placeholder="5630.15"></div>
+        <div><label>Tasa BCV</label><input id="mTasa" type="text" inputmode="decimal" value="1"></div>
+        <div><label>Presupuesto USD</label><input id="mPresu" type="text" inputmode="decimal" placeholder="5630,15 o 5630.15"></div>
       </div>
       <button id="bAbrir">Abrir mes</button>
       <h3>Gastos del mes</h3>
       <div class="fila">
         <div><label>Concepto</label><input id="gConcepto" placeholder="Vigilancia"></div>
-        <div><label>Monto USD</label><input id="gMonto" type="number" step="0.01"></div>
+        <div><label>Monto USD</label><input id="gMonto" type="text" inputmode="decimal"></div>
         <div><label>Solo para una unidad</label><select id="gUnidad"><option value="">— gasto común —</option></select></div>
         <div><label>Bolsillo</label><select id="gBolsillo">
           <option value="condominio">Condominio</option>
@@ -209,7 +209,7 @@
       <div class="fila">
         <div><label>Unidad</label><select id="pgUnidad"></select></div>
         <div><label>Fecha</label><input id="pgFecha" type="date"></div>
-        <div><label>Monto USD</label><input id="pgMonto" type="number" step="0.01"></div>
+        <div><label>Monto USD</label><input id="pgMonto" type="text" inputmode="decimal"></div>
         <div><label>Va a</label><select id="pgDestino">
           <option value="condominio">Condominio</option>
           <option value="honorarios">Administración</option>
@@ -243,6 +243,14 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const $ = s => document.querySelector(s);
 const el = (t,c,x)=>{const n=document.createElement(t); if(c)n.className=c; if(x!=null)n.textContent=x; return n;};
+/* En Venezuela se escribe 5.630,15. Un input numérico del navegador
+   descarta la coma y devuelve vacío: hay que leerlo como texto. */
+const num = v => {
+  const t = String(v ?? '').trim().replace(/\s/g,'');
+  if(t==='') return null;
+  const n = Number(t.replace(/\.(?=\d{3}\b)/g,'').replace(',','.'));
+  return Number.isFinite(n) ? n : null;
+};
 const money = n => (Number(n)||0).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2});
 const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
                'Septiembre','Octubre','Noviembre','Diciembre'];
@@ -360,7 +368,7 @@ $('#bNuevoEdificio').onclick = async ()=>{
   const mora = prompt('Interés de mora mensual en %, 0 si no se cobra:','0');
   const {error} = await sb.from('edificios').insert({
     org_id:org.id, nombre, prefijo_recibo:pref.toUpperCase(),
-    interes_mora:Number(mora)||0, honorario_monto:0});
+    interes_mora:num(mora)||0, honorario_monto:0});
   if(error) return fallo(error);
   aviso('Edificio creado con sus cobros por omisión.','bien');
   await cargarEdificios();
@@ -415,7 +423,7 @@ $('#bUnidades').onclick = async ()=>{
     const p = l.split(/[,;\t]/).map(x=>x.trim());
     if(!p[0]) continue;
     nuevas.push({org_id:org.id, edificio_id:edificio.id, codigo:p[0],
-                 alicuota:Number(p[1])||0, saldo_inicial:Number(p[2])||0});
+                 alicuota:num(p[1])||0, saldo_inicial:num(p[2])||0});
   }
   const {error} = await sb.from('unidades').insert(nuevas);
   if(error) return fallo(error);
@@ -459,14 +467,14 @@ async function cargarCobros(){
     sel.onchange = ()=> guardarCobro(c.id,{modo:sel.value});
     r.insertCell().append(sel);
 
-    const inm = el('input'); inm.type='number'; inm.step='0.0001'; inm.value=c.monto;
+    const inm = el('input'); inm.type='text'; inm.inputMode='decimal'; inm.value=c.monto;
     inm.disabled = c.bolsillo==='servicio';
-    inm.onchange = ()=> guardarCobro(c.id,{monto:Number(inm.value)||0});
+    inm.onchange = ()=> guardarCobro(c.id,{monto:num(inm.value)||0});
     const c1=r.insertCell(); c1.className='n'; c1.append(inm);
 
-    const inv = el('input'); inv.type='number'; inv.step='0.001'; inv.value=c.iva;
+    const inv = el('input'); inv.type='text'; inv.inputMode='decimal'; inv.value=c.iva;
     inv.disabled = c.bolsillo==='servicio';
-    inv.onchange = ()=> guardarCobro(c.id,{iva:Number(inv.value)||0});
+    inv.onchange = ()=> guardarCobro(c.id,{iva:num(inv.value)||0});
     const c2=r.insertCell(); c2.className='n'; c2.append(inv);
 
     const b = el('button','sec mini', c.activo?'Apagar':'Encender');
@@ -488,7 +496,7 @@ $('#bCobro').onclick = async ()=>{
   const {error} = await sb.from('conceptos_cobro').insert({
     org_id:org.id, edificio_id:edificio.id, nombre,
     bolsillo:$('#coBolsillo').value, modo:$('#coModo').value,
-    monto:Number($('#coMonto').value)||0, iva:Number($('#coIva').value)||0, orden:5});
+    monto:num($('#coMonto').value)||0, iva:num($('#coIva').value)||0, orden:5});
   if(error) return fallo(error);
   $('#coNombre').value='';
   aviso('Cobro agregado.','bien'); await cargarCobros();
@@ -506,6 +514,28 @@ async function cargarPeriodo(){
   if(periodoAbierto){
     c.append(el('div','aviso',
       `Abierto: ${periodoAbierto.etiqueta}. Presupuesto ${periodoAbierto.presupuesto!=null?money(periodoAbierto.presupuesto)+' USD':'sin fijar'}.`));
+
+    /* Se puede corregir el presupuesto y la tasa sin reabrir nada,
+       mientras el mes siga abierto. */
+    const caja = el('div','fila');
+    const d1 = el('div'); d1.append(el('label',null,'Corregir presupuesto USD'));
+    const i1 = el('input'); i1.type='text'; i1.inputMode='decimal';
+    i1.value = periodoAbierto.presupuesto ?? ''; d1.append(i1);
+    const d2 = el('div'); d2.append(el('label',null,'Corregir tasa BCV'));
+    const i2 = el('input'); i2.type='text'; i2.inputMode='decimal';
+    i2.value = periodoAbierto.tasa_bcv; d2.append(i2);
+    const d3 = el('div'); d3.style.flex='0 0 auto'; d3.style.alignSelf='end';
+    const b = el('button','sec','Guardar');
+    b.onclick = async ()=>{
+      const {error} = await sb.from('periodos').update({
+        presupuesto: num(i1.value),
+        tasa_bcv: num(i2.value)||1 }).eq('id', periodoAbierto.id);
+      if(error) return fallo(error);
+      aviso('Mes actualizado.','bien'); await pintarTodo();
+    };
+    d3.append(b);
+    caja.append(d1,d2,d3);
+    c.append(caja);
   } else {
     c.append(el('div','aviso','No hay ningún mes abierto.'));
   }
@@ -527,10 +557,10 @@ async function cargarPeriodo(){
 }
 $('#bAbrir').onclick = async ()=>{
   const anio = Number($('#mAnio').value), mes = Number($('#mMes').value);
-  const presu = $('#mPresu').value === '' ? null : Number($('#mPresu').value);
+  const presu = num($('#mPresu').value);
   const {error} = await sb.rpc('abrir_periodo',{
     p_edificio:edificio.id, p_anio:anio, p_mes:mes,
-    p_etiqueta:`${MESES[mes]} ${anio}`, p_tasa:Number($('#mTasa').value)||1,
+    p_etiqueta:`${MESES[mes]} ${anio}`, p_tasa:num($('#mTasa').value)||1,
     p_presupuesto:presu});
   if(error) return fallo(error);
   aviso('Mes abierto.','bien'); await pintarTodo();
@@ -570,7 +600,7 @@ $('#bGasto').onclick = async ()=>{
   const uni = $('#gUnidad').value;
   const fila = {org_id:org.id, periodo_id:periodoAbierto.id,
     concepto:$('#gConcepto').value.trim() || 'Sin concepto',
-    monto:Number($('#gMonto').value)||0,
+    monto:num($('#gMonto').value)||0,
     tipo: uni ? 'directo' : 'comun',
     unidad_id: uni || null,
     bolsillo: uni ? $('#gBolsillo').value : 'condominio'};
@@ -660,7 +690,7 @@ $('#cerrarDlg').onclick = ()=> $('#dlgRecibo').close();
 
 /* ── Pagos ────────────────────────────────────────────────────── */
 $('#bPago').onclick = async ()=>{
-  const monto = Number($('#pgMonto').value)||0;
+  const monto = num($('#pgMonto').value)||0;
   if(!monto) return aviso('Falta el monto.','mal');
   const {error} = await sb.from('pagos').insert({
     org_id:org.id, unidad_id:$('#pgUnidad').value,
