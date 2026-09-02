@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vecitap · Mi condominio</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  *{box-sizing:border-box}
+  body{margin:0;background:#F4F1EC;color:#2B2723;
+       font-family:Inter,system-ui,-apple-system,sans-serif;font-size:15px;
+       -webkit-text-size-adjust:100%}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+  .flex{display:flex}.wrap{flex-wrap:wrap}
+  .ai-c{align-items:center}.ai-e{align-items:flex-end}.ai-s{align-items:flex-start}
+  .jc-b{justify-content:space-between}.jc-e{justify-content:flex-end}
+  .g1{gap:4px}.g2{gap:8px}.g3{gap:12px}.g4{gap:16px}
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}
+  .mb4{margin-bottom:16px}.mb6{margin-bottom:24px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  input,select,textarea{background:#fff;border:1px solid #DCD5CB;border-radius:9px;
+    padding:11px 12px;font-size:16px;width:100%;outline:none;color:#2B2723;font-family:inherit}
+  input:focus,select:focus,textarea:focus{border-color:#3F7D5C}
+  label{display:block}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  @media (max-width:520px){ body{font-size:14.5px} }
+</style>
+</head>
+<body>
+<div id="raiz"></div>
+
+<script type="text/babel" data-type="module" data-presets="react">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const { useState, useEffect, useMemo, useRef } = React;
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONFIGURACIÓN
+   Pegue aquí la URL de su proyecto y la clave anon, las mismas de la
+   aplicación. La clave anon es pública por diseño: lo que protege los
+   datos es la seguridad por fila de la base, no el secreto de la clave.
+   NUNCA ponga aquí la clave service_role.
+   Si las deja vacías, la página pide los datos al entrar.
+   ═════════════════════════════════════════════════════════════════ */
+const CONFIG = { url: "", key: "" };
+
+const T = {
+  papel:"#F4F1EC", tarjeta:"#FFFFFF", tinta:"#2B2723", tinta2:"#6B625A",
+  tenue:"#9A9089", linea:"#E4DDD3", lineaF:"#DCD5CB",
+  verde:"#3F7D5C", verdeBg:"#EBF3EE",
+  ambar:"#B07D2B", ambarBg:"#FAF2E2",
+  rojo:"#B4483C",  rojoBg:"#FBEDEB",
+  azul:"#3C6E9E",  azulBg:"#EDF2F8",
+};
+
+const nf = (d=2) => new Intl.NumberFormat("es-VE",{minimumFractionDigits:d,maximumFractionDigits:d});
+const usd = (v) => "$ " + nf(2).format(Number(v)||0);
+const bs  = (v) => "Bs " + nf(2).format(Number(v)||0);
+const hoyISO = () => new Date().toISOString().slice(0,10);
+/* En Venezuela se escribe 5.630,15. Un input numérico descarta la coma
+   y devuelve vacío: por eso todos los montos son de texto. */
+const num = (v) => {
+  const t = String(v ?? "").trim();
+  if (t === "") return null;
+  const n = Number(t.replace(/\.(?=\d{3}\b)/g,"").replace(",","."));
+  return Number.isFinite(n) ? n : null;
+};
+const guardar = (k,v) => { try { localStorage.setItem(k,v); } catch(e){} };
+const leer    = (k)   => { try { return localStorage.getItem(k); } catch(e){ return null; } };
+const fechaLarga = (iso) => {
+  if (!iso) return "";
+  const [a,m,d] = String(iso).slice(0,10).split("-");
+  const meses = ["enero","febrero","marzo","abril","mayo","junio","julio",
+                 "agosto","septiembre","octubre","noviembre","diciembre"];
+  return `${Number(d)} de ${meses[Number(m)-1]} de ${a}`;
+};
+
+/* ── Piezas ── */
+const Tarjeta = ({ children, style, tono }) => (
+  <div style={{ background: tono || T.tarjeta, border:`1px solid ${T.linea}`,
+    borderRadius:14, padding:18, ...style }}>{children}</div>
+);
+const Boton = ({ children, onClick, tono="primario", disabled, tipo, style }) => {
+  const c = {
+    primario:{ background:T.verde, color:"#fff", border:"1px solid transparent" },
+    suave:{ background:"#fff", color:T.tinta, border:`1px solid ${T.lineaF}` },
+    fantasma:{ background:"transparent", color:T.tinta2, border:"1px solid transparent" },
+  }[tono];
+  return <button type={tipo||"button"} onClick={onClick} disabled={disabled}
+    style={{ ...c, borderRadius:10, fontSize:15, fontWeight:600, padding:"12px 18px",
+      cursor:disabled?"not-allowed":"pointer", opacity:disabled?.5:1, fontFamily:"inherit",
+      display:"inline-flex", alignItems:"center", gap:8, justifyContent:"center", ...style }}>
+    {children}</button>;
+};
+const Campo = ({ label, ayuda, children }) => (
+  <label className="mb3">
+    <span style={{ fontSize:12.5, color:T.tinta2, display:"block", marginBottom:6,
+      fontWeight:500 }}>{label}</span>
+    {children}
+    {ayuda && <span style={{ fontSize:12, color:T.tenue, display:"block", marginTop:5,
+      lineHeight:1.5 }}>{ayuda}</span>}
+  </label>
+);
+const Pastilla = ({ estado }) => {
+  const m = {
+    reportado:{ t:"Esperando revisión", c:T.ambar, b:T.ambarBg },
+    conciliado:{ t:"Confirmado", c:T.verde, b:T.verdeBg },
+    anulado:{ t:"Rechazado", c:T.rojo, b:T.rojoBg },
+  }[estado] || { t:estado, c:T.tinta2, b:"#EEE" };
+  return <span style={{ background:m.b, color:m.c, borderRadius:20, padding:"4px 11px",
+    fontSize:12, fontWeight:600, whiteSpace:"nowrap" }}>{m.t}</span>;
+};
+const Centro = ({ children }) => (
+  <div style={{ minHeight:"100dvh", display:"flex", alignItems:"center",
+    justifyContent:"center", padding:20 }}>
+    <div style={{ width:"100%", maxWidth:420 }}>{children}</div></div>
+);
+
+/* ═══════════════════════════════════════════════════════════════════
+   APLICACIÓN
+   ═══════════════════════════════════════════════════════════════ */
+function App() {
+  const [cfg, setCfg] = useState(() => {
+    if (CONFIG.url && CONFIG.key) return CONFIG;
+    const u = leer("vecitap_url"), k = leer("vecitap_key");
+    return u && k ? { url:u, key:k } : null;
+  });
+  const sb = useMemo(() => cfg ? createClient(cfg.url, cfg.key) : null, [cfg]);
+  const [sesion, setSesion] = useState(undefined);
+  const [unidades, setUnidades] = useState(null);
+  const [elegida, setElegida] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const tmp = useRef(null);
+
+  const notificar = (t, tipo="ok") => {
+    setAviso({ t, tipo });
+    if (tmp.current) clearTimeout(tmp.current);
+    tmp.current = setTimeout(() => setAviso(null), 5000);
+  };
+  const fallo = (e) => notificar(e?.message || String(e), "error");
+
+  useEffect(() => {
+    if (!sb) return;
+    sb.auth.getSession().then(({ data }) => setSesion(data.session || null));
+    const { data: s } = sb.auth.onAuthStateChange((_e, ses) => {
+      setSesion(ses || null); if (!ses) { setUnidades(null); setElegida(null); } });
+    return () => s?.subscription?.unsubscribe();
+  }, [sb]);
+
+  const cargar = async () => {
+    const { data, error } = await sb.rpc("mis_unidades");
+    if (error) return fallo(error);
+    setUnidades(data || []);
+    setElegida((a) => (data || []).find((u) => u.unidad_id === a?.unidad_id) || (data || [])[0] || null);
+  };
+  useEffect(() => { if (sb && sesion) cargar(); }, [sb, sesion]);
+
+  if (!cfg) return <Conexion onListo={(url,key) => setCfg({url,key})} />;
+  if (sesion === undefined) return <Centro><Tarjeta>Abriendo su sesión…</Tarjeta></Centro>;
+  if (!sesion) return <Entrar sb={sb} aviso={aviso} notificar={notificar} fallo={fallo} />;
+  if (unidades === null) return <Centro><Tarjeta>Cargando…</Tarjeta></Centro>;
+
+  if (unidades.length === 0)
+    return <Invitacion sb={sb} sesion={sesion} aviso={aviso}
+             notificar={notificar} fallo={fallo} onListo={cargar} />;
+
+  return (
+    <div style={{ maxWidth:640, margin:"0 auto", padding:"18px 16px 60px" }}>
+      <header className="flex ai-s jc-b g3 mb4">
+        <div>
+          <div style={{ fontSize:11, textTransform:"uppercase", letterSpacing:".14em",
+            color:T.verde, fontWeight:700, marginBottom:3 }}>Vecitap</div>
+          <h1 style={{ fontSize:21, margin:0, fontWeight:700 }}>Mi condominio</h1>
+          <div style={{ fontSize:12.5, color:T.tenue, marginTop:3 }}>{sesion.user.email}</div>
+        </div>
+        <Boton tono="fantasma" style={{ padding:"8px 10px", fontSize:13 }}
+          onClick={() => sb.auth.signOut()}>Salir</Boton>
+      </header>
+
+      {aviso && (
+        <div className="mb4" style={{ padding:"12px 14px", borderRadius:10, fontSize:14,
+          lineHeight:1.5,
+          background: aviso.tipo==="error" ? T.rojoBg : T.verdeBg,
+          color: aviso.tipo==="error" ? T.rojo : T.verde,
+          border:`1px solid ${aviso.tipo==="error" ? "#EBC9C4" : "#CFE3D8"}` }}>{aviso.t}</div>
+      )}
+
+      {unidades.length > 1 && (
+        <div className="flex g2 wrap mb4">
+          {unidades.map((u) => (
+            <Boton key={u.unidad_id} tono={elegida?.unidad_id===u.unidad_id?"primario":"suave"}
+              style={{ padding:"9px 13px", fontSize:13.5 }}
+              onClick={() => setElegida(u)}>{u.edificio} · {u.codigo}</Boton>
+          ))}
+        </div>
+      )}
+
+      {elegida && <Unidad sb={sb} u={elegida} sesion={sesion}
+        notificar={notificar} fallo={fallo} recargar={cargar} />}
+    </div>
+  );
+}
+
+/* ── Conexión (solo si no se dejó configurada arriba) ── */
+function Conexion({ onListo }) {
+  const [url, setUrl] = useState(leer("vecitap_url") || "");
+  const [key, setKey] = useState(leer("vecitap_key") || "");
+  return (
+    <Centro>
+      <Tarjeta>
+        <h2 style={{ margin:"0 0 6px", fontSize:18 }}>Conectar</h2>
+        <p style={{ color:T.tinta2, fontSize:13.5, lineHeight:1.6, marginTop:0 }}>
+          Pídale a su administración la dirección y la clave pública del sistema. Se
+          guardan en este teléfono y no se las vuelve a pedir.
+        </p>
+        <Campo label="Dirección del sistema">
+          <input className="mono" value={url} onChange={(e)=>setUrl(e.target.value)}
+            placeholder="https://xxxx.supabase.co" autoCapitalize="off" /></Campo>
+        <Campo label="Clave pública">
+          <input className="mono" value={key} onChange={(e)=>setKey(e.target.value)}
+            placeholder="eyJhbGciOi…" autoCapitalize="off" /></Campo>
+        <Boton style={{ width:"100%" }} onClick={() => {
+          if (!url.trim() || !key.trim()) return;
+          guardar("vecitap_url", url.trim()); guardar("vecitap_key", key.trim());
+          onListo(url.trim(), key.trim());
+        }}>Conectar</Boton>
+      </Tarjeta>
+    </Centro>
+  );
+}
+
+/* ── Entrar o crear la cuenta ── */
+function Entrar({ sb, aviso, notificar, fallo }) {
+  const [modo, setModo] = useState("entrar");
+  const [correo, setCorreo] = useState("");
+  const [clave, setClave] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+
+  const enviar = async () => {
+    if (!correo.trim() || !clave) return notificar("Falta el correo o la clave.", "error");
+    setOcupado(true);
+    const f = modo === "entrar"
+      ? await sb.auth.signInWithPassword({ email: correo.trim().toLowerCase(), password: clave })
+      : await sb.auth.signUp({ email: correo.trim().toLowerCase(), password: clave });
+    setOcupado(false);
+    if (f.error) return fallo(f.error);
+    if (modo === "crear")
+      notificar("Cuenta creada. Si le pedimos confirmar el correo, revise su bandeja.");
+  };
+
+  return (
+    <Centro>
+      <Tarjeta>
+        <div style={{ fontSize:11, textTransform:"uppercase", letterSpacing:".14em",
+          color:T.verde, fontWeight:700, marginBottom:4 }}>Vecitap</div>
+        <h2 style={{ margin:"0 0 4px", fontSize:19 }}>
+          {modo === "entrar" ? "Entrar" : "Crear mi cuenta"}</h2>
+        <p style={{ color:T.tinta2, fontSize:13.5, lineHeight:1.6, marginTop:0 }}>
+          Use el mismo correo al que le llegó la invitación de su administración.
+        </p>
+
+        {aviso && (
+          <div className="mb3" style={{ padding:"11px 13px", borderRadius:10, fontSize:13.5,
+            lineHeight:1.5,
+            background: aviso.tipo==="error" ? T.rojoBg : T.verdeBg,
+            color: aviso.tipo==="error" ? T.rojo : T.verde }}>{aviso.t}</div>
+        )}
+
+        <Campo label="Correo">
+          <input type="email" inputMode="email" autoCapitalize="off" value={correo}
+            onChange={(e)=>setCorreo(e.target.value)} /></Campo>
+        <Campo label="Contraseña"
+          ayuda={modo==="crear" ? "Mínimo 6 caracteres." : ""}>
+          <input type="password" value={clave} onChange={(e)=>setClave(e.target.value)}
+            onKeyDown={(e)=> e.key==="Enter" && enviar()} /></Campo>
+
+        <Boton style={{ width:"100%" }} disabled={ocupado} onClick={enviar}>
+          {ocupado ? "Un momento…" : modo==="entrar" ? "Entrar" : "Crear la cuenta"}</Boton>
+
+        <div style={{ textAlign:"center", marginTop:14 }}>
+          <Boton tono="fantasma" style={{ fontSize:13.5, padding:"6px 8px" }}
+            onClick={() => setModo(modo==="entrar" ? "crear" : "entrar")}>
+            {modo==="entrar" ? "No tengo cuenta todavía" : "Ya tengo cuenta"}</Boton>
+        </div>
+      </Tarjeta>
+    </Centro>
+  );
+}
+
+/* ── Tiene cuenta pero todavía no está asociado a ninguna unidad ── */
+function Invitacion({ sb, sesion, aviso, notificar, fallo, onListo }) {
+  const [cod, setCod] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+
+  const aceptar = async () => {
+    if (!cod.trim()) return notificar("Pegue el código de la invitación.", "error");
+    setOcupado(true);
+    const { error } = await sb.rpc("aceptar_invitacion", { p_token: cod.trim() });
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar("Listo, ya tiene acceso a su unidad.");
+    onListo();
+  };
+
+  return (
+    <Centro>
+      <Tarjeta>
+        <h2 style={{ margin:"0 0 6px", fontSize:18 }}>Falta un paso</h2>
+        <p style={{ color:T.tinta2, fontSize:13.5, lineHeight:1.6, marginTop:0 }}>
+          Su cuenta existe pero todavía no está asociada a ninguna unidad. Pegue el código
+          que le envió su administración. Si no lo tiene, pídaselo: la invitación va a
+          <b> {sesion.user.email}</b> y no sirve para otro correo.
+        </p>
+        {aviso && (
+          <div className="mb3" style={{ padding:"11px 13px", borderRadius:10, fontSize:13.5,
+            background: aviso.tipo==="error" ? T.rojoBg : T.verdeBg,
+            color: aviso.tipo==="error" ? T.rojo : T.verde }}>{aviso.t}</div>
+        )}
+        <Campo label="Código de invitación">
+          <input className="mono" value={cod} onChange={(e)=>setCod(e.target.value)}
+            autoCapitalize="off" placeholder="a1b2c3…" /></Campo>
+        <Boton style={{ width:"100%" }} disabled={ocupado} onClick={aceptar}>
+          {ocupado ? "Comprobando…" : "Usar la invitación"}</Boton>
+        <div style={{ textAlign:"center", marginTop:12 }}>
+          <Boton tono="fantasma" style={{ fontSize:13 }}
+            onClick={() => sb.auth.signOut()}>Salir</Boton>
+        </div>
+      </Tarjeta>
+    </Centro>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LA UNIDAD: estado, reportar el pago, mis reportes
+   ═══════════════════════════════════════════════════════════════ */
+function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
+  const [pest, setPest] = useState("estado");
+  const [pagos, setPagos] = useState([]);
+  const [recibo, setRecibo] = useState(null);
+
+  const cargar = async () => {
+    const { data } = await sb.from("pagos")
+      .select("id,fecha,monto,moneda,monto_usd,tasa_aplicada,metodo,referencia,banco,estado,nota")
+      .eq("unidad_id", u.unidad_id).order("fecha", { ascending:false }).limit(40);
+    setPagos(data || []);
+    // Se pide por función y no por consulta directa: "el último recibo"
+    // no se puede resolver por la hora en que se escribió, porque varios
+    // meses cerrados en una misma transacción comparten esa marca.
+    const { data: r } = await sb.rpc("mi_recibo", { p_unidad: u.unidad_id });
+    setRecibo((Array.isArray(r) ? r[0] : r) || null);
+  };
+  useEffect(() => { cargar(); }, [u.unidad_id]);
+
+  const mios = pagos.filter((p) => true);   // la base ya decide qué puede ver
+
+  return (
+    <>
+      <Tarjeta style={{ marginBottom:16 }}>
+        <div className="flex ai-s jc-b g3 wrap">
+          <div>
+            <div style={{ fontSize:12, color:T.tenue, textTransform:"uppercase",
+              letterSpacing:".08em" }}>{u.edificio}</div>
+            <div style={{ fontSize:26, fontWeight:700, lineHeight:1.15 }}>{u.codigo}</div>
+            <div style={{ fontSize:12.5, color:T.tinta2, marginTop:2 }}>
+              {u.relacion === "inquilino" ? "Inquilino" : "Propietario"} ·
+              alícuota <span className="mono">{nf(4).format(u.alicuota)}%</span>
+            </div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            {u.saldo === null ? (
+              <div style={{ fontSize:13, color:T.tenue, maxWidth:170, lineHeight:1.5 }}>
+                Su administración no muestra el saldo acumulado en esta unidad.
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize:12, color:T.tenue }}>
+                  {Number(u.saldo) > 0 ? "Debe" : Number(u.saldo) < 0 ? "A su favor" : "Al día"}</div>
+                <div className="mono" style={{ fontSize:26, fontWeight:700,
+                  color: Number(u.saldo) > 0 ? T.rojo : T.verde }}>
+                  {usd(Math.abs(Number(u.saldo)))}</div>
+              </>
+            )}
+          </div>
+        </div>
+      </Tarjeta>
+
+      <div className="flex g2 mb4">
+        {[["estado","Mi recibo"],["reportar","Reportar un pago"],["pagos","Mis pagos"]].map(([k,t]) => (
+          <Boton key={k} tono={pest===k?"primario":"suave"} onClick={()=>setPest(k)}
+            style={{ flex:1, padding:"10px 8px", fontSize:13.5 }}>{t}</Boton>
+        ))}
+      </div>
+
+      {pest === "estado" && <Recibo u={u} recibo={recibo} />}
+
+      {pest === "reportar" && (
+        <Reportar sb={sb} u={u} sesion={sesion} notificar={notificar} fallo={fallo}
+          onListo={() => { cargar(); recargar(); setPest("pagos"); }} />
+      )}
+
+      {pest === "pagos" && <MisPagos sb={sb} pagos={mios} />}
+    </>
+  );
+}
+
+function Recibo({ u, recibo }) {
+  if (!recibo) return (
+    <Tarjeta><div style={{ color:T.tinta2, fontSize:14, lineHeight:1.6 }}>
+      Todavía no hay ningún recibo emitido para esta unidad. Aparece aquí en cuanto su
+      administración cierre el mes.
+    </div></Tarjeta>
+  );
+  const lineas = Array.isArray(recibo.conceptos) ? recibo.conceptos : [];
+  const fila = (t, v, fuerte) => (
+    <div className="flex jc-b g3" style={{ padding:"9px 0",
+      borderBottom:`1px solid ${T.linea}`, fontWeight: fuerte?700:400 }}>
+      <span style={{ color: fuerte?T.tinta:T.tinta2 }}>{t}</span>
+      <span className="mono">{usd(v)}</span>
+    </div>
+  );
+  return (
+    <Tarjeta>
+      <div className="flex jc-b ai-c g3 mb3 wrap">
+        <div>
+          <div style={{ fontSize:12, color:T.tenue }}>Recibo</div>
+          <div className="mono" style={{ fontSize:16, fontWeight:600 }}>{recibo.numero}</div>
+        </div>
+        {recibo.tasa_bcv > 0 && (
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontSize:12, color:T.tenue }}>Equivale a</div>
+            <div className="mono" style={{ fontSize:15, fontWeight:600 }}>
+              {bs(Number(recibo.total) * Number(recibo.tasa_bcv))}</div>
+            <div style={{ fontSize:11, color:T.tenue }}>
+              tasa {nf(2).format(recibo.tasa_bcv)}</div>
+          </div>
+        )}
+      </div>
+
+      {lineas.map((l, i) => fila(l.nombre, l.monto))}
+      {Number(recibo.directos) > 0 && fila("Cargos de su unidad", recibo.directos)}
+      {Number(recibo.anterior) > 0 && fila("Saldo del mes anterior", recibo.anterior)}
+      {Number(recibo.a_favor)  > 0 && fila("A su favor", -recibo.a_favor)}
+      {Number(recibo.mora)     > 0 && fila("Intereses de mora", recibo.mora)}
+      {fila("Total", recibo.total, true)}
+
+      <p style={{ fontSize:12.5, color:T.tenue, lineHeight:1.6, marginBottom:0, marginTop:14 }}>
+        El monto en bolívares es referencial: se convierte a la tasa del Banco Central del
+        día en que usted pague, no a la de hoy.
+      </p>
+    </Tarjeta>
+  );
+}
+
+/* ── Reportar un pago con su comprobante ── */
+const METODOS = ["Pago móvil","Transferencia","Zelle","Efectivo","Punto de venta","Otro"];
+const MAX_BYTES = 5 * 1024 * 1024;
+
+async function comprimirImagen(archivo) {
+  // Las fotos de teléfono pesan 3 o 4 MB y el depósito admite 5. Se
+  // reduce el lado mayor a 1600 px, que sigue siendo legible para leer
+  // una referencia bancaria.
+  if (!/^image\//.test(archivo.type) || archivo.size < 900 * 1024) return archivo;
+  try {
+    const url = URL.createObjectURL(archivo);
+    const img = await new Promise((ok, mal) => {
+      const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = url; });
+    const lado = Math.max(img.width, img.height);
+    const escala = lado > 1600 ? 1600 / lado : 1;
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    const blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.82));
+    if (!blob || blob.size >= archivo.size) return archivo;
+    return new File([blob], archivo.name.replace(/\.\w+$/, "") + ".jpg", { type:"image/jpeg" });
+  } catch (e) { return archivo; }
+}
+
+async function huella(archivo) {
+  try {
+    const buf = await archivo.arrayBuffer();
+    const h = await crypto.subtle.digest("SHA-256", buf);
+    return Array.from(new Uint8Array(h)).map((b)=>b.toString(16).padStart(2,"0")).join("");
+  } catch (e) { return null; }
+}
+
+function Reportar({ sb, u, sesion, notificar, fallo, onListo }) {
+  const [f, setF] = useState({ fecha: hoyISO(), monto:"", moneda:"VES",
+    metodo:"Pago móvil", referencia:"", banco:"" });
+  const [tf, setTf] = useState(null);
+  const [archivo, setArchivo] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const entrada = useRef(null);
+
+  useEffect(() => {
+    if (f.moneda !== "VES") { setTf(null); return; }
+    sb.rpc("tasa_de_esa_fecha", { p_fecha: f.fecha }).then(({ data }) => {
+      const r = Array.isArray(data) ? data[0] : data;
+      setTf(r && Number(r.tasa) > 0 ? { ...r, tasa: Number(r.tasa) } : null);
+    });
+  }, [f.fecha, f.moneda]);
+
+  const elegir = async (e) => {
+    const a = e.target.files && e.target.files[0];
+    if (!a) return;
+    if (a.size > MAX_BYTES * 3)
+      return notificar("Ese archivo es demasiado grande. Tome la foto de nuevo.", "error");
+    const chico = await comprimirImagen(a);
+    if (chico.size > MAX_BYTES)
+      return notificar("El comprobante pesa más de 5 MB. Use una foto más pequeña.", "error");
+    setArchivo(chico);
+  };
+
+  const enviar = async () => {
+    const monto = num(f.monto);
+    if (monto === null || monto <= 0) return notificar("El monto no se entiende.", "error");
+    if (f.fecha > hoyISO()) return notificar("La fecha del pago no puede ser futura.", "error");
+    if (f.moneda === "VES" && !tf)
+      return notificar("Todavía no hay tasa del Banco Central para ese día. " +
+                       "Avísele a su administración.", "error");
+
+    setOcupado(true);
+
+    const { data: pago, error } = await sb.from("pagos").insert({
+      org_id: u.org_id, unidad_id: u.unidad_id, fecha: f.fecha, monto,
+      moneda: f.moneda, monto_usd: 0, metodo: f.metodo, destino: "condominio",
+      referencia: f.referencia.trim() || null, banco: f.banco.trim() || null,
+      estado: "reportado",
+    }).select("id").single();
+
+    if (error) { setOcupado(false); return fallo(error); }
+
+    if (archivo) {
+      const ext = (archivo.name.match(/\.(\w+)$/) || [,"jpg"])[1].toLowerCase();
+      const ruta = `${u.org_id}/${u.unidad_id}/${pago.id}.${ext}`;
+      const sha = await huella(archivo);
+      const su = await sb.storage.from("comprobantes")
+        .upload(ruta, archivo, { contentType: archivo.type, upsert:false });
+
+      if (su.error) {
+        setOcupado(false);
+        return notificar("El pago quedó reportado, pero el comprobante no se pudo subir: " +
+                         su.error.message, "error");
+      }
+      const cf = await sb.from("comprobantes").insert({
+        org_id: u.org_id, unidad_id: u.unidad_id, pago_id: pago.id, ruta,
+        tipo: archivo.type, bytes: archivo.size, sha256: sha,
+        subido_por: sesion.user.id });
+      if (cf.error) {
+        setOcupado(false);
+        return notificar("El pago quedó reportado, pero no se pudo registrar el " +
+                         "comprobante: " + cf.error.message, "error");
+      }
+    }
+
+    setOcupado(false);
+    setF({ ...f, monto:"", referencia:"" });
+    setArchivo(null);
+    if (entrada.current) entrada.current.value = "";
+    notificar("Pago reportado. Su administración lo va a revisar y confirmar.");
+    onListo();
+  };
+
+  return (
+    <Tarjeta>
+      <p style={{ fontSize:13.5, color:T.tinta2, lineHeight:1.6, marginTop:0 }}>
+        Reportar un pago no lo da por recibido: su administración lo revisa contra el
+        banco y lo confirma. Mientras tanto aparece como <b>esperando revisión</b>.
+      </p>
+
+      <Campo label="Fecha del pago"
+        ayuda="La del día en que hizo la transferencia, no la de hoy.">
+        <input type="date" className="mono" value={f.fecha} max={hoyISO()}
+          onChange={(e)=>setF({...f, fecha:e.target.value})} /></Campo>
+
+      <Campo label="Moneda">
+        <select value={f.moneda} onChange={(e)=>setF({...f, moneda:e.target.value})}>
+          <option value="VES">Bolívares</option>
+          <option value="USD">Dólares</option>
+        </select></Campo>
+
+      <Campo label={f.moneda==="VES" ? "Monto en bolívares" : "Monto en dólares"}
+        ayuda="Puede escribirlo con coma: 3.450,75">
+        <input className="mono" inputMode="decimal" value={f.monto}
+          onChange={(e)=>setF({...f, monto:e.target.value})} /></Campo>
+
+      {f.moneda === "VES" && (
+        <div className="mb3" style={{ padding:"11px 13px", borderRadius:10,
+          background: tf ? T.azulBg : T.ambarBg, fontSize:13, lineHeight:1.55,
+          color: tf ? T.azul : T.ambar }}>
+          {tf ? (<>
+            Tasa del Banco Central del {fechaLarga(tf.fecha)}:{" "}
+            <b className="mono">{nf(2).format(tf.tasa)}</b>
+            {num(f.monto) ? <> · su pago equivale a{" "}
+              <b className="mono">{usd(num(f.monto)/tf.tasa)}</b></> : null}
+            {!tf.propia && <><br />No hubo publicación ese día, se usa la última anterior.</>}
+          </>) : "Todavía no hay tasa del Banco Central para esa fecha. " +
+                 "Avísele a su administración antes de reportar."}
+        </div>
+      )}
+
+      <Campo label="Cómo pagó">
+        <select value={f.metodo} onChange={(e)=>setF({...f, metodo:e.target.value})}>
+          {METODOS.map((m)=><option key={m}>{m}</option>)}
+        </select></Campo>
+
+      <Campo label="Referencia"
+        ayuda="El número que le dio el banco. Es lo que permite encontrar su pago.">
+        <input className="mono" inputMode="numeric" value={f.referencia}
+          onChange={(e)=>setF({...f, referencia:e.target.value})} /></Campo>
+
+      <Campo label="Banco desde el que pagó">
+        <input value={f.banco} placeholder="Banesco"
+          onChange={(e)=>setF({...f, banco:e.target.value})} /></Campo>
+
+      <Campo label="Comprobante"
+        ayuda="Foto de la pantalla o PDF del banco. Máximo 5 MB. Solo lo ven usted y su administración.">
+        <input ref={entrada} type="file" accept="image/*,application/pdf"
+          onChange={elegir} style={{ padding:9 }} /></Campo>
+
+      {archivo && (
+        <div className="mb3" style={{ fontSize:12.5, color:T.tinta2 }}>
+          {archivo.name} · {nf(0).format(archivo.size/1024)} KB
+        </div>
+      )}
+
+      <Boton style={{ width:"100%" }} disabled={ocupado} onClick={enviar}>
+        {ocupado ? "Enviando…" : "Reportar el pago"}</Boton>
+    </Tarjeta>
+  );
+}
+
+function MisPagos({ sb, pagos }) {
+  if (!pagos.length) return (
+    <Tarjeta><div style={{ color:T.tinta2, fontSize:14, lineHeight:1.6 }}>
+      Todavía no ha reportado ningún pago.</div></Tarjeta>
+  );
+  return (
+    <div className="flex" style={{ flexDirection:"column", gap:10 }}>
+      {pagos.map((p) => (
+        <Tarjeta key={p.id} style={{ padding:15 }}>
+          <div className="flex jc-b ai-s g3">
+            <div>
+              <div className="mono" style={{ fontSize:17, fontWeight:700 }}>
+                {p.moneda === "VES" ? bs(p.monto) : usd(p.monto)}</div>
+              <div style={{ fontSize:12.5, color:T.tinta2, marginTop:2 }}>
+                {fechaLarga(p.fecha)}</div>
+              <div style={{ fontSize:12.5, color:T.tenue, marginTop:2 }}>
+                {p.metodo}{p.referencia ? ` · ref ${p.referencia}` : ""}
+                {p.banco ? ` · ${p.banco}` : ""}</div>
+              {p.moneda === "VES" && p.tasa_aplicada > 0 && (
+                <div style={{ fontSize:12, color:T.tenue, marginTop:2 }}>
+                  {usd(p.monto_usd)} a la tasa {nf(2).format(p.tasa_aplicada)}</div>
+              )}
+            </div>
+            <Pastilla estado={p.estado} />
+          </div>
+          {p.nota && (
+            <div className="mt3" style={{ fontSize:12.5, color:T.tinta2,
+              borderTop:`1px solid ${T.linea}`, paddingTop:10, lineHeight:1.55 }}>
+              {p.nota}</div>
+          )}
+        </Tarjeta>
+      ))}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("raiz")).render(<App />);
+</script>
+</body>
+</html>
