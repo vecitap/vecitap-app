@@ -456,7 +456,17 @@ function Recibo({ u, recibo }) {
 }
 
 /* ── Reportar un pago con su comprobante ── */
-const METODOS = ["Pago móvil","Transferencia","Zelle","Efectivo","Punto de venta","Otro"];
+/* Cada método de pago se identifica con datos distintos. Pedir siempre
+   los mismos campos hace que la administradora reciba reportes que no
+   puede cruzar contra el banco, que es de lo que se trata todo esto. */
+const METODOS = {
+  "Pago móvil":     { banco:true, telefono:true, documento:true, referencia:true },
+  "Transferencia":  { banco:true, referencia:true },
+  "Zelle":          { correo:true, referencia:true },
+  "Punto de venta": { banco:true, referencia:true },
+  "Efectivo":       { },
+  "Otro":           { referencia:true },
+};
 const MAX_BYTES = 5 * 1024 * 1024;
 
 async function comprimirImagen(archivo) {
@@ -490,19 +500,31 @@ async function huella(archivo) {
 
 function Reportar({ sb, u, sesion, notificar, fallo, onListo }) {
   const [f, setF] = useState({ fecha: hoyISO(), monto:"", moneda:"VES",
-    metodo:"Pago móvil", referencia:"", banco:"" });
+    metodo:"Pago móvil", referencia:"", banco:"", telefono:"", documento:"", correo:"" });
+  const [bancos, setBancos] = useState([]);
   const [tf, setTf] = useState(null);
+  const [errTasa, setErrTasa] = useState(null);
   const [archivo, setArchivo] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const entrada = useRef(null);
 
   useEffect(() => {
-    if (f.moneda !== "VES") { setTf(null); return; }
-    sb.rpc("tasa_de_esa_fecha", { p_fecha: f.fecha }).then(({ data }) => {
+    sb.from("bancos").select("codigo,nombre,corto").eq("activo", true).order("orden")
+      .then(({ data }) => setBancos(data || []));
+  }, []);
+
+  useEffect(() => {
+    if (f.moneda !== "VES") { setTf(null); setErrTasa(null); return; }
+    sb.rpc("tasa_de_esa_fecha", { p_fecha: f.fecha }).then(({ data, error }) => {
+      // El error se muestra: una tasa que "no carga" sin decir por qué
+      // deja a la persona sin saber si es culpa suya o del sistema.
+      setErrTasa(error ? error.message : null);
       const r = Array.isArray(data) ? data[0] : data;
       setTf(r && Number(r.tasa) > 0 ? { ...r, tasa: Number(r.tasa) } : null);
     });
   }, [f.fecha, f.moneda]);
+
+  const pide = METODOS[f.metodo] || {};
 
   const elegir = async (e) => {
     const a = e.target.files && e.target.files[0];
@@ -523,12 +545,24 @@ function Reportar({ sb, u, sesion, notificar, fallo, onListo }) {
       return notificar("Todavía no hay tasa del Banco Central para ese día. " +
                        "Avísele a su administración.", "error");
 
+    if (pide.banco && !f.banco) return notificar("Elija el banco.", "error");
+    if (pide.telefono && !f.telefono.trim())
+      return notificar("Falta el teléfono desde el que hizo el pago móvil.", "error");
+    if (pide.correo && !f.correo.trim())
+      return notificar("Falta el correo desde el que envió el Zelle.", "error");
+    if (pide.referencia && !f.referencia.trim())
+      return notificar("Falta la referencia. Sin ella su pago es muy difícil de ubicar.", "error");
+
     setOcupado(true);
 
     const { data: pago, error } = await sb.from("pagos").insert({
       org_id: u.org_id, unidad_id: u.unidad_id, fecha: f.fecha, monto,
       moneda: f.moneda, monto_usd: 0, metodo: f.metodo, destino: "condominio",
-      referencia: f.referencia.trim() || null, banco: f.banco.trim() || null,
+      referencia: f.referencia.trim() || null,
+      banco_codigo: pide.banco ? (f.banco || null) : null,
+      telefono_origen:  pide.telefono  ? f.telefono.trim()  : null,
+      documento_origen: pide.documento ? f.documento.trim() : null,
+      correo_origen:    pide.correo    ? f.correo.trim()    : null,
       estado: "reportado",
     }).select("id").single();
 
@@ -592,7 +626,7 @@ function Reportar({ sb, u, sesion, notificar, fallo, onListo }) {
         <div className="mb3" style={{ padding:"11px 13px", borderRadius:10,
           background: tf ? T.azulBg : T.ambarBg, fontSize:13, lineHeight:1.55,
           color: tf ? T.azul : T.ambar }}>
-          {tf ? (<>
+          {errTasa ? ("No se pudo consultar la tasa: " + errTasa) : tf ? (<>
             Tasa del Banco Central del {fechaLarga(tf.fecha)}:{" "}
             <b className="mono">{nf(2).format(tf.tasa)}</b>
             {num(f.monto) ? <> · su pago equivale a{" "}
@@ -605,17 +639,44 @@ function Reportar({ sb, u, sesion, notificar, fallo, onListo }) {
 
       <Campo label="Cómo pagó">
         <select value={f.metodo} onChange={(e)=>setF({...f, metodo:e.target.value})}>
-          {METODOS.map((m)=><option key={m}>{m}</option>)}
+          {Object.keys(METODOS).map((m)=><option key={m}>{m}</option>)}
         </select></Campo>
 
-      <Campo label="Referencia"
-        ayuda="El número que le dio el banco. Es lo que permite encontrar su pago.">
-        <input className="mono" inputMode="numeric" value={f.referencia}
-          onChange={(e)=>setF({...f, referencia:e.target.value})} /></Campo>
+      {pide.banco && (
+        <Campo label="Banco desde el que pagó">
+          <select value={f.banco} onChange={(e)=>setF({...f, banco:e.target.value})}>
+            <option value="">Elija el banco…</option>
+            {bancos.map((b)=>(
+              <option key={b.codigo} value={b.codigo}>{b.codigo} · {b.nombre}</option>))}
+          </select></Campo>
+      )}
 
-      <Campo label="Banco desde el que pagó">
-        <input value={f.banco} placeholder="Banesco"
-          onChange={(e)=>setF({...f, banco:e.target.value})} /></Campo>
+      {pide.telefono && (
+        <Campo label="Teléfono desde el que pagó"
+          ayuda="El que tiene afiliado al pago móvil. Es lo que aparece en el estado de cuenta.">
+          <input className="mono" inputMode="tel" value={f.telefono} placeholder="04121234567"
+            onChange={(e)=>setF({...f, telefono:e.target.value})} /></Campo>
+      )}
+
+      {pide.documento && (
+        <Campo label="Cédula o RIF del que paga"
+          ayuda="Solo los números, sin puntos.">
+          <input className="mono" inputMode="numeric" value={f.documento} placeholder="12345678"
+            onChange={(e)=>setF({...f, documento:e.target.value})} /></Campo>
+      )}
+
+      {pide.correo && (
+        <Campo label="Correo desde el que envió el Zelle">
+          <input type="email" inputMode="email" autoCapitalize="off" value={f.correo}
+            onChange={(e)=>setF({...f, correo:e.target.value})} /></Campo>
+      )}
+
+      {pide.referencia && (
+        <Campo label={f.metodo === "Zelle" ? "Número de confirmación" : "Referencia"}
+          ayuda="El número que le dio el banco. Es lo que permite encontrar su pago.">
+          <input className="mono" inputMode="numeric" value={f.referencia}
+            onChange={(e)=>setF({...f, referencia:e.target.value})} /></Campo>
+      )}
 
       <Campo label="Comprobante"
         ayuda="Foto de la pantalla o PDF del banco. Máximo 5 MB. Solo lo ven usted y su administración.">

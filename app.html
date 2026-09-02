@@ -70,7 +70,10 @@ const PALETAS = [
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-const METODOS = ["Pago móvil", "Transferencia", "Zelle", "Efectivo $", "Bs", "Otro"];
+/* La misma lista que usa la pantalla del residente. Antes había "Efectivo $" y
+   "Bs", que repetían en el método lo que ya dice el campo de moneda. */
+const METODOS = ["Pago móvil", "Transferencia", "Zelle", "Punto de venta",
+                 "Efectivo", "Otro"];
 
 const BOLSILLOS = {
   condominio:     { t: "Condominio",     destinoPago: "condominio" },
@@ -885,6 +888,7 @@ function App() {
     { id: "mes", label: "Cierre del mes", icono: "ReceiptText" },
     { id: "pagos", label: "Pagos", icono: "Wallet" },
     { id: "cortes", label: "Cortes de cuenta", icono: "Send" },
+    { id: "accesos", label: "Accesos", icono: "KeyRound" },
   ];
   const menuBajo = [
     { id: "marca", label: "Marca", icono: "Palette" },
@@ -1079,6 +1083,7 @@ function App() {
                 {vista === "mes" && <CierreMes {...comun} />}
                 {vista === "pagos" && <Pagos {...comun} />}
                 {vista === "cortes" && <Cortes {...comun} />}
+                {vista === "accesos" && <Accesos {...comun} />}
                 {vista === "marca" && <Marca {...comun} setOrg={setOrg} cargarOrgs={cargarOrgs} />}
                 {vista === "ajustes" && <Ajustes {...comun} />}
               </>
@@ -2610,15 +2615,33 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
 /* ══════════════════════════════════════════════════════════════
    PAGOS
    ══════════════════════════════════════════════════════════════ */
+/* Cada método se identifica con datos distintos. Un pago móvil sin el
+   teléfono de origen es casi imposible de ubicar en el estado de cuenta. */
+const PIDE = {
+  "Pago móvil":     { banco:true, telefono:true, documento:true },
+  "Transferencia":  { banco:true },
+  "Zelle":          { correo:true },
+  "Punto de venta": { banco:true },
+};
+
 function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }) {
   const [pagos, setPagos] = useState([]);
   const [filtro, setFiltro] = useState("reportado");
   const [pest, setPest] = useState("registrar");
   const [f, setF] = useState({ unidad: "", fecha: hoyISO(), monto: "", moneda: "USD",
-    metodo: "Pago móvil", destino: "condominio", referencia: "", banco: "" });
+    metodo: "Pago móvil", destino: "condominio", referencia: "", banco: "",
+    telefono: "", documento: "", correo: "" });
   // Tasa del BCV de la fecha del pago. No la elige nadie: la pone la base.
-  const [tasaFecha, setTasaFecha] = useState(null);
+  // { tasa, fecha, propia, fuente } · propia = es la publicada ESE día,
+  // no una heredada de un día anterior.
+  const [tf, setTf] = useState(null);
+  const [huecoTasa, setHuecoTasa] = useState("");
+  const [guardandoTasa, setGuardandoTasa] = useState(false);
   const [ex, setEx] = useState({ unidad: "", monto: "", motivo: "", destino: "condominio" });
+  const [bancos, setBancos] = useState([]);
+  const [comps, setComps] = useState({});      // pago_id → ficha del comprobante
+  const [viendo, setViendo] = useState(null);  // { url, tipo, pago }
+  const [purga, setPurga] = useState(null);
   const [mov, setMov] = useState(null);
   const [mapa, setMapa] = useState(null);
   const [ocupado, setOcupado] = useState(false);
@@ -2630,7 +2653,8 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
     if (!ids.length) return;
     const { data, error } = await sb.from("pagos")
       .select("id,unidad_id,fecha,monto,moneda,tasa_aplicada,monto_usd,metodo,destino," +
-              "referencia,banco,estado,periodo_cierre_id,nota")
+              "referencia,banco,banco_codigo,telefono_origen,documento_origen," +
+              "correo_origen,reportado_por,estado,periodo_cierre_id,nota")
       .in("unidad_id", ids).order("fecha", { ascending: false }).limit(300);
     if (error) return fallo(error);
     setPagos(data);
@@ -2638,20 +2662,79 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
   useEffect(() => { cargar(); }, [ids.length]);
 
   useEffect(() => {
-    let vivo = true;
-    if (f.moneda !== "VES") { setTasaFecha(null); return; }
-    sb.rpc("tasa_del_dia", { p_fecha: f.fecha }).then(({ data }) => {
-      if (vivo) setTasaFecha(data ? Number(data) : null);
-    });
-    return () => { vivo = false; };
+    sb.from("bancos").select("codigo,nombre,corto").eq("activo", true).order("orden")
+      .then(({ data }) => setBancos(data || []));
+  }, []);
+
+  // Fichas de los comprobantes de estas unidades. La imagen no se trae
+  // aquí: se pide una dirección temporal solo cuando alguien la abre.
+  const cargarComprobantes = async () => {
+    if (!ids.length) return;
+    const { data } = await sb.from("comprobantes")
+      .select("id,pago_id,ruta,tipo,bytes,sha256,subido_en,imagen_borrada_en")
+      .in("unidad_id", ids).limit(500);
+    const m = {};
+    (data || []).forEach((c) => { m[c.pago_id] = c; });
+    setComps(m);
+  };
+  useEffect(() => { cargarComprobantes(); }, [ids.length]);
+
+  const verComprobante = async (p) => {
+    const c = comps[p.id];
+    if (!c) return;
+    if (c.imagen_borrada_en)
+      return notificar("La imagen de ese comprobante ya venció y se borró. " +
+                       "Queda su huella digital para comprobarlo.", "error");
+    const { data, error } = await sb.storage.from("comprobantes")
+      .createSignedUrl(c.ruta, 120);
+    if (error) return fallo(error);
+    setViendo({ url: data.signedUrl, tipo: c.tipo, pago: p, ficha: c });
+  };
+
+  // Imágenes vencidas: conciliadas hace más de 3 meses y con el mes ya
+  // cerrado. Se borra el archivo; el pago, su referencia y la huella
+  // del comprobante se quedan para siempre.
+  const purgarVencidos = async () => {
+    const { data, error } = await sb.rpc("comprobantes_caducados");
+    if (error) return fallo(error);
+    if (!data || !data.length) { setPurga(0); return notificar("No hay imágenes vencidas."); }
+    const rutas = data.map((x) => x.ruta);
+    const { error: e2 } = await sb.storage.from("comprobantes").remove(rutas);
+    if (e2) return fallo(e2);
+    for (const x of data) await sb.rpc("marcar_comprobante_borrado", { p_id: x.id });
+    setPurga(data.length);
+    notificar(`${data.length} imágenes vencidas borradas.`);
+    cargarComprobantes();
+  };
+
+  const verTasa = async () => {
+    const { data } = await sb.rpc("tasa_de_esa_fecha", { p_fecha: f.fecha });
+    const r = Array.isArray(data) ? data[0] : data;
+    setTf(r && Number(r.tasa) > 0 ? { ...r, tasa: Number(r.tasa) } : null);
+  };
+  useEffect(() => {
+    if (f.moneda !== "VES") { setTf(null); return; }
+    verTasa();
   }, [f.fecha, f.moneda]);
+
+  const guardarHueco = async () => {
+    const v = num(huecoTasa);
+    if (!v || v <= 0) return notificar("La tasa no se entiende.", "error");
+    setGuardandoTasa(true);
+    const { error } = await sb.rpc("completar_tasa", { p_fecha: f.fecha, p_tasa: v });
+    setGuardandoTasa(false);
+    if (error) return fallo(error);
+    setHuecoTasa("");
+    notificar(`Tasa del ${f.fecha} guardada. Queda registrada a su nombre.`);
+    verTasa();
+  };
 
   const registrar = async () => {
     if (!f.unidad) return notificar("Elija la unidad.", "error");
     const monto = num(f.monto);
     if (monto === null || monto <= 0) return notificar("El monto no se entiende.", "error");
-    if (f.moneda === "VES" && !tasaFecha)
-      return notificar("No hay tasa del BCV cargada para esa fecha ni antes.", "error");
+    if (f.moneda === "VES" && !tf)
+      return notificar("No hay tasa del BCV para esa fecha. Cárguela abajo.", "error");
     setOcupado(true);
     // monto_usd y tasa_aplicada los calcula la base con la tasa del día del
     // pago. Mandarlos desde aquí sería dejar que el navegador decida cuánto
@@ -2660,7 +2743,11 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
       org_id: org.id, unidad_id: f.unidad, fecha: f.fecha, monto,
       moneda: f.moneda, monto_usd: 0, metodo: f.metodo,
       destino: f.destino, referencia: f.referencia.trim() || null,
-      banco: f.banco.trim() || null, estado: "reportado" });
+      banco_codigo: (PIDE[f.metodo] || {}).banco ? (f.banco || null) : null,
+      telefono_origen:  (PIDE[f.metodo] || {}).telefono  ? f.telefono.trim()  : null,
+      documento_origen: (PIDE[f.metodo] || {}).documento ? f.documento.trim() : null,
+      correo_origen:    (PIDE[f.metodo] || {}).correo    ? f.correo.trim()    : null,
+      estado: "reportado" });
     setOcupado(false);
     if (error) return fallo(error);
     setF({ ...f, monto: "", referencia: "" });
@@ -2786,11 +2873,13 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
             </Campo>
             {f.moneda === "VES" && (
               <Campo label="Tasa del BCV de esa fecha"
-                ayuda="La pone el sistema. No se escribe a mano.">
+                ayuda={tf && tf.propia ? (tf.fuente === "dolarapi" ? "publicada ese día" : "cargada a mano")
+                      : tf ? `no hay publicación de ese día: se usa la del ${tf.fecha}`
+                      : "no hay ninguna tasa de ese día ni anterior"}>
                 <div className="mono" style={{ padding: "9px 11px", borderRadius: 8,
                   border: `1px solid ${T.linea}`, background: T.fondo2,
-                  color: tasaFecha ? T.tinta : T.rojo, fontSize: 13.5 }}>
-                  {tasaFecha ? nf(2).format(tasaFecha) : "sin tasa para esa fecha"}
+                  color: tf ? T.tinta : T.rojo, fontSize: 13.5 }}>
+                  {tf ? nf(2).format(tf.tasa) : "sin tasa"}
                 </div>
               </Campo>
             )}
@@ -2808,18 +2897,69 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
             </Campo>
             <Campo label="Referencia"><Entrada mono value={f.referencia}
               onChange={(e) => setF({ ...f, referencia: e.target.value })} /></Campo>
-            <Campo label="Banco" ayuda="Ayuda a distinguir referencias repetidas.">
-              <Entrada value={f.banco} onChange={(e) => setF({ ...f, banco: e.target.value })}
-                placeholder="Banesco" />
-            </Campo>
+            {(PIDE[f.metodo] || {}).banco && (
+              <Campo label="Banco de origen">
+                <Selector value={f.banco} onChange={(e) => setF({ ...f, banco: e.target.value })}>
+                  <option value="">Elija</option>
+                  {bancos.map((b) => (
+                    <option key={b.codigo} value={b.codigo}>{b.codigo} · {b.corto || b.nombre}</option>))}
+                </Selector>
+              </Campo>
+            )}
+            {(PIDE[f.metodo] || {}).telefono && (
+              <Campo label="Teléfono de origen" ayuda="Es lo que aparece en el estado de cuenta.">
+                <Entrada mono value={f.telefono} placeholder="04121234567"
+                  onChange={(e) => setF({ ...f, telefono: e.target.value })} />
+              </Campo>
+            )}
+            {(PIDE[f.metodo] || {}).documento && (
+              <Campo label="Cédula o RIF del que paga">
+                <Entrada mono value={f.documento}
+                  onChange={(e) => setF({ ...f, documento: e.target.value })} />
+              </Campo>
+            )}
+            {(PIDE[f.metodo] || {}).correo && (
+              <Campo label="Correo de origen">
+                <Entrada value={f.correo}
+                  onChange={(e) => setF({ ...f, correo: e.target.value })} />
+              </Campo>
+            )}
           </div>
-          {f.moneda === "VES" && num(f.monto) && tasaFecha && (
+          {f.moneda === "VES" && num(f.monto) && tf && (
             <p style={{ fontSize: 12.5, color: T.tinta2, marginTop: 10 }}>
-              Equivale a <b>{usd(num(f.monto) / tasaFecha)}</b> a la tasa del BCV
-              del {f.fecha}. Vale esa y no la de hoy: si el propietario transfirió
+              Equivale a <b>{usd(num(f.monto) / tf.tasa)}</b> a la tasa del BCV
+              del {tf.fecha}. Vale esa y no la de hoy: si el propietario transfirió
               el lunes y usted concilia el jueves, cobrarle a tasa de jueves sería
               cobrarle de más.
             </p>
+          )}
+
+          {f.moneda === "VES" && (!tf || !tf.propia) && (
+            <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 8,
+              border: `1px solid ${T.linea}`, background: T.fondo2 }}>
+              <div style={{ fontSize: 12.5, color: T.tinta2, marginBottom: 8, lineHeight: 1.55 }}>
+                {tf
+                  ? <>No hay tasa publicada del <b>{f.fecha}</b>. Si fue sábado, domingo o
+                      feriado está bien usar la del {tf.fecha}. Si fue día hábil y usted tiene
+                      la del BCV de ese día, cárguela.</>
+                  : <>No hay ninguna tasa del <b>{f.fecha}</b> ni anterior. Cargue la del BCV
+                      de ese día para poder registrar el pago.</>}
+                <br />
+                <span style={{ color: T.tenue }}>
+                  Solo se puede rellenar un día vacío. Un día que ya tiene tasa no lo cambia
+                  nadie desde aquí. Queda registrado que la cargó usted.
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div style={{ width: 170 }}>
+                  <Entrada mono value={huecoTasa} placeholder="Bs por dólar"
+                    onChange={(e) => setHuecoTasa(e.target.value)} />
+                </div>
+                <Boton tipo="suave" size="s" disabled={guardandoTasa} onClick={guardarHueco}>
+                  Guardar la tasa del {f.fecha}
+                </Boton>
+              </div>
+            </div>
           )}
           <div style={{ marginTop: 16 }}>
             <Boton disabled={ocupado} onClick={registrar}>Registrar como reportado</Boton>
@@ -2965,6 +3105,40 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
         </>
       )}
 
+      {viendo && (
+        <div onClick={() => setViendo(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: T.rp, maxWidth: 760, width: "100%",
+              maxHeight: "92vh", overflow: "auto", padding: 18 }}>
+            <div className="flex justify-between items-start gap-3" style={{ marginBottom: 12 }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>
+                  Comprobante · {codigo(viendo.pago.unidad_id)}</div>
+                <div className="mono" style={{ fontSize: 12, color: T.tenue }}>
+                  {viendo.pago.fecha} · {viendo.pago.metodo}
+                  {viendo.pago.referencia ? ` · ref ${viendo.pago.referencia}` : ""}
+                </div>
+              </div>
+              <Boton size="s" tipo="suave" onClick={() => setViendo(null)}>Cerrar</Boton>
+            </div>
+            {/^image\//.test(viendo.tipo)
+              ? <img src={viendo.url} alt="Comprobante"
+                  style={{ maxWidth: "100%", borderRadius: T.rs, display: "block" }} />
+              : <iframe src={viendo.url} title="Comprobante"
+                  style={{ width: "100%", height: "70vh", border: `1px solid ${T.linea}`,
+                    borderRadius: T.rs }} />}
+            <div style={{ fontSize: 11.5, color: T.tenue, marginTop: 10, wordBreak: "break-all" }}>
+              Huella del archivo: <span className="mono">{viendo.ficha.sha256 || "sin huella"}</span>
+              <br />
+              Sirve para comprobar dentro de dos años que un comprobante que le muestren es
+              exactamente este, aunque la imagen ya se haya borrado.
+            </div>
+          </div>
+        </div>
+      )}
+
       <Tarjeta pad={false}>
         <div style={{ padding: "20px 20px 0" }}>
           <Titulo accion={
@@ -2980,7 +3154,8 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
         <div className="scroll-x">
           <table>
             <thead><tr><th>Fecha</th><th>Unidad</th><th>Método</th><th>Ref.</th>
-              <th>Abona a</th><th style={{ textAlign: "right" }}>USD</th><th>Estado</th><th></th></tr></thead>
+              <th>Origen</th><th>Abona a</th><th style={{ textAlign: "right" }}>USD</th>
+              <th>Estado</th><th></th></tr></thead>
             <tbody>
               {visibles.map((p) => (
                 <tr key={p.id}>
@@ -2990,6 +3165,18 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
                     <div style={{ fontSize: 11.5, color: T.tenue }} className="mono">
                       {bs(p.monto)} a {nf(2).format(p.tasa_aplicada)}</div>}</td>
                   <td className="mono">{p.referencia || "—"}</td>
+                  <td style={{ fontSize: 12 }}>
+                    {p.banco || <span style={{ color: T.tenue }}>—</span>}
+                    {p.telefono_origen && <div className="mono" style={{ color: T.tenue }}>
+                      {p.telefono_origen}</div>}
+                    {p.correo_origen && <div style={{ color: T.tenue }}>{p.correo_origen}</div>}
+                    {comps[p.id] && (
+                      <Boton size="s" tipo="fantasma" style={{ padding: "3px 0", fontSize: 12 }}
+                        onClick={() => verComprobante(p)}>
+                        {comps[p.id].imagen_borrada_en ? "comprobante vencido" : "ver comprobante"}
+                      </Boton>
+                    )}
+                  </td>
                   <td>{BOLSILLOS[p.destino === "honorarios" ? "administracion" : p.destino]?.t}</td>
                   <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{usd(p.monto_usd)}</td>
                   <td>
@@ -3025,6 +3212,234 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
           )}
         </div>
       </Tarjeta>
+
+      <Tarjeta>
+        <Titulo sub="Las imágenes de los comprobantes se borran a los 3 meses de conciliado el pago y con el mes ya cerrado. El pago, su referencia y la huella del archivo se quedan para siempre: la evidencia sobrevive al borrado.">
+          Comprobantes vencidos
+        </Titulo>
+        <div className="flex gap-3 items-center flex-wrap">
+          <Boton tipo="suave" onClick={purgarVencidos}>Borrar las imágenes vencidas</Boton>
+          {purga !== null && (
+            <span style={{ fontSize: 13, color: T.tinta2 }}>
+              {purga === 0 ? "No había ninguna." : `${purga} borradas.`}
+            </span>
+          )}
+        </div>
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ACCESOS · quién entra a cada unidad y qué ve
+   ══════════════════════════════════════════════════════════════ */
+function Accesos({ sb, org, edificio, unidades, notificar, fallo, recargar }) {
+  const [pest, setPest] = useState("invitar");
+  const [f, setF] = useState({ unidad: "", correo: "", relacion: "propietario" });
+  const [codigo, setCodigo] = useState(null);
+  const [invs, setInvs] = useState([]);
+  const [gente, setGente] = useState([]);
+  const [ocupado, setOcupado] = useState(false);
+
+  const cargar = async () => {
+    const a = await sb.rpc("invitaciones_de", { p_org: org.id });
+    if (a.error) return fallo(a.error);
+    setInvs(a.data || []);
+    if (!edificio) return;
+    const b = await sb.rpc("residentes_de", { p_edificio: edificio.id });
+    if (b.error) return fallo(b.error);
+    setGente(b.data || []);
+  };
+  useEffect(() => { cargar(); }, [org.id, edificio?.id]);
+
+  const invitar = async () => {
+    if (!f.unidad) return notificar("Elija la unidad.", "error");
+    if (!/.+@.+\..+/.test(f.correo.trim())) return notificar("Ese correo no se entiende.", "error");
+    setOcupado(true);
+    const { data, error } = await sb.rpc("crear_invitacion", {
+      p_org: org.id, p_correo: f.correo.trim().toLowerCase(), p_rol: "residente",
+      p_edificio: null, p_unidad: f.unidad, p_relacion: f.relacion });
+    setOcupado(false);
+    if (error) return fallo(error);
+    setCodigo({ token: data, correo: f.correo.trim().toLowerCase() });
+    setF({ ...f, correo: "" });
+    cargar();
+  };
+
+  const revocar = async (id) => {
+    const { error } = await sb.rpc("revocar_invitacion", { p_id: id });
+    if (error) return fallo(error);
+    notificar("Invitación revocada."); cargar();
+  };
+
+  const cambiarNivel = async (unidad_id, nivel) => {
+    const { error } = await sb.from("unidades")
+      .update({ inquilino_ve: nivel }).eq("id", unidad_id);
+    if (error) return fallo(error);
+    notificar("Listo. El inquilino de esa unidad ve otra cosa desde ahora.");
+    cargar(); recargar();
+  };
+
+  const darDeBaja = async (id) => {
+    const { error } = await sb.from("membresias").update({ activo: false }).eq("id", id);
+    if (error) return fallo(error);
+    notificar("Esa persona ya no entra a la unidad."); cargar();
+  };
+
+  const copiar = async (t) => {
+    try { await navigator.clipboard.writeText(t); notificar("Copiado."); }
+    catch (e) { notificar("No se pudo copiar. Selecciónelo a mano.", "error"); }
+  };
+
+  const codigoUnidad = (id) => unidades.find((u) => u.id === id)?.codigo || "—";
+
+  return (
+    <div className="grid gap-5">
+      <div className="flex gap-2 flex-wrap">
+        {[["invitar", "Invitar"], ["pendientes", "Invitaciones"],
+          ["gente", "Quién tiene acceso"]].map(([k, t]) => (
+          <Boton key={k} size="s" tipo={pest === k ? "oscuro" : "suave"}
+            onClick={() => setPest(k)}>{t}</Boton>
+        ))}
+      </div>
+
+      {pest === "invitar" && (
+        <>
+          <Tarjeta>
+            <Titulo sub="La invitación queda atada a ese correo y a esa unidad. No sirve para nadie más, aunque alguien consiga el código.">
+              Invitar a un residente
+            </Titulo>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
+              <Campo label="Unidad">
+                <Selector value={f.unidad} onChange={(e) => setF({ ...f, unidad: e.target.value })}>
+                  <option value="">Elija</option>
+                  {unidades.map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
+                </Selector>
+              </Campo>
+              <Campo label="Correo">
+                <Entrada value={f.correo} placeholder="propietario@correo.com"
+                  onChange={(e) => setF({ ...f, correo: e.target.value })} />
+              </Campo>
+              <Campo label="Es el..."
+                ayuda="El inquilino puede ver menos que el propietario. Se configura por unidad.">
+                <Selector value={f.relacion} onChange={(e) => setF({ ...f, relacion: e.target.value })}>
+                  <option value="propietario">Propietario</option>
+                  <option value="inquilino">Inquilino</option>
+                </Selector>
+              </Campo>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <Boton disabled={ocupado} onClick={invitar}>Generar la invitación</Boton>
+            </div>
+          </Tarjeta>
+
+          {codigo && (
+            <Tarjeta>
+              <Titulo sub="Este código se muestra una sola vez. En la base solo queda su huella, así que ni usted lo puede volver a ver. Si se pierde, genere otro.">
+                Código para {codigo.correo}
+              </Titulo>
+              <div className="mono" style={{ padding: "14px 16px", background: T.fondo2,
+                borderRadius: T.rs, border: `1px solid ${T.linea}`, wordBreak: "break-all",
+                fontSize: 14 }}>{codigo.token}</div>
+              <div className="flex gap-2 flex-wrap" style={{ marginTop: 12 }}>
+                <Boton size="s" onClick={() => copiar(codigo.token)}>Copiar el código</Boton>
+                <Boton size="s" tipo="suave" onClick={() => copiar(
+                  `Hola. Para ver su recibo de condominio y reportar sus pagos, entre a ` +
+                  `${location.origin}${location.pathname.replace(/[^/]*$/, "")}residente.html\n\n` +
+                  `Cree su cuenta con el correo ${codigo.correo} y pegue este código:\n${codigo.token}`
+                )}>Copiar el mensaje completo</Boton>
+                <Boton size="s" tipo="fantasma" onClick={() => setCodigo(null)}>Ya lo envié</Boton>
+              </div>
+              <p style={{ fontSize: 12.5, color: T.tenue, marginBottom: 0, marginTop: 12 }}>
+                Vence a los 7 días y se usa una sola vez.
+              </p>
+            </Tarjeta>
+          )}
+        </>
+      )}
+
+      {pest === "pendientes" && (
+        <Tarjeta pad={false}>
+          <div style={{ padding: "20px 20px 0" }}>
+            <Titulo sub="El código no se guarda, solo su huella. Por eso aquí no se puede volver a leer.">
+              Invitaciones
+            </Titulo>
+          </div>
+          <div className="scroll-x">
+            <table>
+              <thead><tr><th>Correo</th><th>Unidad</th><th>Relación</th>
+                <th>Creada</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                {invs.map((i) => (
+                  <tr key={i.id}>
+                    <td>{i.correo}</td>
+                    <td className="mono">{i.unidad || "—"}</td>
+                    <td>{i.relacion || "—"}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>
+                      {String(i.creada_en).slice(0, 10)}</td>
+                    <td>
+                      <Pastilla size="s" tono={i.estado === "aceptada" ? "verde"
+                        : i.estado === "vencida" ? "rojo" : "ambar"}>{i.estado}</Pastilla>
+                    </td>
+                    <td>
+                      {i.estado === "pendiente" && (
+                        <Boton size="s" tipo="suave" onClick={() => revocar(i.id)}>Revocar</Boton>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {invs.length === 0 && (
+            <div style={{ padding: 34, textAlign: "center", color: T.tenue, fontSize: 14 }}>
+              Todavía no ha invitado a nadie.
+            </div>
+          )}
+        </Tarjeta>
+      )}
+
+      {pest === "gente" && (
+        <Tarjeta pad={false}>
+          <div style={{ padding: "20px 20px 0" }}>
+            <Titulo sub="Qué ve el inquilino se decide por unidad, no por persona. El propietario siempre ve todo.">
+              Quién tiene acceso · {edificio?.nombre}
+            </Titulo>
+          </div>
+          <div className="scroll-x">
+            <table>
+              <thead><tr><th>Unidad</th><th>Correo</th><th>Relación</th>
+                <th>Qué ve el inquilino</th><th></th></tr></thead>
+              <tbody>
+                {gente.filter((g) => g.activo).map((g) => (
+                  <tr key={g.membresia_id}>
+                    <td className="mono">{g.unidad}</td>
+                    <td style={{ fontSize: 13 }}>{g.correo}</td>
+                    <td>{g.relacion}</td>
+                    <td>
+                      <Selector value={g.nivel} style={{ fontSize: 13, padding: "7px 9px" }}
+                        onChange={(e) => cambiarNivel(g.unidad_id, e.target.value)}>
+                        <option value="mes">Solo el recibo del mes</option>
+                        <option value="saldo">El recibo y el saldo total</option>
+                        <option value="todo">Todo, igual que el propietario</option>
+                      </Selector>
+                    </td>
+                    <td>
+                      <Boton size="s" tipo="suave" onClick={() => darDeBaja(g.membresia_id)}>
+                        Dar de baja</Boton>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {gente.filter((g) => g.activo).length === 0 && (
+            <div style={{ padding: 34, textAlign: "center", color: T.tenue, fontSize: 14 }}>
+              Nadie tiene acceso todavía en este edificio.
+            </div>
+          )}
+        </Tarjeta>
+      )}
     </div>
   );
 }
