@@ -732,8 +732,21 @@ function Organizaciones({ sb, orgs, onElegir, onRecargar, notificar }) {
 /* ══════════════════════════════════════════════════════════════
    APLICACIÓN
    ══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   CONFIGURACIÓN
+   La URL del proyecto y la clave anon (publishable). Es pública por
+   diseño: lo que protege los datos es la seguridad por fila de la base,
+   no el secreto de la clave. NUNCA poner aquí la service_role.
+   Con esto puesto, la página no le pide nada a nadie al abrirla.
+   ═════════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  url: "https://hdivffuorclzulijkyry.supabase.co",
+  key: "sb_publishable_75OWc-Q0F5PfZK-TG-2C4Q_hN0nam2H",
+};
+
 function App() {
   const [cfg, setCfg] = useState(() => {
+    if (CONFIG.url && CONFIG.key) return CONFIG;
     const u = leerLocal("vecitap_url"), k = leerLocal("vecitap_key");
     return u && k ? { url: u, key: k } : null;
   });
@@ -2314,6 +2327,39 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
     cargarGastos();
   };
 
+  const editarGasto = async (id, campos) => {
+    const { error } = await sb.from("gastos").update(campos).eq("id", id);
+    if (error) return fallo(error);
+    cargarGastos();
+  };
+
+  /* Los gastos comunes agrupados por categoría, con su subtotal y su
+     peso sobre el mes. Una lista plana de cuarenta renglones no deja
+     ver que la mitad del recibo se va en un solo rubro. */
+  const grupos = useMemo(() => {
+    const m = new Map();
+    gastos.filter((g) => g.tipo === "comun").forEach((g) => {
+      const k = g.categoria_id || "__sin__";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(g);
+    });
+    const arr = [...m.entries()].map(([k, lista]) => {
+      const cat = categorias.find((c) => c.id === k);
+      return {
+        id: k,
+        nombre: k === "__sin__" ? "Sin categoría"
+                : (cat ? cat.nombre : "Categoría de otro edificio"),
+        orden: k === "__sin__" ? 9999 : (cat ? (cat.orden ?? 998) : 998),
+        lista,
+        total: lista.reduce((sum, g) => sum + Number(g.monto), 0),
+      };
+    });
+    arr.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre));
+    return arr;
+  }, [gastos, categorias]);
+
+  const directos = gastos.filter((g) => g.tipo === "directo");
+
   /* Las partidas fijas se comparan con lo ya cargado: se agregan las que
      faltan y se rellenan las que están en cero, sin pisar lo editado. */
   const traerFijas = async () => {
@@ -2500,30 +2546,123 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
               )}
             </div>
 
+            {/* Todo lo de esta tabla se edita en el sitio. Se guarda al
+                salir del campo; si algo falla, el aviso lo dice. */}
             <div className="scroll-x">
               <table>
-                <thead><tr><th>Concepto</th><th>Tipo</th><th>Bolsillo</th>
-                  <th style={{ textAlign: "right" }}>Monto</th><th></th></tr></thead>
+                <thead><tr>
+                  <th>Concepto</th><th>Referencia</th><th>Categoría</th>
+                  <th style={{ textAlign: "right", width: 130 }}>Monto</th><th></th>
+                </tr></thead>
                 <tbody>
-                  {gastos.map((g) => (
-                    <tr key={g.id}>
-                      <td>{g.concepto}
-                        {g.referencia && <div style={{ fontSize: 11.5, color: T.tenue }} className="mono">
-                          {g.referencia}</div>}
-                      </td>
-                      <td>{g.tipo === "comun" ? "común"
-                        : `solo ${unidades.find((u) => u.id === g.unidad_id)?.codigo || "—"}`}</td>
-                      <td>{BOLSILLOS[g.bolsillo]?.t || "Condominio"}</td>
-                      <td className="mono" style={{ textAlign: "right" }}>{usd(g.monto)}</td>
-                      <td style={{ width: 34 }}>
-                        <button onClick={() => quitarGasto(g.id)}
-                          style={{ border: "none", background: "transparent", cursor: "pointer", color: T.tenue }}>
-                          <Ic n="Trash2" size={15} />
-                        </button>
-                      </td>
-                    </tr>
+                  {grupos.map((gr) => (
+                    <React.Fragment key={gr.id}>
+                      <tr style={{ background: T.fondo }}>
+                        <td colSpan={3} style={{ fontWeight: 700, fontSize: 13 }}>
+                          {gr.nombre}
+                          <span style={{ fontWeight: 400, color: T.tenue, marginLeft: 8 }}>
+                            {gr.lista.length} {gr.lista.length === 1 ? "partida" : "partidas"}
+                            {comunes > 0 && ` · ${nf(1).format(gr.total / comunes * 100)}% del mes`}
+                          </span>
+                        </td>
+                        <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>
+                          {usd(gr.total)}</td>
+                        <td />
+                      </tr>
+                      {gr.lista.map((g) => (
+                        <tr key={g.id}>
+                          <td>
+                            <Entrada defaultValue={g.concepto} placeholder="Concepto"
+                              onBlur={(x) => x.target.value !== g.concepto &&
+                                editarGasto(g.id, { concepto: x.target.value || "Sin concepto" })} />
+                          </td>
+                          <td>
+                            <Entrada mono defaultValue={g.referencia || ""} placeholder="—"
+                              onBlur={(x) => x.target.value !== (g.referencia || "") &&
+                                editarGasto(g.id, { referencia: x.target.value || null })} />
+                          </td>
+                          <td>
+                            <Selector value={g.categoria_id || ""}
+                              onChange={(x) => editarGasto(g.id,
+                                { categoria_id: x.target.value || null })}>
+                              <option value="">Sin categoría</option>
+                              {categorias.map((c) =>
+                                <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                            </Selector>
+                          </td>
+                          <td>
+                            <Entrada mono defaultValue={String(g.monto)}
+                              style={{ textAlign: "right" }}
+                              onBlur={(x) => num0(x.target.value) !== Number(g.monto) &&
+                                editarGasto(g.id, { monto: num0(x.target.value) })} />
+                          </td>
+                          <td style={{ width: 34 }}>
+                            <button onClick={() => quitarGasto(g.id)}
+                              style={{ border: "none", background: "transparent",
+                                cursor: "pointer", color: T.tenue }}>
+                              <Ic n="Trash2" size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))}
-                  <tr><td colSpan={3} style={{ fontWeight: 700 }}>Gastos comunes del mes</td>
+
+                  {directos.length > 0 && (
+                    <>
+                      <tr style={{ background: T.fondo }}>
+                        <td colSpan={3} style={{ fontWeight: 700, fontSize: 13 }}>
+                          Cargos a una sola unidad
+                          <span style={{ fontWeight: 400, color: T.tenue, marginLeft: 8 }}>
+                            no entran en el reparto</span>
+                        </td>
+                        <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>
+                          {usd(directos.reduce((sum, g) => sum + Number(g.monto), 0))}</td>
+                        <td />
+                      </tr>
+                      {directos.map((g) => (
+                        <tr key={g.id}>
+                          <td>
+                            <Entrada defaultValue={g.concepto}
+                              onBlur={(x) => x.target.value !== g.concepto &&
+                                editarGasto(g.id, { concepto: x.target.value || "Sin concepto" })} />
+                          </td>
+                          <td>
+                            <Entrada mono defaultValue={g.referencia || ""} placeholder="—"
+                              onBlur={(x) => x.target.value !== (g.referencia || "") &&
+                                editarGasto(g.id, { referencia: x.target.value || null })} />
+                          </td>
+                          <td style={{ fontSize: 12.5 }}>
+                            {unidades.find((u) => u.id === g.unidad_id)?.codigo || "—"}
+                            <div style={{ color: T.tenue, fontSize: 11.5 }}>
+                              {BOLSILLOS[g.bolsillo]?.t || "Condominio"}</div>
+                          </td>
+                          <td>
+                            <Entrada mono defaultValue={String(g.monto)}
+                              style={{ textAlign: "right" }}
+                              onBlur={(x) => num0(x.target.value) !== Number(g.monto) &&
+                                editarGasto(g.id, { monto: num0(x.target.value) })} />
+                          </td>
+                          <td style={{ width: 34 }}>
+                            <button onClick={() => quitarGasto(g.id)}
+                              style={{ border: "none", background: "transparent",
+                                cursor: "pointer", color: T.tenue }}>
+                              <Ic n="Trash2" size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
+
+                  {gastos.length === 0 && (
+                    <tr><td colSpan={5} style={{ padding: 26, textAlign: "center",
+                      color: T.tenue, fontSize: 13.5 }}>
+                      Todavía no hay gastos cargados en este mes.</td></tr>
+                  )}
+
+                  <tr style={{ borderTop: `2px solid ${T.lineaFuerte}` }}>
+                    <td colSpan={3} style={{ fontWeight: 700 }}>Gastos comunes del mes</td>
                     <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>{usd(comunes)}</td>
                     <td /></tr>
                 </tbody>
@@ -2882,7 +3021,7 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
                       : tf ? `no hay publicación de ese día: se usa la del ${tf.fecha}`
                       : "no hay ninguna tasa de ese día ni anterior"}>
                 <div className="mono" style={{ padding: "9px 11px", borderRadius: 8,
-                  border: `1px solid ${T.linea}`, background: T.fondo2,
+                  border: `1px solid ${T.linea}`, background: T.fondo,
                   color: tf ? T.tinta : T.rojo, fontSize: 13.5 }}>
                   {tf ? nf(2).format(tf.tasa) : "sin tasa"}
                 </div>
@@ -2941,7 +3080,7 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
 
           {f.moneda === "VES" && (!tf || !tf.propia) && (
             <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 8,
-              border: `1px solid ${T.linea}`, background: T.fondo2 }}>
+              border: `1px solid ${T.linea}`, background: T.fondo }}>
               <div style={{ fontSize: 12.5, color: T.tinta2, marginBottom: 8, lineHeight: 1.55 }}>
                 {tf
                   ? <>No hay tasa publicada del <b>{f.fecha}</b>. Si fue sábado, domingo o
@@ -3343,7 +3482,7 @@ function Accesos({ sb, org, edificio, unidades, notificar, fallo, recargar }) {
               <Titulo sub="Este código se muestra una sola vez. En la base solo queda su huella, así que ni usted lo puede volver a ver. Si se pierde, genere otro.">
                 Código para {codigo.correo}
               </Titulo>
-              <div className="mono" style={{ padding: "14px 16px", background: T.fondo2,
+              <div className="mono" style={{ padding: "14px 16px", background: T.fondo,
                 borderRadius: T.rs, border: `1px solid ${T.linea}`, wordBreak: "break-all",
                 fontSize: 14 }}>{codigo.token}</div>
               <div className="flex gap-2 flex-wrap" style={{ marginTop: 12 }}>
@@ -3709,6 +3848,8 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
     redondeo: String(edificio.tolerancia_redondeo ?? 0.5) });
   const [cats, setCats] = useState([]);
   const [nuevaCat, setNuevaCat] = useState("");
+  const [pegado, setPegado] = useState("");
+  const [catPorOmision, setCatPorOmision] = useState("");
   const [nuevoEd, setNuevoEd] = useState(false);
   const [ocupado, setOcupado] = useState(false);
 
@@ -3737,12 +3878,111 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
     notificar("Edificio actualizado."); recargarEdificios(edificio.id);
   };
 
-  const agregarCat = async () => {
-    if (!nuevaCat.trim()) return;
-    const { error } = await sb.from("categorias").insert({ org_id: org.id,
-      edificio_id: edificio.id, nombre: nuevaCat.trim(), orden: cats.length + 1 });
+  const agregarCat = async (texto) => {
+    // Acepta varias de una vez: pegar una columna de Excel crea todas.
+    const nombres = String(texto ?? nuevaCat)
+      .split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    if (!nombres.length) return;
+    const filas = nombres.map((nombre, i) => ({ org_id: org.id,
+      edificio_id: edificio.id, nombre, orden: cats.length + 1 + i }));
+    const { error } = await sb.from("categorias").insert(filas);
     if (error) return fallo(error);
-    setNuevaCat(""); cargarCats();
+    setNuevaCat("");
+    notificar(nombres.length === 1 ? "Categoría agregada."
+              : `${nombres.length} categorías agregadas.`);
+    cargarCats();
+  };
+
+  /* ── Pegar desde Excel ──────────────────────────────────────────
+     Se acepta lo que sale de una hoja de cálculo tal cual: columnas
+     separadas por tabulación. También punto y coma, barra vertical, o
+     dos espacios seguidos, que es lo que queda al copiar de un PDF.
+
+     El monto es la última columna que sea un número. Lo que queda
+     delante se reparte según cuántas columnas haya, y lo entendido se
+     muestra antes de guardar nada: nadie carga a ciegas 40 partidas. */
+  const partir = (l) =>
+    l.includes("\t") ? l.split("\t")
+    : l.includes(";") ? l.split(";")
+    : l.includes("|") ? l.split("|")
+    : l.split(/\s{2,}/);
+
+  const leido = useMemo(() => {
+    return String(pegado || "").split(/\r?\n/).map((linea) => {
+      const l = linea.trim();
+      if (!l) return null;
+      const cols = partir(l).map((c) => c.trim());
+      const ultimo = cols[cols.length - 1] || "";
+      const monto = num(ultimo.replace(/[^0-9.,\-]/g, ""));
+      let campos = monto === null ? cols.slice() : cols.slice(0, -1);
+      while (campos.length && campos[campos.length - 1] === "") campos.pop();
+
+      // Una sola columna sin monto es el nombre de una categoría
+      if (monto === null && campos.length <= 1) {
+        return { tipo: "categoria", categoria: campos[0] || "", monto: null };
+      }
+      let categoria = "", concepto = "", referencia = "";
+      if (campos.length >= 3)      [categoria, concepto, referencia] = campos;
+      else if (campos.length === 2) [categoria, concepto] = campos;
+      else                          concepto = campos[0] || "";
+      return { tipo: "partida", categoria, concepto, referencia, monto: monto ?? 0 };
+    }).filter(Boolean);
+  }, [pegado]);
+
+  const catPorNombre = (nombre) =>
+    cats.find((c) => c.nombre.trim().toLowerCase() === String(nombre).trim().toLowerCase());
+
+  const problemas = leido.filter((r) => r.tipo === "partida"
+    && !r.categoria && !catPorOmision).length;
+
+  const guardarPegado = async () => {
+    if (!leido.length) return notificar("No hay nada que cargar.", "error");
+    if (problemas) return notificar(
+      "Hay filas sin categoría. Elija una categoría por omisión o agréguela a la fila.", "error");
+
+    setOcupado(true);
+    try {
+      // 1) crear las categorías que no existan
+      const faltan = [];
+      leido.forEach((r) => {
+        const nombre = r.tipo === "categoria" ? r.categoria : r.categoria;
+        if (!nombre) return;
+        if (catPorNombre(nombre)) return;
+        if (faltan.some((x) => x.toLowerCase() === nombre.toLowerCase())) return;
+        faltan.push(nombre);
+      });
+      if (faltan.length) {
+        const { error } = await sb.from("categorias").insert(
+          faltan.map((nombre, i) => ({ org_id: org.id, edificio_id: edificio.id,
+            nombre, orden: cats.length + 1 + i })));
+        if (error) throw error;
+      }
+
+      // 2) releer para tener los identificadores nuevos
+      const { data: frescas, error: e2 } = await sb.from("categorias")
+        .select("id,nombre").eq("edificio_id", edificio.id);
+      if (e2) throw e2;
+      const porNombre = new Map((frescas || []).map((c) =>
+        [c.nombre.trim().toLowerCase(), c.id]));
+
+      // 3) insertar las partidas
+      const partidas = leido.filter((r) => r.tipo === "partida").map((r) => ({
+        org_id: org.id,
+        categoria_id: porNombre.get(String(r.categoria || "").trim().toLowerCase())
+                      || catPorOmision,
+        concepto: r.concepto || "Sin concepto",
+        referencia: r.referencia || null,
+        monto: r.monto || 0,
+      }));
+      if (partidas.length) {
+        const { error } = await sb.from("partidas_fijas").insert(partidas);
+        if (error) throw error;
+      }
+      setPegado("");
+      notificar(`${faltan.length} categorías y ${partidas.length} partidas cargadas.`);
+      cargarCats();
+    } catch (err) { fallo(err); }
+    setOcupado(false);
   };
 
   const agregarPartida = async (catId) => {
@@ -3841,12 +4081,100 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
 
         <div style={{ borderTop: `1px solid ${T.linea}`, paddingTop: 14, marginTop: 14 }}
           className="flex gap-2 flex-wrap items-end">
-          <Campo label="Nueva categoría" ancho="260px">
+          <Campo label="Nueva categoría"
+            ayuda="Puede pegar varias de una vez, una por línea." ancho="260px">
             <Entrada value={nuevaCat} onChange={(x) => setNuevaCat(x.target.value)}
+              onPaste={(x) => {
+                const t = x.clipboardData.getData("text");
+                if (!/\r?\n/.test(t.trim())) return;   // una sola: comportamiento normal
+                x.preventDefault();
+                agregarCat(t);
+              }}
               placeholder="Servicios" />
           </Campo>
-          <Boton tipo="suave" onClick={agregarCat}>Agregar</Boton>
+          <Boton tipo="suave" onClick={() => agregarCat()}>Agregar</Boton>
         </div>
+      </Tarjeta>
+
+      {/* ── Carga masiva desde una hoja de cálculo ───────────────── */}
+      <Tarjeta>
+        <Titulo sub="Copie las filas en Excel o Google Sheets y péguelas aquí. Antes de guardar nada se muestra lo que el sistema entendió.">
+          Pegar categorías y partidas
+        </Titulo>
+
+        <div style={{ fontSize: 12.5, color: T.tinta2, lineHeight: 1.6, marginBottom: 10 }}>
+          El orden de las columnas es <b>Categoría · Concepto · Referencia · Monto</b>.
+          Puede pegar menos columnas:
+          <div className="mono" style={{ fontSize: 12, color: T.tenue, marginTop: 6,
+            background: T.fondo, padding: "10px 12px", borderRadius: T.rs,
+            whiteSpace: "pre", overflowX: "auto" }}>
+{`Servicios      Electricidad   Corpoelec   1.240,50
+Servicios      Agua           Hidroven      380,00
+Personal       Conserje                    1.500,00
+Mantenimiento`}
+          </div>
+          La última columna que sea un número se toma como el monto. Una línea sola,
+          sin monto, se toma como una categoría nueva.
+        </div>
+
+        <textarea rows={7} value={pegado} onChange={(x) => setPegado(x.target.value)}
+          placeholder="Pegue aquí…"
+          style={{ width: "100%", fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontSize: 13, padding: "11px 12px", borderRadius: T.rs,
+            border: `1px solid ${T.lineaFuerte}`, background: "#fff",
+            color: T.tinta, resize: "vertical" }} />
+
+        {leido.length > 0 && (
+          <>
+            <div className="flex gap-3 items-end flex-wrap" style={{ marginTop: 14 }}>
+              <Campo label="Categoría para las filas que no la traigan" ancho="260px">
+                <Selector value={catPorOmision}
+                  onChange={(x) => setCatPorOmision(x.target.value)}>
+                  <option value="">Ninguna</option>
+                  {cats.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </Selector>
+              </Campo>
+              <Boton disabled={ocupado || problemas > 0} onClick={guardarPegado}>
+                Cargar {leido.filter((r) => r.tipo === "partida").length} partidas
+              </Boton>
+            </div>
+
+            {problemas > 0 && (
+              <p style={{ fontSize: 12.5, color: T.rojo, marginTop: 8 }}>
+                {problemas} filas no dicen a qué categoría van. Elija una arriba o
+                agregue la categoría como primera columna.
+              </p>
+            )}
+
+            <div className="scroll-x" style={{ marginTop: 12, maxHeight: 320 }}>
+              <table>
+                <thead><tr><th>Categoría</th><th>Concepto</th><th>Referencia</th>
+                  <th style={{ textAlign: "right" }}>Monto</th><th>Qué se va a hacer</th></tr></thead>
+                <tbody>
+                  {leido.map((r, i) => {
+                    const existe = r.categoria ? catPorNombre(r.categoria) : null;
+                    const sinCat = r.tipo === "partida" && !r.categoria && !catPorOmision;
+                    return (
+                      <tr key={i} style={{ background: sinCat ? "#FBEDEB" : "transparent" }}>
+                        <td>{r.categoria || <span style={{ color: T.tenue }}>—</span>}</td>
+                        <td>{r.tipo === "categoria" ? "" : r.concepto}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{r.referencia || ""}</td>
+                        <td className="mono" style={{ textAlign: "right" }}>
+                          {r.tipo === "categoria" ? "" : usd(r.monto)}</td>
+                        <td style={{ fontSize: 12, color: sinCat ? T.rojo : T.tinta2 }}>
+                          {sinCat ? "falta la categoría"
+                            : r.tipo === "categoria"
+                              ? (existe ? "la categoría ya existe" : "categoría nueva")
+                              : (existe || !r.categoria ? "partida" : "partida · crea la categoría")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </Tarjeta>
 
       {nuevoEd && <NuevoEdificio {...{ sb, org, notificar, fallo, recargarEdificios }}

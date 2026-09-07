@@ -107,8 +107,21 @@ const Etiqueta = ({ e }) => {
     padding: "3px 9px", fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>{x.t}</span>;
 };
 
+/* ═══════════════════════════════════════════════════════════════════
+   CONFIGURACIÓN
+   La URL del proyecto y la clave anon (publishable). Es pública por
+   diseño: lo que protege los datos es la seguridad por fila de la base,
+   no el secreto de la clave. NUNCA poner aquí la service_role.
+   Con esto puesto, la página no le pide nada a nadie al abrirla.
+   ═════════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  url: "https://hdivffuorclzulijkyry.supabase.co",
+  key: "sb_publishable_75OWc-Q0F5PfZK-TG-2C4Q_hN0nam2H",
+};
+
 function App() {
   const [cfg, setCfg] = useState(() => {
+    if (CONFIG.url && CONFIG.key) return CONFIG;
     const u = leerLocal("vecitap_url"), k = leerLocal("vecitap_key");
     return u && k ? { url: u, key: k } : null;
   });
