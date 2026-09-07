@@ -3774,79 +3774,14 @@ ${det.map((cat) => (cat.lineas || []).map((l, i) => `<tr>
 </div></body></html>`;
 }
 
-/* El correo NO lleva el recibo adentro ni adjunto: lleva el aviso y el
-   enlace al portal. Un recibo por correo es un documento suelto que
-   envejece — el propietario paga, y el correo que tiene en la bandeja
-   sigue diciendo que debe. En el portal ve siempre el estado de hoy, y
-   desde ahí reporta el pago con su comprobante.
+/* El correo lo arma la BASE, no esta página. Si lo armara aquí, la
+   vista previa y lo que manda la tarea automática serían dos códigos
+   distintos y tarde o temprano dirían cosas diferentes. Aquí solo se
+   pide y se muestra.
 
-   Este mismo armado es el que va a usar el servidor de envíos cuando
-   esté montado, para que lo que se previsualiza sea lo que llega. */
-function htmlCorreo({ org, edificio, unidad, propietario, periodo, r, enlace }) {
-  const m = (v) => "$ " + nf(2).format(Number(v) || 0);
-  const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const enBs = periodo?.tasa_bcv
-    ? "Bs " + nf(2).format(Number(r.total) * Number(periodo.tasa_bcv)) : "";
-
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;background:#F4F1EC;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#2B2723">
-<div style="max-width:560px;margin:0 auto;padding:24px 18px">
-
-  <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#3F7D5C;font-weight:700">
-    ${esc(org?.nombre || "")}</div>
-  <div style="font-size:19px;font-weight:700;margin:2px 0 18px">${esc(edificio?.nombre || "")}</div>
-
-  <div style="background:#fff;border:1px solid #E4DDD3;border-radius:14px;padding:20px">
-    <p style="margin:0 0 6px;font-size:15px">
-      ${propietario ? esc(propietario) + "," : "Estimado propietario,"}</p>
-    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#6B625A">
-      Ya está disponible el recibo de condominio de <b>${esc(periodo?.etiqueta || "")}</b>
-      para la unidad <b>${esc(unidad?.codigo || "")}</b>.
-    </p>
-
-    <div style="background:#F4F1EC;border-radius:10px;padding:14px 16px;margin-bottom:18px">
-      <div style="font-size:12px;color:#6B625A">Total a pagar</div>
-      <div style="font-size:26px;font-weight:700;font-variant-numeric:tabular-nums">${m(r.total)}</div>
-      ${enBs ? `<div style="font-size:12.5px;color:#9A9089">${enBs} a la tasa de hoy ·
-        se convierte con la del día en que usted pague</div>` : ""}
-      <div style="font-size:12px;color:#9A9089;margin-top:6px">Recibo ${esc(r.numero)}</div>
-    </div>
-
-    <a href="${esc(enlace)}" style="display:block;text-align:center;background:#3F7D5C;
-      color:#fff;text-decoration:none;font-weight:600;font-size:15px;
-      padding:14px 18px;border-radius:10px">Ver mi recibo y reportar mi pago</a>
-
-    <p style="margin:16px 0 0;font-size:12.5px;line-height:1.6;color:#9A9089">
-      Desde ahí ve el desglose completo, su saldo al día de hoy, y puede reportar su pago
-      con la foto del comprobante. Si es la primera vez que entra, use este mismo correo
-      para crear su clave.
-    </p>
-  </div>
-
-  <p style="font-size:11.5px;color:#9A9089;line-height:1.6;margin-top:16px">
-    Este aviso lo envía ${esc(org?.nombre || "su administración")} a través de Vecitap.
-    El monto en bolívares es referencial.
-  </p>
-</div></body></html>`;
-}
-
-function textoCorreo({ org, edificio, unidad, propietario, periodo, r, enlace }) {
-  return `${propietario || "Estimado propietario"},
-
-Ya está disponible el recibo de condominio de ${periodo?.etiqueta || ""} para la unidad ${unidad?.codigo || ""}.
-
-Total a pagar: ${"$ " + nf(2).format(Number(r.total) || 0)}
-Recibo: ${r.numero}
-
-Véalo y reporte su pago aquí:
-${enlace}
-
-Desde ahí ve el desglose completo, su saldo al día de hoy, y puede reportar su pago con la foto del comprobante.
-
-${org?.nombre || ""} · ${edificio?.nombre || ""}`;
-}
+   Tampoco lleva el recibo adjunto: lleva el aviso y el enlace al portal.
+   Un recibo por correo envejece — el propietario paga y el correo que le
+   quedó en la bandeja sigue diciendo que debe. */
 
 function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo, verFicha, recargar }) {
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
@@ -3856,6 +3791,11 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
   const [cargando, setCargando] = useState(false);
   const [previa, setPrevia] = useState(null);
   const [prueba, setPrueba] = useState(null);
+  const [correo, setCorreo] = useState(null);     // lo que devuelve la base
+  const [destinoPrueba, setDestinoPrueba] = useState("");
+  const [envio, setEnvio] = useState(null);       // resumen de la cola
+  const [enviando, setEnviando] = useState(false);
+  const [confirmaEnvio, setConfirmaEnvio] = useState(false);
 
   useEffect(() => { if (!periodoId && cerrados[0]) setPeriodoId(cerrados[0].id); }, [cerrados.length]);
 
@@ -3872,6 +3812,65 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
   }, [periodoId]);
 
   const periodo = cerrados.find((p) => p.id === periodoId);
+
+  const cargarEnvio = async () => {
+    const { data } = await sb.rpc("resumen_correos", { p_org: org.id });
+    setEnvio((Array.isArray(data) ? data[0] : data) || null);
+  };
+  useEffect(() => { cargarEnvio(); }, [org.id, periodoId]);
+
+  /* Encolar y despachar son dos pasos a propósito: encolar deja los
+     correos listos y no se queda esperando a que un servicio de afuera
+     responda. Si el despacho falla, la cola queda y se reintenta sola. */
+  const enviarRecibos = async () => {
+    setEnviando(true);
+    const { data, error } = await sb.rpc("encolar_recibos", { p_periodo: periodoId });
+    if (error) { setEnviando(false); return fallo(error); }
+    const x = Array.isArray(data) ? data[0] : data;
+
+    const d = await sb.rpc("despachar_ahora");
+    setEnviando(false);
+    if (d.error) {
+      notificar(`Se encolaron ${x.encolados} correos, pero el envío falló: ${d.error.message}`, "error");
+    } else if (d.data?.error) {
+      notificar(`Se encolaron ${x.encolados} correos, pero el envío falló: ${d.data.error}`, "error");
+    } else {
+      notificar(`${x.encolados} correos encolados` +
+        (x.sin_correo ? ` · ${x.sin_correo} unidades sin correo` : "") +
+        (x.rebotados ? ` · ${x.rebotados} con dirección rebotada` : "") +
+        (x.ya_estaban ? ` · ${x.ya_estaban} ya se habían enviado` : ""));
+    }
+    cargarEnvio(); recargar && recargar();
+  };
+
+  useEffect(() => {
+    if (prueba === null) { setCorreo(null); return; }
+    const r = recibos.find((x) => x.unidad_id === prueba) || recibos[0];
+    if (!r) return;
+    setCorreo(null);
+    sb.rpc("correo_recibo", { p_recibo: r.id }).then(({ data, error }) => {
+      if (error) return fallo(error);
+      setCorreo((Array.isArray(data) ? data[0] : data) || null);
+    });
+  }, [prueba]);
+
+  const enviarPrueba = async () => {
+    const r = recibos.find((x) => x.unidad_id === prueba) || recibos[0];
+    if (!r) return;
+    if (!/.+@.+\..+/.test(destinoPrueba.trim()))
+      return notificar("Escriba a qué correo mandarla.", "error");
+    setEnviando(true);
+    const { error } = await sb.rpc("encolar_prueba",
+      { p_recibo: r.id, p_destino: destinoPrueba.trim() });
+    if (error) { setEnviando(false); return fallo(error); }
+    const d = await sb.rpc("despachar_ahora");
+    setEnviando(false);
+    if (d.error || d.data?.error)
+      return notificar("Se encoló, pero el envío falló: " +
+        (d.error?.message || d.data.error), "error");
+    notificar(`Prueba enviada a ${destinoPrueba.trim()}. Revise la bandeja y también el spam.`);
+    cargarEnvio();
+  };
 
   const textoDe = (r) => {
     const u = unidades.find((x) => x.id === r.unidad_id);
@@ -3895,16 +3894,6 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
     const p = vigente(u, "propietario");
     return htmlRecibo({ org, edificio, unidad: u, propietario: nombreDe(p),
                         periodo, r });
-  };
-
-  const ENLACE = location.origin + location.pathname.replace(/[^/]*$/, "") + "residente.html";
-
-  const armarCorreo = (r, plano) => {
-    const u = unidades.find((x) => x.id === r.unidad_id);
-    const p = vigente(u, "propietario");
-    const datos = { org, edificio, unidad: u, propietario: nombreDe(p),
-                    periodo, r, enlace: ENLACE };
-    return plano ? textoCorreo(datos) : htmlCorreo(datos);
   };
 
   /* Todos los recibos en un solo documento, uno por página. Es lo que
@@ -3996,6 +3985,10 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
               onClick={() => setPrueba(recibos[0]?.unidad_id || "")}>
               <Ic n="Mail" size={15} /> Probar el correo
             </Boton>
+            <Boton disabled={!recibos.length || enviando}
+              onClick={() => setConfirmaEnvio(true)}>
+              <Ic n="Send" size={15} /> {enviando ? "Enviando…" : "Enviar por correo"}
+            </Boton>
             {periodo && (periodo.enviado_en
               ? <Boton tipo="fantasma" onClick={() => marcarEnviados(false)}>
                   <Ic n="Undo2" size={15} /> Quitar "enviados"</Boton>
@@ -4003,6 +3996,27 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                   <Ic n="Check" size={15} /> Marcar como enviados</Boton>)}
           </div>
         </div>
+        {envio && (envio.pendientes > 0 || envio.enviados > 0 || envio.fallidos > 0) && (
+          <div className="flex gap-4 flex-wrap" style={{ marginTop: 14, padding: "12px 14px",
+            background: T.fondo, borderRadius: T.rs, border: `1px solid ${T.linea}`,
+            fontSize: 13 }}>
+            <span><b className="mono">{envio.enviados}</b> enviados</span>
+            {envio.pendientes > 0 && <span style={{ color: T.ambar }}>
+              <b className="mono">{envio.pendientes}</b> en cola</span>}
+            {envio.fallidos > 0 && <span style={{ color: T.rojo }}>
+              <b className="mono">{envio.fallidos}</b> fallidos</span>}
+            {envio.malos > 0 && <span style={{ color: T.tenue }}>
+              <b className="mono">{envio.malos}</b> direcciones que rebotaron</span>}
+            {envio.ultimo_envio && <span style={{ color: T.tenue }}>
+              último {String(envio.ultimo_envio).slice(0, 16).replace("T", " ")}</span>}
+            <Boton size="s" tipo="fantasma" onClick={async () => {
+              const d = await sb.rpc("despachar_ahora");
+              if (d.error) return fallo(d.error);
+              notificar("Cola despachada."); cargarEnvio();
+            }}>Despachar la cola</Boton>
+          </div>
+        )}
+
         {periodo && (
           <div style={{ marginTop: 14, fontSize: 13, color: T.tinta2 }}>
             {periodo.enviado_en
@@ -4057,7 +4071,7 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                           {p?.personas?.correo && <Boton size="s" tipo="suave"
                             href={`mailto:${p.personas.correo}?subject=${encodeURIComponent(
                               `Su recibo de condominio · ${u?.codigo} · ${periodo?.etiqueta}`)}&body=${
-                              encodeURIComponent(armarCorreo(r, true))}`}>
+                              encodeURIComponent(textoDe(r))}`}>
                             <Ic n="Mail" size={13} /> Correo</Boton>}
                           {!tel && !p?.personas?.correo && (
                             <span style={{ fontSize: 11.5, color: T.ambar }}>
@@ -4078,12 +4092,18 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
         )}
       </Tarjeta>
 
+      {confirmaEnvio && <Confirmar
+        titulo={`Enviar los recibos de ${periodo?.etiqueta || ""}`}
+        texto={`Se le manda un correo a cada propietario que tenga dirección cargada, con el ` +
+               `enlace a su recibo. Las unidades sin correo se saltean y se le dice cuántas ` +
+               `fueron. Un recibo que ya se envió no se manda dos veces.`}
+        boton="Enviar" onSi={() => { setConfirmaEnvio(false); enviarRecibos(); }}
+        onNo={() => setConfirmaEnvio(false)} />}
+
       {prueba !== null && (() => {
         const r = recibos.find((x) => x.unidad_id === prueba) || recibos[0];
         if (!r) return null;
         const u = unidades.find((x) => x.id === r.unidad_id);
-        const p = vigente(u, "propietario");
-        const asunto = `Su recibo de condominio · ${u?.codigo} · ${periodo?.etiqueta}`;
         return (
           <div onClick={() => setPrueba(null)}
             style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)",
@@ -4095,13 +4115,13 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                 <div>
                   <div style={{ fontWeight: 700 }}>Cómo va a llegar el correo</div>
                   <div style={{ fontSize: 12.5, color: T.tenue }}>
-                    Elija una unidad y mírelo con sus datos reales antes de enviar nada.</div>
+                    Esto lo arma la base, es exactamente lo que se manda.</div>
                 </div>
                 <Boton size="s" tipo="suave" onClick={() => setPrueba(null)}>Cerrar</Boton>
               </div>
 
               <div className="flex gap-3 items-end flex-wrap mb-3">
-                <Campo label="Unidad de prueba" ancho="180px">
+                <Campo label="Unidad" ancho="150px">
                   <Selector value={prueba} onChange={(ev) => setPrueba(ev.target.value)}>
                     {recibos.map((x) => {
                       const uu = unidades.find((y) => y.id === x.unidad_id);
@@ -4109,36 +4129,31 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                     })}
                   </Selector>
                 </Campo>
-                <Boton size="s" tipo="suave"
-                  href={`mailto:?subject=${encodeURIComponent("[PRUEBA] " + asunto)}&body=${
-                    encodeURIComponent(armarCorreo(r, true))}`}>
-                  <Ic n="Send" size={14} /> Enviármelo a mí</Boton>
-                <Boton size="s" tipo="suave" onClick={async () => {
-                  try { await navigator.clipboard.writeText(armarCorreo(r, false));
-                        notificar("Correo copiado como HTML."); }
-                  catch (e) { notificar("No se pudo copiar.", "error"); }
-                }}><Ic n="Copy" size={14} /> Copiar el HTML</Boton>
+                <Campo label="Mandar la prueba a" ancho="240px">
+                  <Entrada value={destinoPrueba} placeholder="su-correo@ejemplo.com"
+                    onChange={(ev) => setDestinoPrueba(ev.target.value)} />
+                </Campo>
+                <Boton disabled={enviando} onClick={enviarPrueba}>
+                  <Ic n="Send" size={14} /> {enviando ? "Enviando…" : "Enviar la prueba"}</Boton>
               </div>
 
-              <div style={{ fontSize: 12.5, color: T.tinta2, marginBottom: 6 }}>
-                <b>Asunto:</b> {asunto}<br />
-                <b>Para:</b> {p?.personas?.correo ||
-                  <span style={{ color: T.ambar }}>esa unidad no tiene correo cargado</span>}
-              </div>
-
-              <iframe title="Correo" srcDoc={armarCorreo(r, false)}
-                style={{ width: "100%", height: "58vh", border: `1px solid ${T.linea}`,
-                  borderRadius: T.rs, background: "#fff" }} />
+              {correo ? (
+                <>
+                  <div style={{ fontSize: 12.5, color: T.tinta2, marginBottom: 6 }}>
+                    <b>Asunto:</b> {correo.asunto}<br />
+                    <b>Iría a:</b> {correo.destino ||
+                      <span style={{ color: T.ambar }}>esa unidad no tiene correo cargado</span>}
+                  </div>
+                  <iframe title="Correo" srcDoc={correo.html}
+                    style={{ width: "100%", height: "56vh", border: `1px solid ${T.linea}`,
+                      borderRadius: T.rs, background: "#fff" }} />
+                </>
+              ) : <Cargando />}
 
               <p style={{ fontSize: 12, color: T.tenue, marginTop: 12, lineHeight: 1.6 }}>
-                El correo <b>no lleva el recibo adjunto</b>: lleva el aviso y el enlace al
-                portal. Un recibo por correo envejece — el propietario paga y el correo que
-                quedó en su bandeja sigue diciendo que debe. En el portal ve el estado de
-                hoy y reporta su pago con el comprobante.
-                <br /><br />
-                <b>"Enviármelo a mí"</b> abre su programa de correo con la versión en texto,
-                porque un enlace de correo no puede llevar diseño. El envío con este diseño,
-                a todos y de una vez, necesita el servidor de envíos.
+                La prueba sale por el mismo camino que los envíos de verdad y llega marcada
+                con <b>[PRUEBA]</b> en el asunto. Si no aparece en unos minutos, revise
+                también la carpeta de spam: eso indica que falta afinar el dominio.
               </p>
             </div>
           </div>
