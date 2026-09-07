@@ -399,6 +399,19 @@ function Boton({ children, onClick, tipo = "primario", size = "m", disabled, hre
     : <button onClick={onClick} disabled={disabled} {...props}>{children}</button>;
 }
 
+/* Subir y bajar una fila. Dos flechas y nada más: arrastrar con el
+   ratón no funciona en un teléfono, y aquí se usa el teléfono. */
+const Flechas = ({ onSubir, onBajar }) => {
+  const b = { border: "none", background: "transparent", cursor: "pointer",
+    color: T.tenue, padding: "1px 3px", lineHeight: 1, display: "block" };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
+      <button title="Subir" onClick={onSubir} style={b}><Ic n="ChevronUp" size={14} /></button>
+      <button title="Bajar" onClick={onBajar} style={b}><Ic n="ChevronDown" size={14} /></button>
+    </div>
+  );
+};
+
 const Campo = ({ label, children, ayuda, ancho }) => (
   <label style={{ display: "block", width: ancho || "100%" }}>
     <span style={{ fontSize: 12.5, fontWeight: 500, color: T.tinta2,
@@ -837,7 +850,8 @@ function App() {
         .select("id,nombre,bolsillo,modo,monto,iva,orden,activo,edificio_id")
         .or(`edificio_id.eq.${edificio.id},edificio_id.is.null`).order("orden"),
       sb.from("periodos")
-        .select("id,anio,mes,etiqueta,estado,tasa_bcv,presupuesto,total_gastos,cerrado_en")
+        .select("id,anio,mes,etiqueta,estado,tasa_bcv,presupuesto,total_gastos," +
+                "cerrado_en,enviado_en")
         .eq("edificio_id", edificio.id)
         .order("anio", { ascending: false }).order("mes", { ascending: false }),
     ]);
@@ -944,7 +958,7 @@ function App() {
         .fila-gasto { display: grid; gap: 10px; align-items: end;
           grid-template-columns: minmax(140px,2fr) minmax(110px,1fr) 118px 132px 108px 36px; }
         .fila-partida { display: grid; gap: 8px; align-items: center;
-          grid-template-columns: minmax(140px,2fr) minmax(110px,1fr) 118px 34px; }
+          grid-template-columns: 26px minmax(140px,2fr) minmax(110px,1fr) 118px 34px; }
         @media (max-width: 900px) {
           .lateral { display: none; position: fixed; left: 0; box-shadow: 0 0 40px rgba(73,59,52,.25); }
           .lateral.abierto { display: flex; }
@@ -956,7 +970,9 @@ function App() {
         @media (max-width: 720px) {
           .fila-gasto, .fila-partida { grid-template-columns: 1fr 1fr;
             padding: 12px; background: ${T.fondo}; border-radius: ${T.rs}px; }
-          .fila-gasto > *:first-child, .fila-partida > *:first-child { grid-column: 1 / -1; }
+          .fila-gasto > *:first-child { grid-column: 1 / -1; }
+          .fila-partida > *:first-child { grid-column: 1; }
+          .fila-partida > *:nth-child(2) { grid-column: 2 / -1; }
           .cabecera-fila { display: none !important; }
           .apila-movil { grid-template-columns: 1fr !important; }
           td, th { padding: 10px 11px; font-size: 12.5px; }
@@ -2273,8 +2289,8 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
 
   const cargarGastos = async () => {
     const { data, error } = await sb.from("gastos")
-      .select("id,concepto,referencia,monto,tipo,unidad_id,bolsillo,categoria_id")
-      .eq("periodo_id", periodoAbierto.id).order("creado_en");
+      .select("id,concepto,referencia,monto,tipo,unidad_id,bolsillo,categoria_id,orden")
+      .eq("periodo_id", periodoAbierto.id).order("orden").order("creado_en");
     if (error) return fallo(error);
     setGastos(data);
   };
@@ -2309,8 +2325,11 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
     if (monto === null) return notificar("Falta el monto.", "error");
     if (nuevo.tipo === "directo" && !nuevo.unidad)
       return notificar("Un gasto directo tiene que decir a qué unidad se le carga.", "error");
+    const enEsaCat = gastos.filter((g) =>
+      (g.categoria_id || "") === (nuevo.categoria || ""));
+    const ultimo = Math.max(0, ...enEsaCat.map((g) => g.orden || 0));
     const { error } = await sb.from("gastos").insert({
-      org_id: org.id, periodo_id: periodoAbierto.id,
+      org_id: org.id, periodo_id: periodoAbierto.id, orden: ultimo + 10,
       categoria_id: nuevo.categoria || null,
       concepto: nuevo.concepto.trim() || "Sin concepto",
       referencia: nuevo.referencia.trim() || null, monto,
@@ -2325,6 +2344,32 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
     const { error } = await sb.from("gastos").delete().eq("id", id);
     if (error) return fallo(error);
     cargarGastos();
+  };
+
+  const moverGasto = async (id, arriba) => {
+    const { error } = await sb.rpc("mover_gasto", { p_id: id, p_arriba: arriba });
+    if (error) return fallo(error);
+    cargarGastos();
+  };
+
+  /* Reabrir borra los recibos y los cortes del mes y devuelve los pagos
+     a su estado anterior. La base lo impide si hay meses cerrados
+     posteriores, y pide confirmación aparte si los recibos ya salieron. */
+  const reabrir = async (periodoId, confirmado) => {
+    setOcupado(true);
+    const { error } = await sb.rpc("reabrir_periodo",
+      { p_periodo: periodoId, p_confirmar: !!confirmado });
+    setOcupado(false);
+    if (error) {
+      if (/ya se enviaron/i.test(error.message || "")) {
+        setConfirma({ que: "reabrir_enviado", id: periodoId, texto: error.message });
+        return;
+      }
+      return fallo(error);
+    }
+    setConfirma(null);
+    notificar("Mes reabierto. Los recibos de ese mes se borraron: hay que volver a cerrarlo.");
+    recargar();
   };
 
   const editarGasto = async (id, campos) => {
@@ -2343,6 +2388,7 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
       if (!m.has(k)) m.set(k, []);
       m.get(k).push(g);
     });
+    m.forEach((lista) => lista.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)));
     const arr = [...m.entries()].map(([k, lista]) => {
       const cat = categorias.find((c) => c.id === k);
       return {
@@ -2406,16 +2452,6 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
     if (error) return fallo(error);
     const r = Array.isArray(data) ? data[0] : data;
     notificar(`${periodoAbierto.etiqueta} cerrado: ${r.recibos_emitidos} recibos por ${usd(r.total_facturado)}.`);
-    recargar();
-  };
-
-  const reabrir = async () => {
-    const ult = cerrados[0];
-    setConfirma(null);
-    if (!ult) return;
-    const { error } = await sb.rpc("reabrir_periodo", { p_periodo: ult.id });
-    if (error) return fallo(error);
-    notificar(`${ult.etiqueta} reabierto. Sus recibos quedaron anulados.`);
     recargar();
   };
 
@@ -2572,9 +2608,15 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
                       {gr.lista.map((g) => (
                         <tr key={g.id}>
                           <td>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <Flechas onSubir={() => moverGasto(g.id, true)}
+                                       onBajar={() => moverGasto(g.id, false)} />
+                              <div style={{ flex: 1 }}>
                             <Entrada defaultValue={g.concepto} placeholder="Concepto"
                               onBlur={(x) => x.target.value !== g.concepto &&
                                 editarGasto(g.id, { concepto: x.target.value || "Sin concepto" })} />
+                              </div>
+                            </div>
                           </td>
                           <td>
                             <Entrada mono defaultValue={g.referencia || ""} placeholder="—"
@@ -2714,7 +2756,9 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
               <Ic n="ReceiptText" size={16} /> Cerrar el mes y emitir recibos
             </Boton>
             {cerrados.length > 0 && (
-              <Boton tipo="suave" onClick={() => setConfirma({ que: "reabrir" })}>
+              <Boton tipo="suave" onClick={() => setConfirma({ que: "reabrir",
+                id: cerrados[0].id, etiqueta: cerrados[0].etiqueta,
+                enviado: !!cerrados[0].enviado_en })}>
                 <Ic n="RotateCcw" size={15} /> Reabrir {cerrados[0].etiqueta}
               </Boton>
             )}
@@ -2729,15 +2773,32 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
             <table>
               <thead><tr><th>Mes</th><th style={{ textAlign: "right" }}>Presupuesto</th>
                 <th style={{ textAlign: "right" }}>Gastos</th>
-                <th style={{ textAlign: "right" }}>Tasa</th></tr></thead>
+                <th style={{ textAlign: "right" }}>Tasa</th>
+                <th>Recibos</th><th></th></tr></thead>
               <tbody>
-                {cerrados.slice(0, 12).map((p) => (
+                {cerrados.slice(0, 12).map((p, i) => (
                   <tr key={p.id}>
                     <td>{p.etiqueta}</td>
                     <td className="mono" style={{ textAlign: "right" }}>
                       {p.presupuesto ? usd(p.presupuesto) : "—"}</td>
                     <td className="mono" style={{ textAlign: "right" }}>{usd(p.total_gastos)}</td>
                     <td className="mono" style={{ textAlign: "right" }}>{nf(2).format(p.tasa_bcv)}</td>
+                    <td>
+                      {p.enviado_en
+                        ? <Pastilla size="s" tono="verde">enviados</Pastilla>
+                        : <Pastilla size="s" tono="ambar">sin enviar</Pastilla>}
+                    </td>
+                    <td style={{ width: 110 }}>
+                      {i === 0 ? (
+                        <Boton size="s" tipo="suave" disabled={ocupado}
+                          onClick={() => setConfirma({ que: "reabrir", id: p.id,
+                            etiqueta: p.etiqueta, enviado: !!p.enviado_en })}>
+                          Reabrir</Boton>
+                      ) : (
+                        <span style={{ fontSize: 11.5, color: T.tenue }}>
+                          reabra antes el más reciente</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2746,12 +2807,27 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
         </Tarjeta>
       )}
 
+      {confirma?.que === "reabrir" && <Confirmar
+        titulo={`Reabrir ${confirma.etiqueta}`}
+        texto={"Se borran los recibos y los cortes de ese mes, y los pagos vuelven a quedar " +
+               "sin aplicar. Después hay que volver a cerrarlo. " +
+               (confirma.enviado
+                 ? "OJO: los recibos de este mes YA SE ENVIARON. Los propietarios tienen en la mano un recibo que va a cambiar."
+                 : "Los recibos todavía no se han enviado, así que nadie va a notar el cambio.")}
+        boton="Reabrir el mes" tono={confirma.enviado ? "peligro" : "primario"}
+        onSi={() => reabrir(confirma.id, confirma.enviado)}
+        onNo={() => setConfirma(null)} />}
+
+      {confirma?.que === "reabrir_enviado" && <Confirmar
+        titulo="Este mes ya se envió"
+        texto={confirma.texto + " Si confirma, se borran esos recibos y habrá que emitirlos y enviarlos de nuevo."}
+        boton="Sí, reabrir igual" tono="peligro"
+        onSi={() => reabrir(confirma.id, true)}
+        onNo={() => setConfirma(null)} />}
+
       {confirma?.que === "cerrar" && <Confirmar titulo={`Cerrar ${periodoAbierto.etiqueta}`}
         texto="Se emiten los recibos de todas las unidades activas y se guarda la instantánea de saldos. Se puede reabrir después, pero los recibos emitidos quedarían anulados."
         boton="Cerrar y emitir" onSi={cerrar} onNo={() => setConfirma(null)} />}
-      {confirma?.que === "reabrir" && <Confirmar titulo={`Reabrir ${cerrados[0].etiqueta}`}
-        texto="Se anulan sus recibos y su instantánea. Si ya se los envió a los propietarios, van a tener un documento que dejó de existir."
-        boton="Reabrir" tono="peligro" onSi={reabrir} onNo={() => setConfirma(null)} />}
     </div>
   );
 }
@@ -3597,12 +3673,114 @@ const PLANTILLA = "Hola {nombre}. Le enviamos el estado de cuenta de la unidad {
   "Equivalente: {totalBs} (tasa BCV {tasa})\n\n" +
   "Al transferir, por favor responda con el número de referencia.";
 
-function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo, verFicha }) {
+/* El recibo tal como lo va a ver el propietario. Se arma como una
+   página suelta para poder mostrarla en pantalla y mandarla a imprimir
+   con el mismo código: si la vista previa y lo impreso salieran de dos
+   lugares distintos, tarde o temprano dirían cosas distintas.
+
+   "Guardar como PDF" es la impresión del navegador. Adjuntar el PDF a un
+   correo automático necesita un servidor propio, que todavía no existe. */
+function htmlRecibo({ org, edificio, unidad, propietario, periodo, r }) {
+  const m = (v) => "$ " + nf(2).format(Number(v) || 0);
+  const enBs = (v) => periodo?.tasa_bcv
+    ? "Bs " + nf(2).format(Number(v) * Number(periodo.tasa_bcv)) : "";
+  const lineas = Array.isArray(r.conceptos) ? r.conceptos : [];
+  const det = Array.isArray(r.detalle) ? r.detalle : [];
+  const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+  const fila = (t, v, fuerte) => `<tr${fuerte ? ' class="fuerte"' : ""}>
+      <td>${esc(t)}</td><td class="der">${m(v)}</td></tr>`;
+
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>${esc(r.numero)}</title>
+<style>
+  @page { size: letter; margin: 14mm; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; color: #2B2723;
+         font-size: 12px; margin: 0; }
+  .hoja { max-width: 720px; margin: 0 auto; padding: 18px; }
+  .cab { display: flex; justify-content: space-between; gap: 18px;
+         border-bottom: 2px solid #2B2723; padding-bottom: 12px; margin-bottom: 16px; }
+  h1 { font-size: 17px; margin: 0 0 3px; }
+  .tenue { color: #7A6B61; }
+  .num { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  td, th { padding: 7px 4px; border-bottom: 1px solid #EBE3D6; text-align: left; }
+  th { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #7A6B61; }
+  .der { text-align: right; font-variant-numeric: tabular-nums;
+         font-family: ui-monospace, monospace; }
+  .fuerte td { font-weight: 700; border-top: 2px solid #2B2723; border-bottom: none;
+               font-size: 14px; padding-top: 10px; }
+  .total { background: #FDF7EB; padding: 12px 14px; border-radius: 8px; margin-bottom: 14px;
+           display: flex; justify-content: space-between; align-items: baseline; }
+  .pie { font-size: 10.5px; color: #7A6B61; border-top: 1px solid #EBE3D6;
+         padding-top: 10px; line-height: 1.6; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+       color: #7A6B61; margin: 18px 0 6px; }
+</style></head><body><div class="hoja">
+
+<div class="cab">
+  <div>
+    <h1>${esc(edificio?.nombre || "")}</h1>
+    <div class="tenue">${esc(org?.nombre || "")}${org?.rif ? " · " + esc(org.rif) : ""}</div>
+    ${edificio?.direccion ? `<div class="tenue">${esc(edificio.direccion)}</div>` : ""}
+  </div>
+  <div style="text-align:right">
+    <div class="num" style="font-size:14px;font-weight:700">${esc(r.numero)}</div>
+    <div class="tenue">${esc(periodo?.etiqueta || "")}</div>
+    <div class="tenue">Unidad <b>${esc(unidad?.codigo || "")}</b> ·
+      alícuota <span class="num">${nf(4).format(unidad?.alicuota || 0)}%</span></div>
+    ${propietario ? `<div class="tenue">${esc(propietario)}</div>` : ""}
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>Concepto</th><th class="der">Monto</th></tr></thead>
+  <tbody>
+    ${lineas.map((l) => fila(l.nombre, l.monto)).join("")}
+    ${Number(r.directos) > 0 ? fila("Cargos de la unidad", r.directos) : ""}
+    ${Number(r.anterior) + Number(r.anterior_hon) + Number(r.anterior_serv) > 0
+      ? fila("Saldo del mes anterior",
+             Number(r.anterior) + Number(r.anterior_hon) + Number(r.anterior_serv)) : ""}
+    ${Number(r.a_favor) > 0 ? fila("A favor", -r.a_favor) : ""}
+    ${Number(r.mora) > 0 ? fila("Intereses de mora", r.mora) : ""}
+    ${fila("Total a pagar", r.total, true)}
+  </tbody>
+</table>
+
+<div class="total">
+  <div><b>Total a pagar</b><div class="tenue">
+    ${periodo?.tasa_bcv ? "tasa BCV " + nf(2).format(periodo.tasa_bcv) : ""}</div></div>
+  <div style="text-align:right">
+    <div class="num" style="font-size:19px;font-weight:700">${m(r.total)}</div>
+    <div class="num tenue">${enBs(r.total)}</div>
+  </div>
+</div>
+
+${det.length ? `<h2>En qué se gastó el mes</h2>
+<table><thead><tr><th>Categoría</th><th>Concepto</th>
+  <th class="der">Gasto</th><th class="der">Su parte</th></tr></thead><tbody>
+${det.map((cat) => (cat.lineas || []).map((l, i) => `<tr>
+  <td>${i === 0 ? esc(cat.categoria) : ""}</td>
+  <td>${esc(l.concepto)}${l.referencia ? ` <span class="tenue">${esc(l.referencia)}</span>` : ""}</td>
+  <td class="der">${m(l.monto)}</td><td class="der">${m(l.parte)}</td></tr>`).join("")).join("")}
+</tbody></table>` : ""}
+
+<div class="pie">
+  El monto en bolívares es referencial: la conversión se hace con la tasa del Banco
+  Central del día en que usted pague, no con la de hoy.<br>
+  Emitido el ${new Date().toLocaleDateString("es-VE")} · documento generado por Vecitap.
+</div>
+</div></body></html>`;
+}
+
+function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo, verFicha, recargar }) {
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
   const [periodoId, setPeriodoId] = useState(cerrados[0]?.id || "");
   const [recibos, setRecibos] = useState([]);
   const [plantilla, setPlantilla] = useState(() => leerLocal("vecitap_plantilla") || PLANTILLA);
   const [cargando, setCargando] = useState(false);
+  const [previa, setPrevia] = useState(null);
 
   useEffect(() => { if (!periodoId && cerrados[0]) setPeriodoId(cerrados[0].id); }, [cerrados.length]);
 
@@ -3610,7 +3788,7 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
     if (!periodoId) return;
     setCargando(true);
     sb.from("recibos").select("id,unidad_id,numero,cuota,directos,anterior,a_favor,mora," +
-        "honorario,servicio,anterior_hon,anterior_serv,total,conceptos")
+        "honorario,servicio,anterior_hon,anterior_serv,total,conceptos,detalle")
       .eq("periodo_id", periodoId).then(({ data, error }) => {
         setCargando(false);
         if (error) return fallo(error);
@@ -3635,6 +3813,32 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
       .replace(/{total}/g, usd(t))
       .replace(/{totalBs}/g, periodo?.tasa_bcv ? bs(t * periodo.tasa_bcv) : "—")
       .replace(/{tasa}/g, periodo?.tasa_bcv ? nf(2).format(periodo.tasa_bcv) : "—");
+  };
+
+  const armar = (r) => {
+    const u = unidades.find((x) => x.id === r.unidad_id);
+    const p = vigente(u, "propietario");
+    return htmlRecibo({ org, edificio, unidad: u, propietario: nombreDe(p),
+                        periodo, r });
+  };
+
+  const imprimir = (r) => {
+    const w = window.open("", "_blank");
+    if (!w) return notificar("El navegador bloqueó la ventana. Permita las ventanas emergentes.", "error");
+    w.document.write(armar(r));
+    w.document.close();
+    // Se espera a que las fuentes y el diseño estén listos, si no imprime en blanco
+    w.onload = () => { w.focus(); w.print(); };
+    setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 700);
+  };
+
+  const marcarEnviados = async (enviado) => {
+    const { error } = await sb.rpc("marcar_enviado",
+      { p_periodo: periodoId, p_enviado: enviado });
+    if (error) return fallo(error);
+    notificar(enviado ? "Mes marcado como enviado. Reabrirlo ahora pide confirmación aparte."
+                      : "Se quitó la marca de enviado.");
+    recargar && recargar();
   };
 
   const exportarCSV = () => {
@@ -3681,8 +3885,23 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
             <Boton tipo="suave" onClick={exportarCSV}>
               <Ic n="Download" size={15} /> Exportar el listado
             </Boton>
+            {periodo && (periodo.enviado_en
+              ? <Boton tipo="fantasma" onClick={() => marcarEnviados(false)}>
+                  <Ic n="Undo2" size={15} /> Quitar "enviados"</Boton>
+              : <Boton tipo="suave" onClick={() => marcarEnviados(true)}>
+                  <Ic n="Check" size={15} /> Marcar como enviados</Boton>)}
           </div>
         </div>
+        {periodo && (
+          <div style={{ marginTop: 14, fontSize: 13, color: T.tinta2 }}>
+            {periodo.enviado_en
+              ? <>Marcado como <b>enviado</b> el {String(periodo.enviado_en).slice(0, 10)}.
+                  Desde el cierre del mes, reabrirlo va a pedir una confirmación aparte.</>
+              : <>Todavía <b>sin marcar como enviado</b>. Mientras esté así, el mes se puede
+                  reabrir y corregir sin ceremonia.</>}
+          </div>
+        )}
+
         <div style={{ marginTop: 16 }}>
           <Campo label="Mensaje" ayuda="Entre llaves van los datos que se reemplazan en cada envío.">
             <textarea rows={7} value={plantilla}
@@ -3729,8 +3948,10 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                               `Estado de cuenta · ${u?.codigo} · ${periodo?.etiqueta}`)}&body=${
                               encodeURIComponent(textoDe(r))}`}>
                             <Ic n="Mail" size={13} /> Correo</Boton>}
+                          <Boton size="s" tipo="suave" onClick={() => setPrevia(r)}>
+                            <Ic n="Eye" size={13} /> Vista previa</Boton>
                           <Boton size="s" tipo="fantasma" onClick={() => verFicha(r.unidad_id)}>
-                            Ver</Boton>
+                            Ficha</Boton>
                         </div>
                       </td>
                     </tr>
@@ -3741,6 +3962,55 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
           </div>
         )}
       </Tarjeta>
+
+      {previa && (() => {
+        const u = unidades.find((x) => x.id === previa.unidad_id);
+        const p = vigente(u, "propietario");
+        return (
+          <div onClick={() => setPrevia(null)}
+            style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div onClick={(ev) => ev.stopPropagation()}
+              style={{ background: "#fff", borderRadius: T.rp, maxWidth: 860, width: "100%",
+                maxHeight: "94vh", overflow: "auto", padding: 18 }}>
+              <div className="flex justify-between items-start gap-3 flex-wrap"
+                style={{ marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>
+                    Así lo va a recibir {nombreDe(p) || "el propietario"}</div>
+                  <div className="mono" style={{ fontSize: 12, color: T.tenue }}>
+                    {u?.codigo} · {previa.numero}</div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Boton size="s" onClick={() => imprimir(previa)}>
+                    <Ic n="Printer" size={14} /> Imprimir o guardar PDF</Boton>
+                  <Boton size="s" tipo="suave" onClick={() => setPrevia(null)}>Cerrar</Boton>
+                </div>
+              </div>
+
+              <iframe title="Recibo" srcDoc={armar(previa)}
+                style={{ width: "100%", height: "62vh", border: `1px solid ${T.linea}`,
+                  borderRadius: T.rs, background: "#fff" }} />
+
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>
+                  Mensaje que acompaña al recibo</div>
+                <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, color: T.tinta2,
+                  background: T.fondo, padding: "12px 14px", borderRadius: T.rs,
+                  border: `1px solid ${T.linea}`, margin: 0, fontFamily: "Inter" }}>
+{textoDe(previa)}</pre>
+              </div>
+
+              <p style={{ fontSize: 12, color: T.tenue, marginTop: 12, lineHeight: 1.6 }}>
+                <b>Guardar PDF</b> usa la impresión del navegador: elija "Guardar como PDF"
+                como destino. Adjuntar ese PDF solo a un correo automático necesita un
+                servidor de envíos propio, que todavía no está montado; hoy el PDF se
+                guarda y se adjunta a mano, o se manda el mensaje por WhatsApp.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -3855,10 +4125,14 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
 
   const cargarCats = async () => {
     const { data, error } = await sb.from("categorias")
-      .select("id,nombre,orden,partidas_fijas(id,concepto,referencia,monto)")
+      .select("id,nombre,orden,partidas_fijas(id,concepto,referencia,monto,orden)")
       .eq("edificio_id", edificio.id).order("orden");
     if (error) return fallo(error);
-    setCats(data || []);
+    // El orden de las partidas se acomoda aquí: la consulta anidada no
+    // garantiza el orden de lo que trae dentro.
+    setCats((data || []).map((c) => ({ ...c,
+      partidas_fijas: [...(c.partidas_fijas || [])]
+        .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)) })));
   };
   useEffect(() => { cargarCats(); setE({ nombre: edificio.nombre, rif: edificio.rif || "",
     direccion: edificio.direccion || "", prefijo: edificio.prefijo_recibo,
@@ -3966,8 +4240,9 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
         [c.nombre.trim().toLowerCase(), c.id]));
 
       // 3) insertar las partidas
-      const partidas = leido.filter((r) => r.tipo === "partida").map((r) => ({
+      const partidas = leido.filter((r) => r.tipo === "partida").map((r, i) => ({
         org_id: org.id,
+        orden: (i + 1) * 10,
         categoria_id: porNombre.get(String(r.categoria || "").trim().toLowerCase())
                       || catPorOmision,
         concepto: r.concepto || "Sin concepto",
@@ -3986,8 +4261,17 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
   };
 
   const agregarPartida = async (catId) => {
+    const cat = cats.find((c) => c.id === catId);
+    const ultimo = Math.max(0, ...(cat?.partidas_fijas || []).map((p) => p.orden || 0));
     const { error } = await sb.from("partidas_fijas").insert({ org_id: org.id,
-      categoria_id: catId, concepto: "", referencia: null, monto: 0 });
+      categoria_id: catId, concepto: "", referencia: null, monto: 0,
+      orden: ultimo + 10 });
+    if (error) return fallo(error);
+    cargarCats();
+  };
+
+  const mover = async (fn, id, arriba) => {
+    const { error } = await sb.rpc(fn, { p_id: id, p_arriba: arriba });
     if (error) return fallo(error);
     cargarCats();
   };
@@ -4050,13 +4334,19 @@ function Ajustes({ sb, org, edificio, notificar, fallo, recargar, recargarEdific
         {cats.map((c) => (
           <div key={c.id} style={{ borderTop: `1px solid ${T.linea}`, paddingTop: 14, marginTop: 14 }}>
             <div className="flex items-center justify-between gap-2 flex-wrap" style={{ marginBottom: 10 }}>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>{c.nombre}</span>
+              <div className="flex items-center gap-1">
+                <Flechas onSubir={() => mover("mover_categoria", c.id, true)}
+                         onBajar={() => mover("mover_categoria", c.id, false)} />
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{c.nombre}</span>
+              </div>
               <Boton size="s" tipo="suave" onClick={() => agregarPartida(c.id)}>
                 <Ic n="Plus" size={13} /> Partida
               </Boton>
             </div>
             {(c.partidas_fijas || []).map((p) => (
               <div key={p.id} className="fila-partida" style={{ marginBottom: 8 }}>
+                <Flechas onSubir={() => mover("mover_partida", p.id, true)}
+                         onBajar={() => mover("mover_partida", p.id, false)} />
                 <Entrada defaultValue={p.concepto} placeholder="Concepto"
                   onBlur={(x) => x.target.value !== p.concepto &&
                     editarPartida(p.id, { concepto: x.target.value })} />
