@@ -3774,6 +3774,80 @@ ${det.map((cat) => (cat.lineas || []).map((l, i) => `<tr>
 </div></body></html>`;
 }
 
+/* El correo NO lleva el recibo adentro ni adjunto: lleva el aviso y el
+   enlace al portal. Un recibo por correo es un documento suelto que
+   envejece — el propietario paga, y el correo que tiene en la bandeja
+   sigue diciendo que debe. En el portal ve siempre el estado de hoy, y
+   desde ahí reporta el pago con su comprobante.
+
+   Este mismo armado es el que va a usar el servidor de envíos cuando
+   esté montado, para que lo que se previsualiza sea lo que llega. */
+function htmlCorreo({ org, edificio, unidad, propietario, periodo, r, enlace }) {
+  const m = (v) => "$ " + nf(2).format(Number(v) || 0);
+  const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const enBs = periodo?.tasa_bcv
+    ? "Bs " + nf(2).format(Number(r.total) * Number(periodo.tasa_bcv)) : "";
+
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;background:#F4F1EC;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#2B2723">
+<div style="max-width:560px;margin:0 auto;padding:24px 18px">
+
+  <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#3F7D5C;font-weight:700">
+    ${esc(org?.nombre || "")}</div>
+  <div style="font-size:19px;font-weight:700;margin:2px 0 18px">${esc(edificio?.nombre || "")}</div>
+
+  <div style="background:#fff;border:1px solid #E4DDD3;border-radius:14px;padding:20px">
+    <p style="margin:0 0 6px;font-size:15px">
+      ${propietario ? esc(propietario) + "," : "Estimado propietario,"}</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#6B625A">
+      Ya está disponible el recibo de condominio de <b>${esc(periodo?.etiqueta || "")}</b>
+      para la unidad <b>${esc(unidad?.codigo || "")}</b>.
+    </p>
+
+    <div style="background:#F4F1EC;border-radius:10px;padding:14px 16px;margin-bottom:18px">
+      <div style="font-size:12px;color:#6B625A">Total a pagar</div>
+      <div style="font-size:26px;font-weight:700;font-variant-numeric:tabular-nums">${m(r.total)}</div>
+      ${enBs ? `<div style="font-size:12.5px;color:#9A9089">${enBs} a la tasa de hoy ·
+        se convierte con la del día en que usted pague</div>` : ""}
+      <div style="font-size:12px;color:#9A9089;margin-top:6px">Recibo ${esc(r.numero)}</div>
+    </div>
+
+    <a href="${esc(enlace)}" style="display:block;text-align:center;background:#3F7D5C;
+      color:#fff;text-decoration:none;font-weight:600;font-size:15px;
+      padding:14px 18px;border-radius:10px">Ver mi recibo y reportar mi pago</a>
+
+    <p style="margin:16px 0 0;font-size:12.5px;line-height:1.6;color:#9A9089">
+      Desde ahí ve el desglose completo, su saldo al día de hoy, y puede reportar su pago
+      con la foto del comprobante. Si es la primera vez que entra, use este mismo correo
+      para crear su clave.
+    </p>
+  </div>
+
+  <p style="font-size:11.5px;color:#9A9089;line-height:1.6;margin-top:16px">
+    Este aviso lo envía ${esc(org?.nombre || "su administración")} a través de Vecitap.
+    El monto en bolívares es referencial.
+  </p>
+</div></body></html>`;
+}
+
+function textoCorreo({ org, edificio, unidad, propietario, periodo, r, enlace }) {
+  return `${propietario || "Estimado propietario"},
+
+Ya está disponible el recibo de condominio de ${periodo?.etiqueta || ""} para la unidad ${unidad?.codigo || ""}.
+
+Total a pagar: ${"$ " + nf(2).format(Number(r.total) || 0)}
+Recibo: ${r.numero}
+
+Véalo y reporte su pago aquí:
+${enlace}
+
+Desde ahí ve el desglose completo, su saldo al día de hoy, y puede reportar su pago con la foto del comprobante.
+
+${org?.nombre || ""} · ${edificio?.nombre || ""}`;
+}
+
 function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo, verFicha, recargar }) {
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
   const [periodoId, setPeriodoId] = useState(cerrados[0]?.id || "");
@@ -3781,6 +3855,7 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
   const [plantilla, setPlantilla] = useState(() => leerLocal("vecitap_plantilla") || PLANTILLA);
   const [cargando, setCargando] = useState(false);
   const [previa, setPrevia] = useState(null);
+  const [prueba, setPrueba] = useState(null);
 
   useEffect(() => { if (!periodoId && cerrados[0]) setPeriodoId(cerrados[0].id); }, [cerrados.length]);
 
@@ -3820,6 +3895,35 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
     const p = vigente(u, "propietario");
     return htmlRecibo({ org, edificio, unidad: u, propietario: nombreDe(p),
                         periodo, r });
+  };
+
+  const ENLACE = location.origin + location.pathname.replace(/[^/]*$/, "") + "residente.html";
+
+  const armarCorreo = (r, plano) => {
+    const u = unidades.find((x) => x.id === r.unidad_id);
+    const p = vigente(u, "propietario");
+    const datos = { org, edificio, unidad: u, propietario: nombreDe(p),
+                    periodo, r, enlace: ENLACE };
+    return plano ? textoCorreo(datos) : htmlCorreo(datos);
+  };
+
+  /* Todos los recibos en un solo documento, uno por página. Es lo que
+     permite mandarlos a imprimir o guardarlos como un PDF único
+     mientras no exista el servidor de envíos. */
+  const imprimirTodos = () => {
+    if (!recibos.length) return;
+    const w = window.open("", "_blank");
+    if (!w) return notificar("El navegador bloqueó la ventana. Permita las ventanas emergentes.", "error");
+    const cuerpos = recibos.map((r) => {
+      const html = armar(r);
+      const dentro = html.split("<body>")[1].split("</body>")[0];
+      return `<div style="page-break-after:always">${dentro}</div>`;
+    }).join("");
+    const cabeza = armar(recibos[0]).split("</head>")[0] + "</head>";
+    w.document.write(cabeza + "<body>" + cuerpos + "</body></html>");
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+    setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 900);
   };
 
   const imprimir = (r) => {
@@ -3885,6 +3989,13 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
             <Boton tipo="suave" onClick={exportarCSV}>
               <Ic n="Download" size={15} /> Exportar el listado
             </Boton>
+            <Boton tipo="suave" onClick={imprimirTodos}>
+              <Ic n="Printer" size={15} /> Imprimir los {recibos.length} recibos
+            </Boton>
+            <Boton tipo="suave" disabled={!recibos.length}
+              onClick={() => setPrueba(recibos[0]?.unidad_id || "")}>
+              <Ic n="Mail" size={15} /> Probar el correo
+            </Boton>
             {periodo && (periodo.enviado_en
               ? <Boton tipo="fantasma" onClick={() => marcarEnviados(false)}>
                   <Ic n="Undo2" size={15} /> Quitar "enviados"</Boton>
@@ -3945,9 +4056,13 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                             <Ic n="MessageCircle" size={13} /> WhatsApp</Boton>}
                           {p?.personas?.correo && <Boton size="s" tipo="suave"
                             href={`mailto:${p.personas.correo}?subject=${encodeURIComponent(
-                              `Estado de cuenta · ${u?.codigo} · ${periodo?.etiqueta}`)}&body=${
-                              encodeURIComponent(textoDe(r))}`}>
+                              `Su recibo de condominio · ${u?.codigo} · ${periodo?.etiqueta}`)}&body=${
+                              encodeURIComponent(armarCorreo(r, true))}`}>
                             <Ic n="Mail" size={13} /> Correo</Boton>}
+                          {!tel && !p?.personas?.correo && (
+                            <span style={{ fontSize: 11.5, color: T.ambar }}>
+                              sin correo ni teléfono</span>
+                          )}
                           <Boton size="s" tipo="suave" onClick={() => setPrevia(r)}>
                             <Ic n="Eye" size={13} /> Vista previa</Boton>
                           <Boton size="s" tipo="fantasma" onClick={() => verFicha(r.unidad_id)}>
@@ -3962,6 +4077,73 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
           </div>
         )}
       </Tarjeta>
+
+      {prueba !== null && (() => {
+        const r = recibos.find((x) => x.unidad_id === prueba) || recibos[0];
+        if (!r) return null;
+        const u = unidades.find((x) => x.id === r.unidad_id);
+        const p = vigente(u, "propietario");
+        const asunto = `Su recibo de condominio · ${u?.codigo} · ${periodo?.etiqueta}`;
+        return (
+          <div onClick={() => setPrueba(null)}
+            style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div onClick={(ev) => ev.stopPropagation()}
+              style={{ background: "#fff", borderRadius: T.rp, maxWidth: 720, width: "100%",
+                maxHeight: "94vh", overflow: "auto", padding: 18 }}>
+              <div className="flex justify-between items-start gap-3 flex-wrap mb-3">
+                <div>
+                  <div style={{ fontWeight: 700 }}>Cómo va a llegar el correo</div>
+                  <div style={{ fontSize: 12.5, color: T.tenue }}>
+                    Elija una unidad y mírelo con sus datos reales antes de enviar nada.</div>
+                </div>
+                <Boton size="s" tipo="suave" onClick={() => setPrueba(null)}>Cerrar</Boton>
+              </div>
+
+              <div className="flex gap-3 items-end flex-wrap mb-3">
+                <Campo label="Unidad de prueba" ancho="180px">
+                  <Selector value={prueba} onChange={(ev) => setPrueba(ev.target.value)}>
+                    {recibos.map((x) => {
+                      const uu = unidades.find((y) => y.id === x.unidad_id);
+                      return <option key={x.id} value={x.unidad_id}>{uu?.codigo}</option>;
+                    })}
+                  </Selector>
+                </Campo>
+                <Boton size="s" tipo="suave"
+                  href={`mailto:?subject=${encodeURIComponent("[PRUEBA] " + asunto)}&body=${
+                    encodeURIComponent(armarCorreo(r, true))}`}>
+                  <Ic n="Send" size={14} /> Enviármelo a mí</Boton>
+                <Boton size="s" tipo="suave" onClick={async () => {
+                  try { await navigator.clipboard.writeText(armarCorreo(r, false));
+                        notificar("Correo copiado como HTML."); }
+                  catch (e) { notificar("No se pudo copiar.", "error"); }
+                }}><Ic n="Copy" size={14} /> Copiar el HTML</Boton>
+              </div>
+
+              <div style={{ fontSize: 12.5, color: T.tinta2, marginBottom: 6 }}>
+                <b>Asunto:</b> {asunto}<br />
+                <b>Para:</b> {p?.personas?.correo ||
+                  <span style={{ color: T.ambar }}>esa unidad no tiene correo cargado</span>}
+              </div>
+
+              <iframe title="Correo" srcDoc={armarCorreo(r, false)}
+                style={{ width: "100%", height: "58vh", border: `1px solid ${T.linea}`,
+                  borderRadius: T.rs, background: "#fff" }} />
+
+              <p style={{ fontSize: 12, color: T.tenue, marginTop: 12, lineHeight: 1.6 }}>
+                El correo <b>no lleva el recibo adjunto</b>: lleva el aviso y el enlace al
+                portal. Un recibo por correo envejece — el propietario paga y el correo que
+                quedó en su bandeja sigue diciendo que debe. En el portal ve el estado de
+                hoy y reporta su pago con el comprobante.
+                <br /><br />
+                <b>"Enviármelo a mí"</b> abre su programa de correo con la versión en texto,
+                porque un enlace de correo no puede llevar diseño. El envío con este diseño,
+                a todos y de una vez, necesita el servidor de envíos.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {previa && (() => {
         const u = unidades.find((x) => x.id === previa.unidad_id);
