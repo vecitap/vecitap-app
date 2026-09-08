@@ -483,6 +483,11 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
 }
 
 function Recibo({ u, recibo, falla }) {
+  /* Este estado va arriba de todo: un hook detrás de un return solo se
+     ejecuta a veces, y React tumba la pantalla entera cuando la cuenta
+     le cambia entre un dibujado y otro. */
+  const [abierto, setAbierto] = useState(false);
+
   /* Un error de la base y "todavía no hay recibo" son cosas distintas y
      antes se veían igual. Ahora el error se dice. */
   if (falla) return (
@@ -502,6 +507,7 @@ function Recibo({ u, recibo, falla }) {
     </div></Tarjeta>
   );
   const lineas = Array.isArray(recibo.conceptos) ? recibo.conceptos : [];
+  const det    = Array.isArray(recibo.detalle)   ? recibo.detalle   : [];
   const fila = (t, v, fuerte) => (
     <div className="flex jc-b g3" style={{ padding:"9px 0",
       borderBottom:`1px solid ${T.linea}`, fontWeight: fuerte?700:400 }}>
@@ -533,6 +539,55 @@ function Recibo({ u, recibo, falla }) {
       {Number(recibo.a_favor)  > 0 && fila("A su favor", -recibo.a_favor)}
       {Number(recibo.mora)     > 0 && fila("Intereses de mora", recibo.mora)}
       {fila("Total", recibo.total, true)}
+
+      {recibo.vence_el && (
+        <div style={{ marginTop:12, padding:"10px 12px", borderRadius:9,
+          background:T.ambarBg, color:T.ambar, fontSize:13, fontWeight:600 }}>
+          Vence el {fechaLarga(recibo.vence_el)}
+        </div>
+      )}
+
+      {/* En qué se fue la plata. Es lo primero que pregunta cualquiera
+          que recibe un recibo de condominio, y hasta ahora no estaba. */}
+      {det.length > 0 && (
+        <div style={{ marginTop:16, borderTop:`1px solid ${T.linea}`, paddingTop:14 }}>
+          <button onClick={() => setAbierto(!abierto)}
+            style={{ background:"none", border:"none", padding:0, cursor:"pointer",
+              color:T.tinta, fontSize:14, fontWeight:600, fontFamily:"inherit" }}>
+            {abierto ? "Ocultar" : "Ver"} en qué se gastó este mes
+          </button>
+
+          {abierto && (
+            <div style={{ marginTop:12 }}>
+              <div style={{ fontSize:12.5, color:T.tenue, lineHeight:1.6, marginBottom:12 }}>
+                Su alícuota es {nf(4).format(recibo.alicuota)} %. La columna de la derecha es
+                la parte que le toca de cada gasto.
+              </div>
+              {det.map((cat, i) => (
+                <div key={i} style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:11.5, textTransform:"uppercase",
+                    letterSpacing:".07em", color:T.tenue, fontWeight:700,
+                    marginBottom:6 }}>{cat.categoria}</div>
+                  {(cat.lineas || []).map((l, j) => (
+                    <div key={j} className="flex jc-b g3" style={{ padding:"7px 0",
+                      borderBottom:`1px solid ${T.linea}`, fontSize:13.5 }}>
+                      <span style={{ color:T.tinta2, flex:1, minWidth:0 }}>
+                        {l.concepto}
+                        {l.referencia && <span style={{ color:T.tenue, fontSize:12 }}>
+                          {" · "}{l.referencia}</span>}
+                      </span>
+                      <span className="mono" style={{ color:T.tenue, fontSize:12.5,
+                        whiteSpace:"nowrap" }}>{usd(l.monto)}</span>
+                      <span className="mono" style={{ fontWeight:600,
+                        whiteSpace:"nowrap" }}>{usd(l.parte)}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <p style={{ fontSize:12.5, color:T.tenue, lineHeight:1.6, marginBottom:0, marginTop:14 }}>
         El monto en bolívares es referencial: se convierte a la tasa del Banco Central del
