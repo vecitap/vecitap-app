@@ -2073,17 +2073,34 @@ function DatosUnidad({ sb, org, unidad, prop, inq, notificar, fallo, recargar })
   const [i, setI] = useState(persona(inq));
   const [ocupado, setOcupado] = useState(false);
 
+  /* Al recargar, el formulario tiene que mostrar lo que quedó guardado.
+     Si no, se queda enseñando lo que uno escribió aunque no se grabara. */
+  useEffect(() => { setP(persona(prop)); }, [prop?.id, prop?.enviar_corte, prop?.personas?.id]);
+  useEffect(() => { setI(persona(inq));  }, [inq?.id,  inq?.enviar_corte,  inq?.personas?.id]);
+
   const guardarVinculo = async (tipo, f, actual) => {
     if (!f.nombre.trim()) return;
     const campos = { org_id: org.id, prefijo: f.prefijo || null, nombre: f.nombre.trim(),
       documento: f.documento.trim() || null, telefono: f.telefono.trim() || null,
       correo: f.correo.trim() || null };
     if (actual?.personas?.id) {
-      const { error } = await sb.from("personas").update(campos).eq("id", actual.personas.id);
+      const { data: dp, error } = await sb.from("personas")
+        .update(campos).eq("id", actual.personas.id).select("id");
       if (error) throw error;
-      const { error: e2 } = await sb.from("vinculos")
-        .update({ enviar_corte: f.enviar }).eq("id", actual.id);
+      if (!dp || dp.length === 0)
+        throw new Error("No se pudo guardar los datos del " + tipo + ". Puede ser un permiso.");
+
+      /* Con .select() la base dice cuántas filas cambió. Sin eso, una
+         actualización que no toca ninguna fila se ve igual que una que
+         sí: el interruptor del corte volvía a quedar marcado y nadie
+         se enteraba de que no se había guardado. */
+      const { data: dv, error: e2 } = await sb.from("vinculos")
+        .update({ enviar_corte: !!f.enviar }).eq("id", actual.id).select("id,enviar_corte");
       if (e2) throw e2;
+      if (!dv || dv.length === 0)
+        throw new Error("No se pudo guardar el envío del corte del " + tipo + ".");
+      if (dv[0].enviar_corte !== !!f.enviar)
+        throw new Error("La base guardó otro valor en el envío del corte del " + tipo + ".");
     } else {
       const { data, error } = await sb.from("personas").insert(campos).select("id").single();
       if (error) throw error;
@@ -3948,6 +3965,7 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
   const [previa, setPrevia] = useState(null);
   const [prueba, setPrueba] = useState(null);
   const [correo, setCorreo] = useState(null);     // lo que devuelve la base
+  const [destinos, setDestinos] = useState([]);  // uno por persona
   const [destinoPrueba, setDestinoPrueba] = useState("");
   const [envio, setEnvio] = useState(null);       // resumen de la cola
   const [enviando, setEnviando] = useState(false);
@@ -4000,13 +4018,18 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
   };
 
   useEffect(() => {
-    if (prueba === null) { setCorreo(null); return; }
+    if (prueba === null) { setCorreo(null); setDestinos([]); return; }
     const r = recibos.find((x) => x.unidad_id === prueba) || recibos[0];
     if (!r) return;
     setCorreo(null);
+    /* correo_recibo devuelve una fila por destinatario: al propietario,
+       al inquilino, o a los dos. La vista previa enseña el primero y
+       dice a cuántos va. */
     sb.rpc("correo_recibo", { p_recibo: r.id }).then(({ data, error }) => {
       if (error) return fallo(error);
-      setCorreo((Array.isArray(data) ? data[0] : data) || null);
+      const filas = Array.isArray(data) ? data : (data ? [data] : []);
+      setDestinos(filas);
+      setCorreo(filas[0] || null);
     });
   }, [prueba]);
 
@@ -4210,28 +4233,57 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                 {recibos.map((r) => {
                   const u = unidades.find((x) => x.id === r.unidad_id);
                   const p = vigente(u, "propietario");
-                  const tel = normalizarTel(p?.personas?.telefono);
+                  const q = vigente(u, "inquilino");
+
+                  /* El corte no es solo del dueño. Hay edificios donde
+                     quien paga es el inquilino, y hay dueños que viven
+                     fuera. Se le manda a todo el que esté registrado y
+                     tenga marcado el envío. */
+                  const gente = [
+                    { rol: "Propietario", v: p },
+                    { rol: "Inquilino",   v: q },
+                  ].filter((x) => x.v && x.v.enviar_corte !== false)
+                   .map((x) => ({ ...x,
+                     correo: x.v?.personas?.correo || "",
+                     tel: normalizarTel(x.v?.personas?.telefono) }))
+                   .filter((x) => x.correo || x.tel);
+
+                  const asunto = `Su recibo de condominio · ${u?.codigo} · ${periodo?.etiqueta}`;
                   return (
                     <tr key={r.id}>
                       <td className="mono" style={{ fontWeight: 600 }}>{u?.codigo}</td>
                       <td className="mono" style={{ fontSize: 12 }}>{r.numero}</td>
-                      <td>{nombreDe(p) || <span style={{ color: T.tenue }}>sin registrar</span>}
-                        {p?.personas?.correo && <div style={{ fontSize: 11.5, color: T.tenue }}>
-                          {p.personas.correo}</div>}</td>
+                      <td>
+                        {[{ rol: "Propietario", v: p }, { rol: "Inquilino", v: q }]
+                          .filter((x) => x.v).map((x) => (
+                            <div key={x.rol} style={{ marginBottom: 3 }}>
+                              <span style={{ fontSize: 11, color: T.tenue }}>{x.rol}: </span>
+                              {nombreDe(x.v)}
+                              {x.v.enviar_corte === false &&
+                                <span style={{ fontSize: 11, color: T.tenue }}> · no recibe</span>}
+                              {x.v?.personas?.correo &&
+                                <div style={{ fontSize: 11.5, color: T.tenue }}>{x.v.personas.correo}</div>}
+                            </div>
+                          ))}
+                        {!p && !q && <span style={{ color: T.tenue }}>sin registrar</span>}
+                      </td>
                       <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>{usd(r.total)}</td>
-                      <td style={{ width: 210 }}>
+                      <td style={{ width: 240 }}>
                         <div className="flex gap-1 flex-wrap">
-                          {tel && <Boton size="s" tipo="suave"
-                            href={`https://wa.me/${tel}?text=${encodeURIComponent(textoDe(r))}`}>
-                            <Ic n="MessageCircle" size={13} /> WhatsApp</Boton>}
-                          {p?.personas?.correo && <Boton size="s" tipo="suave"
-                            href={`mailto:${p.personas.correo}?subject=${encodeURIComponent(
-                              `Su recibo de condominio · ${u?.codigo} · ${periodo?.etiqueta}`)}&body=${
-                              encodeURIComponent(textoDe(r))}`}>
-                            <Ic n="Mail" size={13} /> Correo</Boton>}
-                          {!tel && !p?.personas?.correo && (
+                          {gente.map((x) => (
+                            <React.Fragment key={x.rol}>
+                              {x.tel && <Boton size="s" tipo="suave"
+                                href={`https://wa.me/${x.tel}?text=${encodeURIComponent(textoDe(r))}`}>
+                                <Ic n="MessageCircle" size={13} /> {x.rol.slice(0, 4)}.</Boton>}
+                              {x.correo && <Boton size="s" tipo="suave"
+                                href={`mailto:${x.correo}?subject=${encodeURIComponent(asunto)}&body=${
+                                  encodeURIComponent(textoDe(r))}`}>
+                                <Ic n="Mail" size={13} /> {x.rol.slice(0, 4)}.</Boton>}
+                            </React.Fragment>
+                          ))}
+                          {gente.length === 0 && (
                             <span style={{ fontSize: 11.5, color: T.ambar }}>
-                              sin correo ni teléfono</span>
+                              {(p || q) ? "sin correo ni teléfono" : "sin nadie registrado"}</span>
                           )}
                           <Boton size="s" tipo="suave" onClick={() => setPrevia(r)}>
                             <Ic n="Eye" size={13} /> Vista previa</Boton>
@@ -4297,13 +4349,24 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                 <>
                   <div style={{ fontSize: 12.5, color: T.tinta2, marginBottom: 6 }}>
                     <b>Asunto:</b> {correo.asunto}<br />
-                    <b>Iría a:</b> {correo.destino ||
-                      <span style={{ color: T.ambar }}>esa unidad no tiene correo cargado</span>}
+                    <b>Iría a:</b>{" "}
+                    {destinos.map((d, i) => (
+                      <span key={d.destino}>
+                        {i > 0 && " · "}
+                        {d.destino} <span style={{ color: T.tenue }}>({d.rol})</span>
+                      </span>
+                    ))}
                   </div>
                   <iframe title="Correo" srcDoc={correo.html}
                     style={{ width: "100%", height: "56vh", border: `1px solid ${T.linea}`,
                       borderRadius: T.rs, background: "#fff" }} />
                 </>
+              ) : destinos.length === 0 ? (
+                <Aviso tono="ambar" titulo="Esta unidad no le manda correo a nadie">
+                  No hay propietario ni inquilino con correo y con el envío marcado.
+                  Cárguelo en Propietarios, o marque la casilla "enviarle el corte de cuenta".
+                  El botón de prueba de arriba sí funciona: se manda al correo que escriba.
+                </Aviso>
               ) : <Cargando />}
 
               <p style={{ fontSize: 12, color: T.tenue, marginTop: 12, lineHeight: 1.6 }}>

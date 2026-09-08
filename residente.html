@@ -146,7 +146,7 @@ const Tarjeta = ({ children, style, tono }) => (
 const Boton = ({ children, onClick, tono="primario", disabled, tipo, style }) => {
   const c = {
     primario:{ background:T.naranja, color:T.sobreNaranja, border:"1px solid transparent" },
-    suave:{ background:"#fff", color:T.tinta, border:`1px solid ${T.lineaF}` },
+    suave:{ background:T.tarjeta, color:T.tinta, border:`1px solid ${T.lineaF}` },
     fantasma:{ background:"transparent", color:T.tinta2, border:"1px solid transparent" },
   }[tono];
   return <button type={tipo||"button"} onClick={onClick} disabled={disabled}
@@ -414,6 +414,7 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
   const [pest, setPest] = useState("estado");
   const [pagos, setPagos] = useState([]);
   const [recibo, setRecibo] = useState(null);
+  const [falloRecibo, setFalloRecibo] = useState(null);
 
   const cargar = async () => {
     const { data } = await sb.from("pagos")
@@ -423,8 +424,9 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
     // Se pide por función y no por consulta directa: "el último recibo"
     // no se puede resolver por la hora en que se escribió, porque varios
     // meses cerrados en una misma transacción comparten esa marca.
-    const { data: r } = await sb.rpc("mi_recibo", { p_unidad: u.unidad_id });
-    setRecibo((Array.isArray(r) ? r[0] : r) || null);
+    const { data: r, error: er } = await sb.rpc("mi_recibo", { p_unidad: u.unidad_id });
+    if (er) { setFalloRecibo(er.message || String(er)); setRecibo(null); }
+    else { setFalloRecibo(null); setRecibo((Array.isArray(r) ? r[0] : r) || null); }
   };
   useEffect(() => { cargar(); }, [u.unidad_id]);
 
@@ -468,7 +470,7 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
         ))}
       </div>
 
-      {pest === "estado" && <Recibo u={u} recibo={recibo} />}
+      {pest === "estado" && <Recibo u={u} recibo={recibo} falla={falloRecibo} />}
 
       {pest === "reportar" && (
         <Reportar sb={sb} u={u} sesion={sesion} notificar={notificar} fallo={fallo}
@@ -480,11 +482,23 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
   );
 }
 
-function Recibo({ u, recibo }) {
+function Recibo({ u, recibo, falla }) {
+  /* Un error de la base y "todavía no hay recibo" son cosas distintas y
+     antes se veían igual. Ahora el error se dice. */
+  if (falla) return (
+    <Tarjeta><div style={{ color:T.rojo, fontSize:14, lineHeight:1.6 }}>
+      No se pudo traer su recibo. Muéstrele este mensaje a su administración:
+      <div className="mono" style={{ marginTop:8, fontSize:12.5, color:T.tinta2,
+        background:T.papel, padding:10, borderRadius:8 }}>{falla}</div>
+    </div></Tarjeta>
+  );
   if (!recibo) return (
     <Tarjeta><div style={{ color:T.tinta2, fontSize:14, lineHeight:1.6 }}>
-      Todavía no hay ningún recibo emitido para esta unidad. Aparece aquí en cuanto su
-      administración cierre el mes.
+      {u.recibo_numero
+        ? <>Su recibo <b className="mono">{u.recibo_numero}</b> de {u.recibo_periodo} existe,
+            pero esta pantalla no logró traer el detalle. Avísele a su administración.</>
+        : <>Todavía no hay ningún recibo emitido para esta unidad. Aparece aquí en cuanto su
+            administración cierre el mes.</>}
     </div></Tarjeta>
   );
   const lineas = Array.isArray(recibo.conceptos) ? recibo.conceptos : [];
