@@ -482,6 +482,86 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
   );
 }
 
+/* Versión en papel del recibo. Se arma como documento aparte y se manda
+   a imprimir: en el diálogo de impresión, tanto en computadora como en
+   teléfono, la opción "Guardar como PDF" está siempre. Así el residente
+   se queda con su comprobante sin que tengamos que generar el PDF. */
+function papelRecibo(u, r) {
+  const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+  const m = (v) => "$ " + nf(2).format(Number(v) || 0);
+  const det = Array.isArray(r.detalle) ? r.detalle : [];
+  const con = Array.isArray(r.conceptos) ? r.conceptos : [];
+
+  const fila = (t, v, fuerte) =>
+    `<tr${fuerte ? ' class="f"' : ""}><td>${esc(t)}</td><td class="d">${m(v)}</td></tr>`;
+
+  const resumen = [
+    ...con.map((l) => fila(l.nombre, l.monto)),
+    Number(r.directos) > 0 ? fila("Cargos de su unidad", r.directos) : "",
+    Number(r.anterior) > 0 ? fila("Saldo del mes anterior", r.anterior) : "",
+    Number(r.a_favor)  > 0 ? fila("A su favor", -r.a_favor) : "",
+    Number(r.mora)     > 0 ? fila("Intereses de mora", r.mora) : "",
+    fila("Total", r.total, true),
+  ].join("");
+
+  const desglose = det.map((cat) => `
+    <div class="cat">${esc(cat.categoria)}</div>
+    <table>${(cat.lineas || []).map((l) => `<tr>
+      <td>${esc(l.concepto)}${l.referencia ? ' <span class="ref">· ' + esc(l.referencia) + "</span>" : ""}</td>
+      <td class="d ref">${m(l.monto)}</td>
+      <td class="d">${m(l.parte)}</td></tr>`).join("")}</table>`).join("");
+
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>${esc(r.numero)}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;color:#111144;margin:28px;font-size:12px}
+  h1{font-size:17px;margin:0 0 2px}
+  .sub{color:#3D3D6B;font-size:11px;margin-bottom:16px}
+  .caja{border:1px solid #DAD1C8;background:#F4F1EC;border-radius:8px;
+        padding:12px 14px;margin-bottom:16px;display:flex;
+        justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .et{font-size:10px;color:#66668A;text-transform:uppercase;letter-spacing:.06em}
+  .val{font-size:15px;font-weight:700}
+  table{border-collapse:collapse;width:100%;margin-bottom:6px}
+  td{padding:7px 8px;border-bottom:1px solid #E4DED4;vertical-align:top}
+  .d{text-align:right;white-space:nowrap}
+  .f td{font-weight:700;border-top:2px solid #111144;border-bottom:none;font-size:13px}
+  .cat{font-size:10px;text-transform:uppercase;letter-spacing:.07em;
+       color:#66668A;font-weight:700;margin:14px 0 4px}
+  .ref{color:#66668A;font-size:11px}
+  h2{font-size:12px;margin:22px 0 4px;border-top:1px solid #DAD1C8;padding-top:14px}
+  .pie{margin-top:22px;color:#66668A;font-size:10px;line-height:1.6;
+       border-top:1px solid #E4DED4;padding-top:10px}
+  @media print{ body{margin:14mm} }
+</style></head><body>
+<h1>${esc(r.edificio || u.edificio)} · ${esc(u.codigo)}</h1>
+<div class="sub">Recibo ${esc(r.numero)} · ${esc(r.etiqueta)} · alícuota ${nf(4).format(r.alicuota || u.alicuota)} %</div>
+
+<div class="caja">
+  <div><div class="et">Total a pagar</div><div class="val">${m(r.total)}</div></div>
+  ${Number(r.tasa_bcv) > 0 ? `<div><div class="et">Referencial en bolívares</div>
+    <div class="val">Bs ${nf(2).format(Number(r.total) * Number(r.tasa_bcv))}</div>
+    <div class="ref">tasa ${nf(2).format(r.tasa_bcv)}</div></div>` : ""}
+  ${r.vence_el ? `<div><div class="et">Vence</div>
+    <div class="val">${esc(fechaLarga(r.vence_el))}</div></div>` : ""}
+</div>
+
+<table>${resumen}</table>
+
+${desglose ? `<h2>En qué se gastó este mes</h2>
+<div class="ref" style="margin-bottom:8px">La columna de la derecha es la parte que le toca según su alícuota.</div>
+${desglose}` : ""}
+
+<div class="pie">
+  El monto en bolívares es referencial: se convierte a la tasa del Banco Central del día en
+  que usted pague, no a la de hoy. Emitido por ${esc(u.organizacion || "")} a través de Vecitap.
+</div>
+<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
+</body></html>`;
+}
+
 function Recibo({ u, recibo, falla }) {
   /* Este estado va arriba de todo: un hook detrás de un return solo se
      ejecuta a veces, y React tumba la pantalla entera cuando la cuenta
@@ -588,6 +668,22 @@ function Recibo({ u, recibo, falla }) {
           )}
         </div>
       )}
+
+      <div style={{ marginTop:16 }}>
+        <Boton tono="suave" style={{ width:"100%" }}
+          onClick={() => {
+            const w = window.open("", "_blank");
+            if (!w) return;
+            w.document.write(papelRecibo(u, recibo));
+            w.document.close();
+          }}>
+          Descargar o imprimir mi recibo
+        </Boton>
+        <div style={{ fontSize:12, color:T.tenue, marginTop:6, lineHeight:1.5 }}>
+          Se abre listo para imprimir. En el mismo cuadro puede elegir
+          «Guardar como PDF».
+        </div>
+      </div>
 
       <p style={{ fontSize:12.5, color:T.tenue, lineHeight:1.6, marginBottom:0, marginTop:14 }}>
         El monto en bolívares es referencial: se convierte a la tasa del Banco Central del
