@@ -260,6 +260,14 @@ async function obtenerTasaOficial() {
     ? "La consulta tardó demasiado" : "No se pudo obtener la tasa");
 }
 
+/* Solo el día, sin hora y sin zona horaria: new Date("2026-10-15") se
+   interpreta como medianoche UTC y en Caracas mostraría el 14. */
+function fechaDia(iso) {
+  if (!iso) return "";
+  const [a, m, d] = String(iso).slice(0, 10).split("-");
+  return a && m && d ? `${d}/${m}/${a}` : "";
+}
+
 function fechaCorta(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -3853,98 +3861,217 @@ const PLANTILLA = "Hola {nombre}. Le enviamos el estado de cuenta de la unidad {
 
    "Guardar como PDF" es la impresión del navegador. Adjuntar el PDF a un
    correo automático necesita un servidor propio, que todavía no existe. */
-function htmlRecibo({ org, edificio, unidad, propietario, periodo, r }) {
-  const m = (v) => "$ " + nf(2).format(Number(v) || 0);
-  const enBs = (v) => periodo?.tasa_bcv
-    ? "Bs " + nf(2).format(Number(v) * Number(periodo.tasa_bcv)) : "";
-  const lineas = Array.isArray(r.conceptos) ? r.conceptos : [];
-  const det = Array.isArray(r.detalle) ? r.detalle : [];
-  const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+/* ═══════════════════════════════════════════════════════════════════
+   RECIBO EN PAPEL · una sola plantilla para la aplicación y el portal
+   ─────────────────────────────────────────────────────────────────
+   Decisiones de diseño, para que nadie las deshaga sin querer:
 
-  const fila = (t, v, fuerte) => `<tr${fuerte ? ' class="fuerte"' : ""}>
-      <td>${esc(t)}</td><td class="der">${m(v)}</td></tr>`;
+   · Todo va dentro de una <table> con <thead>. Es la única forma que
+     respetan todos los navegadores para REPETIR EL ENCABEZADO cuando
+     el recibo se pasa a una segunda hoja.
+   · El desglose va a dos columnas. Un edificio con 25 partidas cabía
+     en dos hojas con una sola columna y cabe en una con dos.
+   · Los cortes de categoría llevan break-inside: avoid, así una
+     categoría no se parte por la mitad entre columnas ni entre hojas.
+   · print-color-adjust: exact para que los fondos de marca salgan
+     impresos; sin eso el navegador los blanquea "para ahorrar tinta".
+   ═════════════════════════════════════════════════════════════════ */
+function htmlRecibo(d) {
+  const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const nf = (n) => new Intl.NumberFormat("es-VE",
+    { minimumFractionDigits: n, maximumFractionDigits: n });
+  const m = (v) => "$ " + nf(2).format(Number(v) || 0);
+  const r = d.recibo || {};
+  const det = Array.isArray(r.detalle) ? r.detalle : [];
+  const con = Array.isArray(r.conceptos) ? r.conceptos : [];
+  const base = (typeof location !== "undefined")
+    ? String(location.href).replace(/[^/]*$/, "") : "";
+
+  const linea = (t, v, cls) =>
+    `<tr class="${cls || ""}"><td>${esc(t)}</td><td class="d">${m(v)}</td></tr>`;
+
+  const resumen = [
+    ...con.map((l) => linea(l.nombre, l.monto)),
+    Number(r.directos) > 0 ? linea("Cargos de su unidad", r.directos) : "",
+    Number(r.anterior) > 0 ? linea("Saldo del mes anterior", r.anterior) : "",
+    Number(r.a_favor)  > 0 ? linea("A su favor", -r.a_favor) : "",
+    Number(r.mora)     > 0 ? linea("Intereses de mora", r.mora) : "",
+    linea("Total", r.total, "tot"),
+  ].join("");
+
+  /* Con pocas partidas, dos columnas dejan la hoja medio vacía y cada
+     concepto apretado en la mitad del ancho. El desglose decide solo:
+     hasta 14 renglones va a todo el ancho, de ahí en adelante a dos
+     columnas. El corte no es un capricho: 14 renglones a una columna
+     ocupan más o menos lo mismo que 28 a dos, y por debajo de eso la
+     página se ve rota. */
+  const renglones = det.reduce((n, c) => n + 1 + (c.lineas || []).length, 0);
+  const anchoCompleto = renglones <= 14;
+
+  const desglose = det.map((cat) => `<div class="cat">
+      <div class="cn">${esc(cat.categoria)}</div>
+      <table class="dt">${(cat.lineas || []).map((l) => `<tr>
+        <td class="c">${esc(l.concepto)}${l.referencia
+          ? `<span class="rf"> · ${esc(l.referencia)}</span>` : ""}</td>
+        <td class="d gr">${m(l.monto)}</td>
+        <td class="d pa">${m(l.parte)}</td></tr>`).join("")}</table>
+    </div>`).join("");
+
+  const cab = `
+    <div class="cab">
+      <div class="cab-i">
+        ${d.logoOrg ? `<img class="logo-org" src="${esc(d.logoOrg)}" alt="">` : ""}
+        <div>
+          <div class="ed">${esc(d.edificio || "")}</div>
+          <div class="or">${esc(d.rif ? "RIF " + d.rif + " · " : "")}${esc(d.organizacion || "")}</div>
+        </div>
+      </div>
+      <div class="cab-d">
+        <div class="et">Recibo</div>
+        <div class="nu">${esc(r.numero || "")}</div>
+        <div class="or">${esc(r.etiqueta || "")}</div>
+      </div>
+    </div>
+    <div class="uni">
+      <div><span class="et">Unidad</span><div class="ud">${esc(d.unidad || "")}</div></div>
+      <div><span class="et">Alícuota</span><div class="uv">${nf(4).format(r.alicuota || 0)} %</div></div>
+      ${d.propietario ? `<div class="pr"><span class="et">Propietario</span>
+        <div class="uv">${esc(d.propietario)}</div></div>` : ""}
+    </div>`;
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
-<title>${esc(r.numero)}</title>
+<title>${esc(r.numero || "Recibo")}</title>
 <style>
-  @page { size: letter; margin: 14mm; }
-  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; color: #2B2723;
-         font-size: 12px; margin: 0; }
-  .hoja { max-width: 720px; margin: 0 auto; padding: 18px; }
-  .cab { display: flex; justify-content: space-between; gap: 18px;
-         border-bottom: 2px solid #2B2723; padding-bottom: 12px; margin-bottom: 16px; }
-  h1 { font-size: 17px; margin: 0 0 3px; }
-  .tenue { color: #7A6B61; }
-  .num { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-  td, th { padding: 7px 4px; border-bottom: 1px solid #DAD1C8; text-align: left; }
-  th { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #7A6B61; }
-  .der { text-align: right; font-variant-numeric: tabular-nums;
-         font-family: ui-monospace, monospace; }
-  .fuerte td { font-weight: 700; border-top: 2px solid #2B2723; border-bottom: none;
-               font-size: 14px; padding-top: 10px; }
-  .total { background: #F4F1EC; padding: 12px 14px; border-radius: 8px; margin-bottom: 14px;
-           display: flex; justify-content: space-between; align-items: baseline; }
-  .pie { font-size: 10.5px; color: #7A6B61; border-top: 1px solid #DAD1C8;
-         padding-top: 10px; line-height: 1.6; }
-  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
-       color: #7A6B61; margin: 18px 0 6px; }
-</style></head><body><div class="hoja">
+  @page { size: Letter; margin: 12mm 13mm 10mm; }
+  *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+  html,body{ margin:0; padding:0 }
+  body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+        color:#111144; font-size:9.5pt; line-height:1.35 }
 
-<div class="cab">
-  <div>
-    <h1>${esc(edificio?.nombre || "")}</h1>
-    <div class="tenue">${esc(org?.nombre || "")}${org?.rif ? " · " + esc(org.rif) : ""}</div>
-    ${edificio?.direccion ? `<div class="tenue">${esc(edificio.direccion)}</div>` : ""}
+  .hoja{ width:100%; border-collapse:collapse }
+  .hoja > thead{ display:table-header-group }
+  .hoja > thead > tr > td,
+  .hoja > tbody > tr > td{ padding:0; border:0 }
+
+  /* ── Encabezado, se repite en cada hoja ── */
+  .cab{ display:flex; justify-content:space-between; align-items:flex-start;
+        gap:16px; padding-bottom:9px; border-bottom:2.5px solid #111144 }
+  .cab-i{ display:flex; align-items:center; gap:10px }
+  .logo-org{ max-height:34px; max-width:120px }
+  .ed{ font-size:15pt; font-weight:700; letter-spacing:-.01em; line-height:1.1 }
+  .or{ font-size:8pt; color:#66668A; margin-top:1px }
+  .cab-d{ text-align:right; white-space:nowrap }
+  .et{ font-size:6.7pt; text-transform:uppercase; letter-spacing:.1em;
+       color:#66668A; font-weight:700; display:block }
+  .nu{ font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+       font-size:11pt; font-weight:700; letter-spacing:-.02em }
+
+  .uni{ display:flex; gap:26px; padding:8px 0 10px; border-bottom:1px solid #E4DED4 }
+  .ud{ font-size:15pt; font-weight:700; line-height:1.1;
+       font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+  .uv{ font-size:10pt; font-weight:600; line-height:1.25; margin-top:2px }
+  .pr{ max-width:52% }
+
+  /* ── Cifra principal ── */
+  .plata{ display:flex; align-items:stretch; gap:0; margin:11px 0 12px;
+          border:1.5px solid #111144; border-radius:9px; overflow:hidden }
+  .plata > div{ padding:9px 13px; flex:1 }
+  .plata > div + div{ border-left:1px solid #DAD1C8 }
+  .plata .fuerte{ background:#111144; color:#F4F1EC; flex:0 0 34% }
+  .plata .fuerte .et{ color:#9BACD8 }
+  .cifra{ font-size:19pt; font-weight:700; letter-spacing:-.02em; line-height:1.15;
+          font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+  .cifra-s{ font-size:12pt; white-space:nowrap; font-weight:700; line-height:1.2;
+            font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+  .nota-t{ font-size:7.4pt; color:#66668A; margin-top:2px }
+  .vence{ color:#8A5A00 }
+
+  /* ── Resumen ── */
+  table.res{ width:100%; border-collapse:collapse; margin-bottom:13px }
+  table.res td{ padding:5px 0; border-bottom:1px solid #E4DED4; font-size:9.5pt }
+  table.res td.d{ text-align:right; white-space:nowrap;
+                  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+  table.res tr.tot td{ font-weight:700; font-size:11pt; border-bottom:0;
+                       border-top:1.5px solid #111144; padding-top:7px }
+
+  /* ── Desglose a dos columnas ── */
+  h2{ font-size:8.5pt; text-transform:uppercase; letter-spacing:.1em;
+      margin:0 0 2px; font-weight:700 }
+  .ayuda{ font-size:7.8pt; color:#66668A; margin:0 0 8px }
+  .cols{ column-count:2; column-gap:20px; column-rule:1px solid #E4DED4 }
+  /* Pocas partidas: una sola columna a todo el ancho, con el renglón
+     un poco más suelto porque sobra sitio. */
+  .cols.uno{ column-count:1 }
+  .cols.uno table.dt td{ padding:3.4px 0; font-size:9pt }
+  .cols.uno table.dt td.gr{ font-size:8.3pt }
+  .cols.uno .cn{ font-size:7.4pt; padding-bottom:3px; margin-bottom:3px }
+  .cols.uno .cat{ margin-bottom:12px }
+  .cols.uno table.dt td.c{ padding-right:14px }
+  .cat{ break-inside:avoid; page-break-inside:avoid; margin-bottom:9px }
+  .cn{ font-size:7pt; text-transform:uppercase; letter-spacing:.09em;
+       color:#F98513; font-weight:700; padding-bottom:2px;
+       border-bottom:1px solid #DAD1C8; margin-bottom:2px }
+  table.dt{ width:100%; border-collapse:collapse }
+  table.dt td{ padding:2.2px 0; font-size:8.3pt; vertical-align:top }
+  table.dt td.c{ padding-right:6px }
+  table.dt td.d{ text-align:right; white-space:nowrap;
+                 font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+  table.dt td.gr{ color:#8B8BAA; font-size:7.8pt; padding-right:7px }
+  table.dt td.pa{ font-weight:600 }
+  .rf{ color:#8B8BAA; font-size:7.4pt }
+
+  /* ── Pie ── */
+  .pie{ margin-top:14px; padding-top:8px; border-top:1px solid #DAD1C8;
+        display:flex; justify-content:space-between; align-items:flex-end; gap:18px }
+  .pie p{ margin:0; font-size:7.4pt; color:#66668A; line-height:1.5; max-width:74% }
+  .marca{ text-align:right; white-space:nowrap }
+  .marca span{ font-size:6.5pt; color:#8B8BAA; letter-spacing:.05em;
+               display:block; margin-bottom:2px }
+  .marca img{ height:15px }
+  .marca b{ font-size:9pt; color:#111144 }
+</style></head><body>
+
+<table class="hoja"><thead><tr><td>${cab}</td></tr></thead>
+<tbody><tr><td>
+
+  <div class="plata">
+    <div class="fuerte">
+      <span class="et">Total a pagar</span>
+      <div class="cifra">${m(r.total)}</div>
+    </div>
+    ${Number(r.tasa_bcv) > 0 ? `<div>
+      <span class="et">Referencial en bolívares</span>
+      <div class="cifra-s">Bs ${nf(2).format(Number(r.total) * Number(r.tasa_bcv))}</div>
+      <div class="nota-t">tasa ${nf(2).format(r.tasa_bcv)} · se convierte con la del día en que pague</div>
+    </div>` : ""}
+    ${d.vence ? `<div>
+      <span class="et">Vence</span>
+      <div class="cifra-s vence">${esc(d.vence)}</div>
+      <div class="nota-t">después de esa fecha corre mora</div>
+    </div>` : ""}
   </div>
-  <div style="text-align:right">
-    <div class="num" style="font-size:14px;font-weight:700">${esc(r.numero)}</div>
-    <div class="tenue">${esc(periodo?.etiqueta || "")}</div>
-    <div class="tenue">Unidad <b>${esc(unidad?.codigo || "")}</b> ·
-      alícuota <span class="num">${nf(4).format(unidad?.alicuota || 0)}%</span></div>
-    ${propietario ? `<div class="tenue">${esc(propietario)}</div>` : ""}
+
+  <table class="res">${resumen}</table>
+
+  ${desglose ? `<h2>En qué se gastó este mes</h2>
+  <p class="ayuda">A la izquierda el gasto completo del edificio; a la derecha la parte que
+     le toca según su alícuota.</p>
+  <div class="cols${anchoCompleto ? " uno" : ""}">${desglose}</div>` : ""}
+
+  <div class="pie">
+    <p>El monto en bolívares es referencial: se convierte a la tasa del Banco Central del día
+       en que usted pague, no a la de hoy.${d.organizacion
+       ? " Emitido por " + esc(d.organizacion) + "." : ""}</p>
+    <div class="marca">
+      <span>powered by</span>
+      <img src="${base}logo-claro.png" alt="Vecitap"
+           onerror="this.outerHTML='<b>vecitap</b>'">
+    </div>
   </div>
-</div>
 
-<table>
-  <thead><tr><th>Concepto</th><th class="der">Monto</th></tr></thead>
-  <tbody>
-    ${lineas.map((l) => fila(l.nombre, l.monto)).join("")}
-    ${Number(r.directos) > 0 ? fila("Cargos de la unidad", r.directos) : ""}
-    ${Number(r.anterior) + Number(r.anterior_hon) + Number(r.anterior_serv) > 0
-      ? fila("Saldo del mes anterior",
-             Number(r.anterior) + Number(r.anterior_hon) + Number(r.anterior_serv)) : ""}
-    ${Number(r.a_favor) > 0 ? fila("A favor", -r.a_favor) : ""}
-    ${Number(r.mora) > 0 ? fila("Intereses de mora", r.mora) : ""}
-    ${fila("Total a pagar", r.total, true)}
-  </tbody>
-</table>
-
-<div class="total">
-  <div><b>Total a pagar</b><div class="tenue">
-    ${periodo?.tasa_bcv ? "tasa BCV " + nf(2).format(periodo.tasa_bcv) : ""}</div></div>
-  <div style="text-align:right">
-    <div class="num" style="font-size:19px;font-weight:700">${m(r.total)}</div>
-    <div class="num tenue">${enBs(r.total)}</div>
-  </div>
-</div>
-
-${det.length ? `<h2>En qué se gastó el mes</h2>
-<table><thead><tr><th>Categoría</th><th>Concepto</th>
-  <th class="der">Gasto</th><th class="der">Su parte</th></tr></thead><tbody>
-${det.map((cat) => (cat.lineas || []).map((l, i) => `<tr>
-  <td>${i === 0 ? esc(cat.categoria) : ""}</td>
-  <td>${esc(l.concepto)}${l.referencia ? ` <span class="tenue">${esc(l.referencia)}</span>` : ""}</td>
-  <td class="der">${m(l.monto)}</td><td class="der">${m(l.parte)}</td></tr>`).join("")).join("")}
-</tbody></table>` : ""}
-
-<div class="pie">
-  El monto en bolívares es referencial: la conversión se hace con la tasa del Banco
-  Central del día en que usted pague, no con la de hoy.<br>
-  Emitido el ${new Date().toLocaleDateString("es-VE")} · documento generado por Vecitap.
-</div>
-</div></body></html>`;
+</td></tr></tbody></table>
+</body></html>`;
 }
 
 /* El correo lo arma la BASE, no esta página. Si lo armara aquí, la
@@ -4071,8 +4198,17 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
   const armar = (r) => {
     const u = unidades.find((x) => x.id === r.unidad_id);
     const p = vigente(u, "propietario");
-    return htmlRecibo({ org, edificio, unidad: u, propietario: nombreDe(p),
-                        periodo, r });
+    const q = vigente(u, "inquilino");
+    return htmlRecibo({
+      edificio: edificio?.nombre,
+      organizacion: org?.nombre,
+      rif: edificio?.rif,
+      logoOrg: org?.logo_url || "",
+      unidad: u?.codigo,
+      propietario: nombreDe(p) || nombreDe(q),
+      vence: fechaDia(r.vence_el),
+      recibo: { ...r, etiqueta: periodo?.etiqueta },
+    });
   };
 
   /* Todos los recibos en un solo documento, uno por página. Es lo que
