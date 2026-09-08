@@ -15,6 +15,11 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
   * { box-sizing: border-box; }
+  /* Valores por omisión del acento: la pantalla de entrar se dibuja
+     antes de que la aplicación emita los suyos, y sin esto el botón
+     principal salía sin fondo. */
+  :root { --acento:#F98513; --acento-suave:#FDEDDC;
+          --acento-sobre:#111144; --acento-texto:#8A4A00; }
   body { margin: 0; background: #F4F1EC; }
   #raiz { min-height: 100vh; }
   /* Utilidades mínimas. El prototipo usaba Tailwind; aquí van solo las
@@ -35,7 +40,17 @@
 <div id="raiz"></div>
 
 <script type="text/babel" data-type="module" data-presets="react">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+/* La biblioteca de Supabase se carga desde un CDN. Antes venía con
+   import estático: si ese CDN fallaba, el módulo entero moría y la
+   página quedaba en blanco, sin una sola pista de qué pasó. Ahora se
+   carga a mano y, si no llega, se dice. */
+let createClient = null;
+let fallaCDN = null;
+try {
+  ({ createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'));
+} catch (e) {
+  fallaCDN = e;
+}
 const { useState, useEffect, useMemo, useRef, createElement } = React;
 
 /* ══════════════════════════════════════════════════════════════
@@ -4793,7 +4808,23 @@ function NuevoEdificio({ sb, org, notificar, fallo, recargarEdificios, onCerrar 
 }
 
 /* ══════════════════════════════════════════════════════════════ */
-ReactDOM.createRoot(document.getElementById("raiz")).render(<App />);
+
+/* Si el CDN no cargó, se explica en vez de dejar la pantalla vacía. */
+if (!createClient) {
+  document.getElementById("raiz").innerHTML =
+    '<div style="font-family:system-ui;max-width:520px;margin:14vh auto;padding:24px;' +
+    'background:#fff;border-radius:14px;color:#111144;line-height:1.6">' +
+    '<h1 style="font-size:19px;margin:0 0 10px">No se pudo cargar la aplicación</h1>' +
+    '<p style="margin:0 0 10px">Falta una biblioteca que se descarga de internet ' +
+    '(cdn.jsdelivr.net). Suele ser un corte momentáneo o una red que la bloquea.</p>' +
+    '<p style="margin:0 0 10px">Pruebe recargar con Ctrl+Shift+R. Si sigue igual, ' +
+    'intente desde otra red o desde el teléfono con datos.</p>' +
+    '<p style="margin:0;font-size:12px;color:#66668A">Detalle: ' +
+    String((fallaCDN && fallaCDN.message) || fallaCDN) + '</p></div>';
+} else {
+  ReactDOM.createRoot(document.getElementById("raiz")).render(<App />);
+}
+
 </script>
 </body>
 </html>
