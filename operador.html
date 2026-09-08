@@ -119,6 +119,18 @@ const estado = (e) => {
                 suspendida: C.rojoBg }[e] || "transparent";
   return { t: ESTADOS_T[e] || ESTADOS_T.cancelada, col, bg };
 };
+/* El logo va como archivo al lado del HTML. Si no está, cae al nombre. */
+const LogoVecitap = ({ alto = 24, tema, style }) => {
+  const [falla, setFalla] = useState(false);
+  if (falla) return (
+    <span style={{ fontWeight:700, fontSize: alto*0.72, color:C.texto,
+      letterSpacing:"-.01em", ...style }}>vecitap</span>
+  );
+  return <img src={tema === "claro" ? "logo-claro.png" : "logo-oscuro.png"}
+    alt="Vecitap" onError={() => setFalla(true)}
+    style={{ height: alto, width:"auto", display:"block", ...style }} />;
+};
+
 const PLANES = { mensual: "Mensual", trimestral: "Trimestral", anual: "Anual" };
 const DESCUENTO = { mensual: 0, trimestral: 10, anual: 20 };
 
@@ -319,9 +331,10 @@ function App() {
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 18px" }}>
       <header className="flex items-end justify-between gap-4 flex-wrap mb-6">
         <div>
+          <LogoVecitap alto={22} tema={tema} style={{ marginBottom: 8 }} />
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".14em",
             color: C.acento, marginBottom: 3 }}>Consola del operador</div>
-          <h1 style={{ fontSize: 23, fontWeight: 700, margin: 0 }}>Cartera de Vecitap</h1>
+          <h1 style={{ fontSize: 23, fontWeight: 700, margin: 0 }}>Cartera</h1>
           <p style={{ fontSize: 12, color: C.tenue, margin: "3px 0 0" }}>
             {sesion.user.email} · esta pantalla no la ve ningún cliente
           </p>

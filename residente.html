@@ -103,6 +103,19 @@ const ponerTema = (n) => {
 };
 ponerTema(leerTema());
 
+/* El logo va como archivo al lado del HTML. Si no está, cae al nombre
+   escrito y la página no se rompe. */
+const LogoVecitap = ({ alto = 24, tema, style }) => {
+  const [falla, setFalla] = useState(false);
+  if (falla) return (
+    <span style={{ fontWeight:700, fontSize: alto*0.72, color:T.tinta,
+      letterSpacing:"-.01em", ...style }}>vecitap</span>
+  );
+  return <img src={tema === "oscuro" ? "logo-oscuro.png" : "logo-claro.png"}
+    alt="Vecitap" onError={() => setFalla(true)}
+    style={{ height: alto, width:"auto", display:"block", ...style }} />;
+};
+
 const nf = (d=2) => new Intl.NumberFormat("es-VE",{minimumFractionDigits:d,maximumFractionDigits:d});
 const usd = (v) => "$ " + nf(2).format(Number(v)||0);
 const bs  = (v) => "Bs " + nf(2).format(Number(v)||0);
@@ -226,8 +239,7 @@ function App() {
     <div style={{ maxWidth:640, margin:"0 auto", padding:"18px 16px 60px" }}>
       <header className="flex ai-s jc-b g3 mb4">
         <div>
-          <div style={{ fontSize:11, textTransform:"uppercase", letterSpacing:".14em",
-            color:T.tinta, fontWeight:700, marginBottom:3 }}>Vecitap</div>
+          <LogoVecitap alto={22} tema={tema} style={{ marginBottom:6 }} />
           <h1 style={{ fontSize:21, margin:0, fontWeight:700 }}>Mi condominio</h1>
           <div style={{ fontSize:12.5, color:T.tenue, marginTop:3 }}>{sesion.user.email}</div>
         </div>
@@ -317,8 +329,7 @@ function Entrar({ sb, aviso, notificar, fallo }) {
   return (
     <Centro>
       <Tarjeta>
-        <div style={{ fontSize:11, textTransform:"uppercase", letterSpacing:".14em",
-          color:T.tinta, fontWeight:700, marginBottom:4 }}>Vecitap</div>
+        <LogoVecitap alto={30} tema={leerTema()} style={{ marginBottom:14 }} />
         <h2 style={{ margin:"0 0 4px", fontSize:19 }}>
           {modo === "entrar" ? "Entrar" : "Crear mi cuenta"}</h2>
         <p style={{ color:T.tinta2, fontSize:13.5, lineHeight:1.6, marginTop:0 }}>

@@ -410,6 +410,22 @@ const icono = (n) => (p) => <Ic n={n} {...p} />;
 /* ══════════════════════════════════════════════════════════════
    PIEZAS DE INTERFAZ  (del prototipo, sin cambios de diseño)
    ══════════════════════════════════════════════════════════════ */
+
+/* El logo va como archivo al lado del HTML, no incrustado: son 33 KB
+   que no tienen por qué viajar dentro de cada página. Si el archivo no
+   está, cae al nombre escrito y no se rompe nada. */
+const LogoVecitap = ({ alto = 26, tema, style }) => {
+  const [falla, setFalla] = useState(false);
+  if (falla) return (
+    <span style={{ fontFamily: "Poppins", fontWeight: 700, fontSize: alto * 0.76,
+      color: T.tinta, letterSpacing: "-.01em", ...style }}>vecitap</span>
+  );
+  return (
+    <img src={tema === "oscuro" ? "logo-oscuro.png" : "logo-claro.png"}
+      alt="Vecitap" onError={() => setFalla(true)}
+      style={{ height: alto, width: "auto", display: "block", ...style }} />
+  );
+};
 const Tarjeta = ({ children, className = "", pad = true, style }) => (
   <div className={className} style={{
     background: T.lienzo, borderRadius: T.r, boxShadow: T.sombra,
@@ -723,12 +739,8 @@ function Entrar({ sb, notificar }) {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
       justifyContent: "center", padding: 20, background: T.fondo }}>
       <Tarjeta style={{ maxWidth: 440, width: "100%", padding: 28 }}>
-        <div className="flex items-center gap-3 mb-5">
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: A.base,
-            display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Ic n="Building2" size={19} style={{ color: A.sobre }} />
-          </div>
-          <span style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 19 }}>Vecitap</span>
+        <div className="mb-5">
+          <LogoVecitap alto={34} tema={leerTema()} />
         </div>
         <div className="grid gap-3">
           <Campo label="Correo">
@@ -837,6 +849,13 @@ function App() {
 
   const [vista, setVista] = useState("inicio");
   const [tema, setTema] = useState(leerTema);
+
+  /* Este efecto tiene que quedar ARRIBA de los returns condicionales de
+     más abajo. Un hook detrás de un return solo se ejecuta en algunos
+     dibujados, React cuenta hooks distintos entre uno y otro y tumba
+     todo el árbol: la pantalla queda en blanco sin decir nada. Es
+     exactamente lo que pasó al entrar con sesión iniciada. */
+  useEffect(() => { try { document.body.style.background = T.fondo; } catch (e) {} }, [tema]);
   const [aviso, setAviso] = useState(null);
   const [fichaDe, setFichaDe] = useState(null);
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -985,8 +1004,6 @@ function App() {
     recargar: cargarEdificio, recargarEdificios: cargarEdificios,
     setVista, verFicha: setFichaDe };
 
-  useEffect(() => { try { document.body.style.background = T.fondo; } catch (e) {} }, [tema]);
-
   return (
     <div style={{ background: T.fondo, minHeight: "100vh", color: T.tinta }}>
       <style>{`
@@ -1120,6 +1137,10 @@ function App() {
                 background: "transparent", color: T.tinta2 }}>
               <Ic n="LogOut" size={17} /> Salir
             </button>
+
+            <div style={{ padding: "16px 12px 4px", opacity: .75 }}>
+              <LogoVecitap alto={18} tema={tema} />
+            </div>
           </div>
         </aside>
 
