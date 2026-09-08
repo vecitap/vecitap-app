@@ -421,12 +421,34 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
       .select("id,fecha,monto,moneda,monto_usd,tasa_aplicada,metodo,referencia,banco,estado,nota")
       .eq("unidad_id", u.unidad_id).order("fecha", { ascending:false }).limit(40);
     setPagos(data || []);
-    // Se pide por función y no por consulta directa: "el último recibo"
-    // no se puede resolver por la hora en que se escribió, porque varios
-    // meses cerrados en una misma transacción comparten esa marca.
-    const { data: r, error: er } = await sb.rpc("mi_recibo", { p_unidad: u.unidad_id });
+    /* El recibo se lee directo de la tabla, no por una función.
+       La función mi_recibo() devolvía el recibo correctamente en la base
+       pero cero filas a través de la API, y perseguir esa diferencia no
+       vale la pena: leyendo la tabla hay una pieza menos en el camino y
+       quien decide qué puede ver cada quien es la seguridad por fila,
+       que es justo para lo que está.
+
+       El orden lo pone el calendario del período, nunca la hora en que
+       se escribió la fila: varios meses cerrados en una misma
+       transacción comparten esa marca y el orden saldría al azar. */
+    const { data: r, error: er } = await sb
+      .from("recibos")
+      .select("numero,total,cuota,directos,anterior,a_favor,mora,honorario," +
+              "servicio,conceptos,detalle,tasa_bcv,vence_el,alicuota," +
+              "periodos!inner(anio,mes,etiqueta,estado)")
+      .eq("unidad_id", u.unidad_id)
+      .eq("periodos.estado", "cerrado")
+      .limit(36);
+
     if (er) { setFalloRecibo(er.message || String(er)); setRecibo(null); }
-    else { setFalloRecibo(null); setRecibo((Array.isArray(r) ? r[0] : r) || null); }
+    else {
+      const filas = (r || []).slice().sort((a, b) =>
+        (b.periodos.anio - a.periodos.anio) || (b.periodos.mes - a.periodos.mes));
+      const ult = filas[0];
+      setFalloRecibo(null);
+      setRecibo(ult ? { ...ult, anio: ult.periodos.anio, mes: ult.periodos.mes,
+                        etiqueta: ult.periodos.etiqueta, edificio: u.edificio } : null);
+    }
   };
   useEffect(() => { cargar(); }, [u.unidad_id]);
 
