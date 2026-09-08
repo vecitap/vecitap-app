@@ -537,8 +537,8 @@ function Metrica({ etiqueta, valor, pie, tono, icono: I, onClick }) {
           {I && <I size={15} style={{ color: T.tenue }} />}
           <span style={{ fontSize: 13, color: T.tinta2, fontWeight: 500 }}>{etiqueta}</span>
         </div>
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 27,
-                      fontWeight: 600, color: col, letterSpacing: "-.02em" }}>{valor}</div>
+        <div className="metrica-num" style={{ fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: 27, fontWeight: 600, color: col, letterSpacing: "-.02em" }}>{valor}</div>
         {pie && <div style={{ fontSize: 12.5, color: T.tenue, marginTop: 5 }}>{pie}</div>}
       </div>
     </Tarjeta>
@@ -1051,6 +1051,36 @@ function App() {
           .relleno { padding: 16px !important; }
           .cabecera { padding: 14px 16px !important; }
         }
+        /* ── Tablas que se vuelven tarjetas en el teléfono ──────────
+           Una tabla de seis columnas en una pantalla de 390 px obliga a
+           arrastrar de lado para leer una sola fila. Aquí cada fila pasa
+           a ser una tarjeta y cada celda enseña su rótulo, que viene en
+           el atributo data-t. La celda marcada "cabeza" es el título de
+           la tarjeta; la marcada "flecha" desaparece, porque la tarjeta
+           entera ya se puede tocar. */
+        @media (max-width: 720px) {
+          table.apila, table.apila tbody, table.apila tr, table.apila td { display: block; width: 100%; }
+          table.apila thead { display: none; }
+          table.apila tr { padding: 13px 2px; border-bottom: 1px solid ${T.linea};
+            display: flex; flex-direction: column; }
+          table.apila tbody tr:last-child { border-bottom: none; }
+          table.apila td { border: none; padding: 3px 0; font-size: 13.5px;
+            display: flex; align-items: baseline; justify-content: space-between;
+            gap: 14px; text-align: right; }
+          table.apila td::before { content: attr(data-t); color: ${T.tenue};
+            font-size: 11.5px; font-weight: 600; text-align: left; flex: 0 0 auto;
+            font-family: Inter, sans-serif; letter-spacing: .01em; }
+          /* El título de la tarjeta va primero aunque en la tabla no sea
+             la primera columna: en Pagos la primera columna es la fecha,
+             pero lo que identifica la fila es la unidad. */
+          table.apila td.cabeza { order: -1; justify-content: flex-start;
+            font-size: 16px; font-weight: 700; padding-bottom: 6px; }
+          table.apila td.cabeza::before { content: none; }
+          table.apila td.acciones { justify-content: flex-start; padding-top: 8px; }
+          table.apila td.acciones::before { content: none; }
+          table.apila td.flecha { display: none; }
+          table.apila td:empty { display: none; }
+        }
         @media (max-width: 720px) {
           .fila-gasto, .fila-partida { grid-template-columns: 1fr 1fr;
             padding: 12px; background: ${T.fondo}; border-radius: ${T.rs}px; }
@@ -1058,12 +1088,29 @@ function App() {
           .fila-partida > *:first-child { grid-column: 1; }
           .fila-partida > *:nth-child(2) { grid-column: 2 / -1; }
           .cabecera-fila { display: none !important; }
-          .apila-movil { grid-template-columns: 1fr !important; }
+          /* Cuatro tarjetas de resumen una debajo de otra son cuatro
+             pantallas de scroll antes de ver nada. En el teléfono van
+             de dos en dos, con el número más chico. */
+          .apila-movil { grid-template-columns: 1fr 1fr !important; }
+          .apila-movil > * { padding: 14px !important; }
+          .metrica-num { font-size: 20px !important; }
           td, th { padding: 10px 11px; font-size: 12.5px; }
         }
         @media (max-width: 520px) {
           .fila-gasto, .fila-partida { grid-template-columns: 1fr; }
-          .tasa-cabecera { width: 100%; text-align: left !important; }
+          /* La tasa deja de ser un bloque aparte y pasa a una línea
+             compacta debajo del título, en vez de romper la cabecera. */
+          .tasa-cabecera { width: 100%; margin-left: 0 !important; }
+          /* Etiqueta, valor y estado en una línea, no en tres */
+          .tasa-cabecera > div { text-align: left !important; display: flex;
+            align-items: baseline; gap: 9px; flex-wrap: wrap; }
+          .tasa-cabecera > div > div { margin: 0 !important; }
+          .tasa-cabecera .mono { font-size: 14px !important; }
+          .cabecera { gap: 8px !important; padding: 12px 16px !important; }
+          .cabecera h1 { font-size: 17px !important; }
+        }
+        @media (max-width: 380px) {
+          .apila-movil { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -1160,9 +1207,11 @@ function App() {
             alignItems: "center", gap: 16, borderBottom: `1px solid ${T.linea}`,
             background: T.fondo, position: "sticky", top: 0, zIndex: 20, flexWrap: "wrap" }}>
             <button onClick={() => setMenuAbierto(true)} className="solo-movil"
+              aria-label="Abrir el menú"
               style={{ border: "none", background: "transparent", cursor: "pointer",
-                color: T.tinta, padding: 6, alignItems: "center" }}>
-              <Ic n="Menu" size={20} />
+                color: T.tinta, padding: 6, alignItems: "center", fontSize: 21,
+                lineHeight: 1, fontFamily: "inherit" }}>
+              ☰
             </button>
             <div style={{ minWidth: 0 }}>
               <h1 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 20, margin: 0, color: T.tinta }}>
@@ -1349,21 +1398,21 @@ function Inicio({ unidades, saldos, sumaAlicuotas, porCobrar, aFavor, conDeuda,
             </Titulo>
           </div>
           <div className="scroll-x">
-            <table>
+            <table className="apila">
               <thead><tr><th>Unidad</th><th>Condominio</th><th>Administración</th>
                 <th>Servicio</th><th style={{ textAlign: "right" }}>Total</th><th></th></tr></thead>
               <tbody>
                 {morosos.map((m) => (
                   <tr key={m.unidad_id} className="fila" style={{ cursor: "pointer" }}
                     onClick={() => verFicha(m.unidad_id)}>
-                    <td className="mono" style={{ fontWeight: 600 }}>{m.codigo}</td>
-                    <td className="mono">{usd(m.condominio)}</td>
-                    <td className="mono">{usd(m.administracion)}</td>
-                    <td className="mono">{usd(m.servicio)}</td>
-                    <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: T.rojo }}>
+                    <td className="mono cabeza" style={{ fontWeight: 600 }}>{m.codigo}</td>
+                    <td className="mono" data-t="Condominio">{usd(m.condominio)}</td>
+                    <td className="mono" data-t="Administración">{usd(m.administracion)}</td>
+                    <td className="mono" data-t="Servicio">{usd(m.servicio)}</td>
+                    <td className="mono" data-t="Total" style={{ textAlign: "right", fontWeight: 700, color: T.rojo }}>
                       {usd(m.total)}
                     </td>
-                    <td style={{ width: 28 }}><Ic n="ChevronRight" size={15} style={{ color: T.tenue }} /></td>
+                    <td className="flecha" style={{ width: 28 }}><Ic n="ChevronRight" size={15} style={{ color: T.tenue }} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -1454,7 +1503,7 @@ function Propietarios({ sb, org, edificio, unidades, saldos, sumaAlicuotas,
         </div>
 
         <div className="scroll-x">
-          <table>
+          <table className="apila">
             <thead><tr>
               <th>Unidad</th><th>Alícuota</th><th>Propietario</th><th>Inquilino</th>
               <th style={{ textAlign: "right" }}>Saldo</th><th></th>
@@ -1467,23 +1516,24 @@ function Propietarios({ sb, org, edificio, unidades, saldos, sumaAlicuotas,
                 return (
                   <tr key={u.id} className="fila" style={{ cursor: "pointer" }}
                     onClick={() => verFicha(u.id)}>
-                    <td className="mono" style={{ fontWeight: 600 }}>
+                    <td className="mono cabeza" style={{ fontWeight: 600 }}>
                       {u.codigo}{!u.activa && <span style={{ color: T.tenue }}> · inactiva</span>}
                     </td>
-                    <td className="mono">{nf(5).format(u.alicuota)}</td>
-                    <td>{nombreDe(p) || <span style={{ color: T.tenue }}>sin registrar</span>}
+                    <td className="mono" data-t="Alícuota">{nf(5).format(u.alicuota)}</td>
+                    <td data-t="Propietario">
+                      <div>{nombreDe(p) || <span style={{ color: T.tenue }}>sin registrar</span>}
                       {p?.personas?.telefono && (
                         <div style={{ fontSize: 11.5, color: T.tenue }} className="mono">
                           {p.personas.telefono}
                         </div>
-                      )}
+                      )}</div>
                     </td>
-                    <td>{nombreDe(i) || <span style={{ color: T.tenue }}>—</span>}</td>
-                    <td className="mono" style={{ textAlign: "right", fontWeight: 600,
+                    <td data-t="Inquilino">{nombreDe(i) || <span style={{ color: T.tenue }}>—</span>}</td>
+                    <td className="mono" data-t="Saldo" style={{ textAlign: "right", fontWeight: 600,
                       color: total > 0.01 ? T.rojo : total < -0.01 ? T.azul : T.verde }}>
                       {usd(total)}
                     </td>
-                    <td style={{ width: 28 }}><Ic n="ChevronRight" size={15} style={{ color: T.tenue }} /></td>
+                    <td className="flecha" style={{ width: 28 }}><Ic n="ChevronRight" size={15} style={{ color: T.tenue }} /></td>
                   </tr>
                 );
               })}
@@ -3553,20 +3603,21 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
           }>Movimientos registrados</Titulo>
         </div>
         <div className="scroll-x">
-          <table>
+          <table className="apila">
             <thead><tr><th>Fecha</th><th>Unidad</th><th>Método</th><th>Ref.</th>
               <th>Origen</th><th>Abona a</th><th style={{ textAlign: "right" }}>USD</th>
               <th>Estado</th><th></th></tr></thead>
             <tbody>
               {visibles.map((p) => (
                 <tr key={p.id}>
-                  <td className="mono">{p.fecha}</td>
-                  <td className="mono">{codigo(p.unidad_id)}</td>
-                  <td>{p.metodo}{p.moneda === "VES" &&
+                  <td className="mono" data-t="Fecha">{p.fecha}</td>
+                  <td className="mono cabeza">{codigo(p.unidad_id)}</td>
+                  <td data-t="Método">
+                    <div>{p.metodo}{p.moneda === "VES" &&
                     <div style={{ fontSize: 11.5, color: T.tenue }} className="mono">
-                      {bs(p.monto)} a {nf(2).format(p.tasa_aplicada)}</div>}</td>
-                  <td className="mono">{p.referencia || "—"}</td>
-                  <td style={{ fontSize: 12 }}>
+                      {bs(p.monto)} a {nf(2).format(p.tasa_aplicada)}</div>}</div></td>
+                  <td className="mono" data-t="Referencia">{p.referencia || "—"}</td>
+                  <td data-t="Origen" style={{ fontSize: 12 }}><div>
                     {p.banco || <span style={{ color: T.tenue }}>—</span>}
                     {p.telefono_origen && <div className="mono" style={{ color: T.tenue }}>
                       {p.telefono_origen}</div>}
@@ -3577,16 +3628,16 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
                         {comps[p.id].imagen_borrada_en ? "comprobante vencido" : "ver comprobante"}
                       </Boton>
                     )}
-                  </td>
-                  <td>{BOLSILLOS[p.destino === "honorarios" ? "administracion" : p.destino]?.t}</td>
-                  <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{usd(p.monto_usd)}</td>
-                  <td>
+                  </div></td>
+                  <td data-t="Abona a">{BOLSILLOS[p.destino === "honorarios" ? "administracion" : p.destino]?.t}</td>
+                  <td className="mono" data-t="Monto" style={{ textAlign: "right", fontWeight: 600 }}>{usd(p.monto_usd)}</td>
+                  <td data-t="Estado">
                     <Pastilla size="s" tono={p.estado === "conciliado" ? "verde"
                       : p.estado === "anulado" ? "rojo" : "ambar"}>
                       {p.estado}{p.periodo_cierre_id ? " · en cierre" : ""}
                     </Pastilla>
                   </td>
-                  <td style={{ width: 150 }}>
+                  <td className="acciones" style={{ width: 150 }}>
                     {p.estado === "reportado" && (
                       <div className="flex gap-1 flex-wrap">
                         <Boton size="s" onClick={() => cambiarEstado(p, "conciliado")}>Conciliar</Boton>
@@ -3808,16 +3859,16 @@ function Accesos({ sb, org, edificio, unidades, notificar, fallo, recargar }) {
             </Titulo>
           </div>
           <div className="scroll-x">
-            <table>
+            <table className="apila">
               <thead><tr><th>Unidad</th><th>Correo</th><th>Relación</th>
                 <th>Qué ve el inquilino</th><th></th></tr></thead>
               <tbody>
                 {gente.filter((g) => g.activo).map((g) => (
                   <tr key={g.membresia_id}>
-                    <td className="mono">{g.unidad}</td>
-                    <td style={{ fontSize: 13 }}>{g.correo}</td>
-                    <td>{g.relacion}</td>
-                    <td>
+                    <td className="mono cabeza">{g.unidad}</td>
+                    <td data-t="Correo" style={{ fontSize: 13 }}>{g.correo}</td>
+                    <td data-t="Relación">{g.relacion}</td>
+                    <td data-t="Qué ve">
                       <Selector value={g.nivel} style={{ fontSize: 13, padding: "7px 9px" }}
                         onChange={(e) => cambiarNivel(g.unidad_id, e.target.value)}>
                         <option value="mes">Solo el recibo del mes</option>
@@ -4362,7 +4413,7 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
         </div>
         {cargando ? <Cargando /> : (
           <div className="scroll-x">
-            <table>
+            <table className="apila">
               <thead><tr><th>Unidad</th><th>Recibo</th><th>Propietario</th>
                 <th style={{ textAlign: "right" }}>Total</th><th></th></tr></thead>
               <tbody>
@@ -4387,9 +4438,9 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                   const asunto = `Su recibo de condominio · ${u?.codigo} · ${periodo?.etiqueta}`;
                   return (
                     <tr key={r.id}>
-                      <td className="mono" style={{ fontWeight: 600 }}>{u?.codigo}</td>
-                      <td className="mono" style={{ fontSize: 12 }}>{r.numero}</td>
-                      <td>
+                      <td className="mono cabeza" style={{ fontWeight: 600 }}>{u?.codigo}</td>
+                      <td className="mono" data-t="Recibo" style={{ fontSize: 12 }}>{r.numero}</td>
+                      <td data-t="A quién"><div>
                         {[{ rol: "Propietario", v: p }, { rol: "Inquilino", v: q }]
                           .filter((x) => x.v).map((x) => (
                             <div key={x.rol} style={{ marginBottom: 3 }}>
@@ -4402,9 +4453,9 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
                             </div>
                           ))}
                         {!p && !q && <span style={{ color: T.tenue }}>sin registrar</span>}
-                      </td>
-                      <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>{usd(r.total)}</td>
-                      <td style={{ width: 240 }}>
+                      </div></td>
+                      <td className="mono" data-t="Total" style={{ textAlign: "right", fontWeight: 700 }}>{usd(r.total)}</td>
+                      <td className="acciones" style={{ width: 240 }}>
                         <div className="flex gap-1 flex-wrap">
                           {gente.map((x) => (
                             <React.Fragment key={x.rol}>
