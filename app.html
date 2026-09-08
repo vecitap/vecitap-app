@@ -15,7 +15,7 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
   * { box-sizing: border-box; }
-  body { margin: 0; background: #FDF7EB; }
+  body { margin: 0; background: #F4F1EC; }
   #raiz { min-height: 100vh; }
   /* Utilidades mínimas. El prototipo usaba Tailwind; aquí van solo las
      clases que realmente se usan, para no depender de otro CDN y para que
@@ -47,20 +47,53 @@ const { useState, useEffect, useMemo, useRef, createElement } = React;
 /* Paleta de Vecitap. Fijada por el manual de marca: no se configura desde
    la aplicación. Cada valor pasó la prueba de contraste WCAG 2.1 contra el
    fondo sobre el que se usa; el número está al lado. */
-const T = {
-  fondo: "#F4F1EC", lienzo: "#FFFFFF",
-  tinta: "#111144",            // 15,7:1 sobre crema
-  tinta2: "#3D3D6B",           //  8,9:1
-  tenue: "#66668A",            //  4,9:1 — el mínimo para texto pequeño
-  linea: "#E4DED4", lineaFuerte: "#DAD1C8",
-  verde: "#1F6B4A", verdeBg: "#E8F0EB",
-  ambar: "#8A5A00", ambarBg: "#F7EFE0",
-  rojo:  "#A32A1E", rojoBg:  "#FAEAE7",
-  azul:  "#223382", azulBg:  "#EAEEF7",
-  sombra: "0 1px 2px rgba(17,17,68,.04), 0 8px 24px -12px rgba(17,17,68,.14)",
-  sombraAlta: "0 2px 6px rgba(17,17,68,.07), 0 20px 48px -16px rgba(17,17,68,.24)",
-  r: 14, rs: 10, rp: 999,
+const TEMAS = {
+  claro: {
+    fondo: "#F4F1EC", lienzo: "#FFFFFF",
+    tinta: "#111144",            // 15,7:1 sobre crema
+    tinta2: "#3D3D6B",           //  8,9:1
+    tenue: "#66668A",            //  4,9:1 — el mínimo para texto pequeño
+    linea: "#E4DED4", lineaFuerte: "#DAD1C8",
+    verde: "#1F6B4A", verdeBg: "#E8F0EB",
+    ambar: "#8A5A00", ambarBg: "#F7EFE0",
+    rojo:  "#A32A1E", rojoBg:  "#FAEAE7",
+    azul:  "#223382", azulBg:  "#EAEEF7",
+    sombra: "0 1px 2px rgba(17,17,68,.04), 0 8px 24px -12px rgba(17,17,68,.14)",
+    sombraAlta: "0 2px 6px rgba(17,17,68,.07), 0 20px 48px -16px rgba(17,17,68,.24)",
+  },
+  oscuro: {
+    fondo: "#0B0B2E", lienzo: "#141440",
+    tinta: "#F4F1EC",            // 16,9:1 sobre el marino
+    tinta2: "#C3C6DE",           // 11,3:1
+    tenue: "#9494B8",            //  6,4:1
+    linea: "#2C2C63", lineaFuerte: "#3C3C7E",
+    verde: "#5FCB9B", verdeBg: "rgba(95,203,155,.14)",
+    ambar: "#E8A33C", ambarBg: "rgba(232,163,60,.14)",
+    rojo:  "#E8776A", rojoBg:  "rgba(232,119,106,.14)",
+    azul:  "#9BACD8", azulBg:  "rgba(155,172,216,.14)",
+    sombra: "0 1px 2px rgba(0,0,0,.30), 0 8px 24px -12px rgba(0,0,0,.55)",
+    sombraAlta: "0 2px 6px rgba(0,0,0,.40), 0 20px 48px -16px rgba(0,0,0,.70)",
+  },
 };
+
+/* T no es constante: cambia de valores cuando el usuario cambia de tema.
+   Todos los componentes leen T.x en cada dibujado, así que basta con
+   reemplazar los valores y volver a dibujar. */
+const leerTema = () => {
+  try { return localStorage.getItem("vecitap-tema") === "oscuro" ? "oscuro" : "claro"; }
+  catch (e) { return "claro"; }
+};
+let T = { ...TEMAS[leerTema()], r: 14, rs: 10, rp: 999 };
+const ponerTema = (nombre) => {
+  Object.assign(T, TEMAS[nombre] || TEMAS.claro);
+  try { localStorage.setItem("vecitap-tema", nombre); } catch (e) {}
+  try {
+    const r = document.documentElement.style;
+    r.setProperty("--campo", nombre === "oscuro" ? "#0B0B2E" : "#FFFFFF");
+    document.body.style.background = T.fondo;
+  } catch (e) {}
+};
+ponerTema(leerTema());
 
 /* El naranja de la marca. Sobre él NUNCA va letra blanca: da 2,50:1 y no
    se lee. La letra encima es el marino, que da 7,07:1. */
@@ -383,7 +416,7 @@ const Titulo = ({ children, accion, sub }) => (
 function Boton({ children, onClick, tipo = "primario", size = "m", disabled, href, ...r }) {
   const estilos = {
     primario: { background: A.base, color: A.sobre, border: "1px solid transparent" },
-    oscuro:   { background: T.tinta, color: "#fff", border: "1px solid transparent" },
+    oscuro:   { background: T.tinta, color: T.fondo, border: "1px solid transparent" },
     suave:    { background: T.lienzo, color: T.tinta, border: `1px solid ${T.lineaFuerte}` },
     fantasma: { background: "transparent", color: T.tinta2, border: "1px solid transparent" },
     peligro:  { background: "transparent", color: T.rojo, border: `1px solid ${T.rojo}33` },
@@ -509,7 +542,7 @@ function Vacio({ icono: I, titulo, texto, accion }) {
 function Confirmar({ titulo, texto, boton = "Confirmar", tono = "primario", onSi, onNo }) {
   return (
     <div onClick={onNo} style={{ position: "fixed", inset: 0, zIndex: 90,
-      background: "rgba(73,59,52,.45)", display: "flex", alignItems: "center",
+      background: "rgba(11,11,46,.55)", display: "flex", alignItems: "center",
       justifyContent: "center", padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: T.lienzo,
         borderRadius: T.r, maxWidth: 460, width: "100%", boxShadow: T.sombraAlta, padding: 26 }}>
@@ -788,6 +821,7 @@ function App() {
   const [cargandoEd, setCargandoEd] = useState(false);
 
   const [vista, setVista] = useState("inicio");
+  const [tema, setTema] = useState(leerTema);
   const [aviso, setAviso] = useState(null);
   const [fichaDe, setFichaDe] = useState(null);
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -936,14 +970,20 @@ function App() {
     recargar: cargarEdificio, recargarEdificios: cargarEdificios,
     setVista, verFicha: setFichaDe };
 
+  useEffect(() => { try { document.body.style.background = T.fondo; } catch (e) {} }, [tema]);
+
   return (
     <div style={{ background: T.fondo, minHeight: "100vh", color: T.tinta }}>
       <style>{`
         :root {
           --acento: ${acento};
-          --acento-suave: ${mezclarBlanco(acento, 0.9)};
+          /* En claro el acento se aclara con blanco; en oscuro eso daría
+             una mancha casi blanca, así que se usa el naranja translúcido.
+             Y el texto de marca no se oscurece sobre fondo oscuro: el
+             naranja ya da 7,6:1 contra el marino. */
+          --acento-suave: ${tema === "oscuro" ? "rgba(249,133,19,.18)" : mezclarBlanco(acento, 0.9)};
           --acento-sobre: ${letraSobre(acento)};
-          --acento-texto: ${versionTexto(acento)};
+          --acento-texto: ${tema === "oscuro" ? acento : versionTexto(acento)};
         }
         .app { font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
         .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
@@ -964,7 +1004,7 @@ function App() {
         .fila-partida { display: grid; gap: 8px; align-items: center;
           grid-template-columns: 26px minmax(140px,2fr) minmax(110px,1fr) 118px 34px; }
         @media (max-width: 900px) {
-          .lateral { display: none; position: fixed; left: 0; box-shadow: 0 0 40px rgba(73,59,52,.25); }
+          .lateral { display: none; position: fixed; left: 0; box-shadow: 0 0 40px rgba(11,11,46,.35); }
           .lateral.abierto { display: flex; }
           .cerrar-menu { display: inline-flex; }
           .solo-movil { display: inline-flex !important; }
@@ -1047,6 +1087,17 @@ function App() {
                 </button>
               );
             })}
+            <button className="nav"
+              onClick={() => { const n = tema === "oscuro" ? "claro" : "oscuro";
+                               ponerTema(n); setTema(n); }}
+              title="Cambiar entre claro y oscuro"
+              style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px",
+                borderRadius: T.rs, border: "none", cursor: "pointer", width: "100%",
+                textAlign: "left", fontSize: 14, fontWeight: 500, fontFamily: "Inter",
+                background: "transparent", color: T.tinta2 }}>
+              <Ic n={tema === "oscuro" ? "Sun" : "Moon"} size={17} />
+              {tema === "oscuro" ? "Tema claro" : "Tema oscuro"}
+            </button>
             <button className="nav" onClick={() => sb.auth.signOut()}
               style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px",
                 borderRadius: T.rs, border: "none", cursor: "pointer", width: "100%",
@@ -1058,7 +1109,7 @@ function App() {
         </aside>
 
         {menuAbierto && <div onClick={() => setMenuAbierto(false)}
-          style={{ position: "fixed", inset: 0, background: "rgba(73,59,52,.35)", zIndex: 35 }} />}
+          style={{ position: "fixed", inset: 0, background: "rgba(11,11,46,.45)", zIndex: 35 }} />}
 
         <main style={{ flex: 1, minWidth: 0 }}>
           <header className="cabecera" style={{ padding: "18px 28px", display: "flex",
@@ -1443,7 +1494,7 @@ function AltaUnidad({ sb, org, edificio, notificar, fallo, recargar, onCerrar })
 
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, zIndex: 90,
-      background: "rgba(73,59,52,.45)", display: "flex", alignItems: "center",
+      background: "rgba(11,11,46,.55)", display: "flex", alignItems: "center",
       justifyContent: "center", padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: T.lienzo,
         borderRadius: T.r, maxWidth: 560, width: "100%", maxHeight: "92vh", overflow: "auto",
@@ -1778,18 +1829,18 @@ function imprimirEstado({ edificio, org, unidad, propietario, inquilino, filas, 
 
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
 <title>Estado de cuenta ${esc(unidad.codigo)}</title><style>
-*{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#493B34;margin:32px;font-size:12px}
-h1{font-size:19px;margin:0 0 2px} .sub{color:#7A6B61;font-size:12px;margin-bottom:18px}
-.caja{border:1px solid #EBE3D6;padding:12px 14px;margin-bottom:18px;background:#FDF7EB;border-radius:8px}
-.caja b{display:inline-block;min-width:96px;color:#7A6B61;font-weight:400}
+*{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111144;margin:32px;font-size:12px}
+h1{font-size:19px;margin:0 0 2px} .sub{color:#3D3D6B;font-size:12px;margin-bottom:18px}
+.caja{border:1px solid #DAD1C8;padding:12px 14px;margin-bottom:18px;background:#F4F1EC;border-radius:8px}
+.caja b{display:inline-block;min-width:96px;color:#3D3D6B;font-weight:400}
 table{width:100%;border-collapse:collapse;margin-top:6px}
-th{background:#493B34;color:#fff;text-align:left;padding:7px 9px;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
-td{padding:7px 9px;border-bottom:1px solid #EBE3D6;vertical-align:top}
+th{background:#111144;color:#fff;text-align:left;padding:7px 9px;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+td{padding:7px 9px;border-bottom:1px solid #DAD1C8;vertical-align:top}
 .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap} .a{color:#3E7A5E} .p{color:#8A5E10} .s{font-weight:bold}
-.d{color:#7A6B61;font-size:10.5px}
-.tot{margin-top:18px;border-top:2px solid #493B34;padding-top:12px;display:flex;justify-content:space-between;align-items:baseline}
+.d{color:#3D3D6B;font-size:10.5px}
+.tot{margin-top:18px;border-top:2px solid #111144;padding-top:12px;display:flex;justify-content:space-between;align-items:baseline}
 .tot .v{font-size:22px;font-weight:bold}
-.pie{margin-top:26px;color:#7A6B61;font-size:10px;border-top:1px solid #EBE3D6;padding-top:10px}
+.pie{margin-top:26px;color:#3D3D6B;font-size:10px;border-top:1px solid #DAD1C8;padding-top:10px}
 @media print{body{margin:14mm}.noimp{display:none}}
 </style></head><body>
 <h1>${esc(edificio.nombre || "Estado de cuenta")}</h1>
@@ -1807,7 +1858,7 @@ td{padding:7px 9px;border-bottom:1px solid #EBE3D6;vertical-align:top}
 <div class="tot"><span>${saldoFinal > 0.009 ? "Saldo pendiente"
   : saldoFinal < -0.009 ? "Saldo a favor del propietario" : "Unidad solvente"}</span>
 <span class="v">$ ${nf(2).format(Math.abs(saldoFinal))}</span></div>
-${tasa ? `<div style="text-align:right;color:#7A6B61;margin-top:4px">Equivalente: Bs ${nf(2).format(Math.abs(saldoFinal) * tasa)} · tasa ${nf(2).format(tasa)}</div>` : ""}
+${tasa ? `<div style="text-align:right;color:#3D3D6B;margin-top:4px">Equivalente: Bs ${nf(2).format(Math.abs(saldoFinal) * tasa)} · tasa ${nf(2).format(tasa)}</div>` : ""}
 <div class="pie">Documento generado a partir de los movimientos registrados. Los montos en bolívares son referenciales.</div>
 <div class="noimp" style="margin-top:22px"><button onclick="window.print()"
   style="padding:10px 18px;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid #DDD2C2;background:#fff">
@@ -2272,16 +2323,33 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
   const [previa, setPrevia] = useState(null);
   const [simulable, setSimulable] = useState(true);
   const [confirma, setConfirma] = useState(null);
+  const [descartando, setDescartando] = useState(false);
   const [ocupado, setOcupado] = useState(false);
 
   const usaPresupuesto = conceptos.some((c) => c.activo && c.modo.startsWith("presupuesto"));
   const usaGasto = conceptos.some((c) => c.activo && c.modo.startsWith("gasto"));
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
 
+  /* Los saldos se calculan en orden de calendario: un mes anterior a uno
+     ya cerrado quedaría fuera de todas las cuentas. Por eso aquí solo se
+     ofrecen los meses posteriores al último cerrado. */
+  const serie = (a, m) => Number(a) * 12 + Number(m);
+  const ultimoCerrado = cerrados.reduce(
+    (mejor, p) => (!mejor || serie(p.anio, p.mes) > serie(mejor.anio, mejor.mes) ? p : mejor), null);
+  const serieMinima = ultimoCerrado ? serie(ultimoCerrado.anio, ultimoCerrado.mes) + 1 : null;
+  const serieElegida = serie(abrir.anio, abrir.mes);
+  const mesPermitido = !serieMinima || serieElegida >= serieMinima;
+
   useEffect(() => {
     sb.from("categorias").select("id,nombre,orden").eq("edificio_id", edificio.id)
       .order("orden").then(({ data }) => setCategorias(data || []));
   }, [edificio]);
+
+  useEffect(() => {
+    if (!serieMinima) return;
+    setAbrir((a) => (serie(a.anio, a.mes) >= serieMinima ? a : {
+      ...a, anio: Math.floor((serieMinima - 1) / 12), mes: ((serieMinima - 1) % 12) + 1 }));
+  }, [serieMinima]);
 
   useEffect(() => {
     if (!periodoAbierto) { setGastos([]); return; }
@@ -2312,6 +2380,15 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
     setOcupado(false);
     if (error) return fallo(error);
     notificar("Mes abierto. Las partidas fijas entraron solas.");
+    recargar();
+  };
+
+  const descartarMes = async () => {
+    setOcupado(true);
+    const { error } = await sb.rpc("descartar_periodo", { p_periodo: periodoAbierto.id });
+    setOcupado(false); setDescartando(false);
+    if (error) return fallo(error);
+    notificar("El mes se descartó. No se emitió ningún recibo.");
     recargar();
   };
 
@@ -2472,7 +2549,10 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
               onChange={(e) => setAbrir({ ...abrir, anio: e.target.value })} /></Campo>
             <Campo label="Mes">
               <Selector value={abrir.mes} onChange={(e) => setAbrir({ ...abrir, mes: e.target.value })}>
-                {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                {MESES.map((m, i) => (
+                  <option key={m} value={i + 1}
+                    disabled={!!serieMinima && serie(abrir.anio, i + 1) < serieMinima}>{m}</option>
+                ))}
               </Selector>
             </Campo>
             <Campo label="Tasa BCV del mes"
@@ -2488,8 +2568,19 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
               </Campo>
             )}
           </div>
+          {!mesPermitido && (
+            <div style={{ marginTop: 14 }}>
+              <Aviso tono="ambar" titulo="Ese mes ya pasó">
+                El último mes cerrado es {ultimoCerrado.etiqueta}. Los saldos se calculan
+                en orden de calendario, así que un mes anterior quedaría fuera de todos los
+                estados de cuenta: se facturaría y no aparecería en la deuda de nadie.
+                Si necesita corregir {ultimoCerrado.etiqueta}, reábralo desde la lista de
+                meses cerrados en vez de abrir uno viejo.
+              </Aviso>
+            </div>
+          )}
           <div style={{ marginTop: 16 }}>
-            <Boton size="l" disabled={ocupado} onClick={abrirMes}>Abrir el mes</Boton>
+            <Boton size="l" disabled={ocupado || !mesPermitido} onClick={abrirMes}>Abrir el mes</Boton>
           </div>
         </Tarjeta>
       ) : (
@@ -2513,6 +2604,32 @@ function CierreMes({ sb, org, edificio, unidades, conceptos, periodos, periodoAb
                   onChange={(e) => setCorreccion({ ...correccion, tasa: e.target.value })} />
               </Campo>
               <div><Boton tipo="suave" onClick={corregir}>Guardar</Boton></div>
+            </div>
+
+            {/* Salida para el mes que se abrió por error. Solo borra un mes
+                abierto: en cuanto hay recibos emitidos, la base lo impide. */}
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.linea}` }}>
+              {!descartando ? (
+                <button onClick={() => setDescartando(true)}
+                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                    color: T.tenue, fontSize: 12.5, fontFamily: "Inter", textDecoration: "underline" }}>
+                  Descartar este mes
+                </button>
+              ) : (
+                <div style={{ padding: 14, borderRadius: T.rs, background: T.rojoBg,
+                  border: `1px solid ${T.linea}` }}>
+                  <div style={{ fontSize: 13, marginBottom: 10 }}>
+                    Se borra {periodoAbierto.etiqueta} con todos los gastos que le cargó.
+                    No se puede deshacer. Los pagos ya registrados no se tocan.
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Boton tipo="peligro" size="s" disabled={ocupado} onClick={descartarMes}>
+                      Sí, descartar {periodoAbierto.etiqueta}
+                    </Boton>
+                    <Boton tipo="suave" size="s" onClick={() => setDescartando(false)}>No</Boton>
+                  </div>
+                </div>
+              )}
             </div>
             {usaPresupuesto && !periodoAbierto.presupuesto && (
               <div style={{ marginTop: 14 }}>
@@ -3708,15 +3825,15 @@ function htmlRecibo({ org, edificio, unidad, propietario, periodo, r }) {
   .tenue { color: #7A6B61; }
   .num { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-  td, th { padding: 7px 4px; border-bottom: 1px solid #EBE3D6; text-align: left; }
+  td, th { padding: 7px 4px; border-bottom: 1px solid #DAD1C8; text-align: left; }
   th { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #7A6B61; }
   .der { text-align: right; font-variant-numeric: tabular-nums;
          font-family: ui-monospace, monospace; }
   .fuerte td { font-weight: 700; border-top: 2px solid #2B2723; border-bottom: none;
                font-size: 14px; padding-top: 10px; }
-  .total { background: #FDF7EB; padding: 12px 14px; border-radius: 8px; margin-bottom: 14px;
+  .total { background: #F4F1EC; padding: 12px 14px; border-radius: 8px; margin-bottom: 14px;
            display: flex; justify-content: space-between; align-items: baseline; }
-  .pie { font-size: 10.5px; color: #7A6B61; border-top: 1px solid #EBE3D6;
+  .pie { font-size: 10.5px; color: #7A6B61; border-top: 1px solid #DAD1C8;
          padding-top: 10px; line-height: 1.6; }
   h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
        color: #7A6B61; margin: 18px 0 6px; }
@@ -4649,7 +4766,7 @@ function NuevoEdificio({ sb, org, notificar, fallo, recargarEdificios, onCerrar 
   };
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, zIndex: 90,
-      background: "rgba(73,59,52,.45)", display: "flex", alignItems: "center",
+      background: "rgba(11,11,46,.55)", display: "flex", alignItems: "center",
       justifyContent: "center", padding: 20 }}>
       <div onClick={(x) => x.stopPropagation()} style={{ background: T.lienzo,
         borderRadius: T.r, maxWidth: 500, width: "100%", boxShadow: T.sombraAlta, padding: 26 }}>

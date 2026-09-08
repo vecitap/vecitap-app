@@ -22,14 +22,16 @@
   .mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}.mb-6{margin-bottom:24px}
   .mt-4{margin-top:16px}
   table{border-collapse:collapse;width:100%}
-  th{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:600;color:#8B9AAB;
-     text-align:left;padding:9px 12px;border-bottom:1px solid #2A3746;white-space:nowrap}
-  td{padding:11px 12px;border-bottom:1px solid #2A3746;font-size:13px}
-  .fila:hover{background:#1C2836}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:600;
+     color:var(--tenue);text-align:left;padding:9px 12px;
+     border-bottom:1px solid var(--borde);white-space:nowrap}
+  td{padding:11px 12px;border-bottom:1px solid var(--borde);font-size:13px}
+  .fila:hover{background:var(--panelAlt)}
   .scroll-x{overflow-x:auto}
-  input,select,textarea{background:#0F1620;border:1px solid #2A3746;border-radius:4px;
-    padding:8px 10px;font-size:13px;width:100%;outline:none;color:#E6EDF3;font-family:inherit}
-  input:focus,select:focus,textarea:focus{border-color:#4FB286}
+  input,select,textarea{background:var(--campo);border:1px solid var(--borde);border-radius:8px;
+    padding:8px 10px;font-size:13px;width:100%;outline:none;color:var(--texto);font-family:inherit}
+  input:focus,select:focus,textarea:focus{border-color:#F98513;
+    box-shadow:0 0 0 3px rgba(249,133,19,.20)}
   @media (max-width:760px){ td,th{padding:8px 9px;font-size:12px} }
 </style>
 </head>
@@ -40,25 +42,72 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 const { useState, useEffect, useMemo } = React;
 
-/* Consola en oscuro sobre el marino de la marca. Cada color pasó la
-   prueba de contraste contra el fondo; el número está al lado. */
-const C = { bg:"#0B0B2E", panel:"#141440", panelAlt:"#1B1B4E", borde:"#2C2C63",
-  texto:"#F4F1EC",              // 16,9:1
-  tenue:"#9BACD8",              //  8,4:1
-  suave:"#C3C6DE",              // 11,3:1
-  acento:"#F98513", acentoBg:"rgba(249,133,19,.15)",   // 7,6:1
-  verde:"#5FCB9B", verdeBg:"rgba(95,203,155,.13)",     // 9,5:1
-  ambar:"#E8A33C", ambarBg:"rgba(232,163,60,.13)",     // 8,8:1
-  rojo:"#E8776A", rojoBg:"rgba(232,119,106,.13)",      // 6,6:1
-  azul:"#9BACD8", azulBg:"rgba(155,172,216,.13)" };    // 8,4:1
+/* Dos temas. El azul secundario de la marca no se usa para texto:
+   en pantalla llena todo de azul y compite con el naranja. Los grises
+   son neutros y el color queda solo donde significa algo. */
+const TEMAS = {
+  oscuro: {
+    bg:"#0B0B2E", panel:"#141440", panelAlt:"#1B1B4E", borde:"#26265A",
+    texto:"#F4F1EC",              // 16,9:1
+    tenue:"#8B8BAA",              //  6,0:1
+    suave:"#B9B9D0",              //  9,7:1
+    acento:"#F98513", acentoBg:"rgba(249,133,19,.15)",
+    verde:"#5FCB9B", verdeBg:"rgba(95,203,155,.13)",
+    ambar:"#E8A33C", ambarBg:"rgba(232,163,60,.13)",
+    rojo:"#E8776A", rojoBg:"rgba(232,119,106,.13)",
+    azul:"#8B8BAA", azulBg:"rgba(139,139,170,.13)",
+  },
+  claro: {
+    bg:"#F4F1EC", panel:"#FFFFFF", panelAlt:"#EDE9E1", borde:"#E4DED4",
+    texto:"#111144", tenue:"#66668A", suave:"#3D3D6B",
+    acento:"#F98513", acentoBg:"rgba(249,133,19,.14)",
+    verde:"#1F6B4A", verdeBg:"#E8F0EB",
+    ambar:"#8A5A00", ambarBg:"#F7EFE0",
+    rojo:"#A32A1E", rojoBg:"#FAEAE7",
+    azul:"#66668A", azulBg:"#EDEAF2",
+  },
+};
 
-const ESTADOS = {
-  prueba:      { t: "En prueba",    col: C.azul,   bg: C.azulBg },
-  activa:      { t: "Activa",       col: C.verde,  bg: C.verdeBg },
-  vencida:     { t: "Pago vencido", col: C.ambar,  bg: C.ambarBg },
-  suspendida:  { t: "Suspendida",   col: C.rojo,   bg: C.rojoBg },
-  cancelada:   { t: "Cancelada",    col: C.tenue,  bg: "transparent" },
-  "sin suscripción": { t: "Sin suscripción", col: C.tenue, bg: "transparent" },
+const leerTema = () => {
+  try { return localStorage.getItem("vecitap-tema") === "claro" ? "claro" : "oscuro"; }
+  catch (e) { return "oscuro"; }
+};
+let C = { ...TEMAS[leerTema()] };
+const ponerTema = (n) => {
+  Object.assign(C, TEMAS[n] || TEMAS.oscuro);
+  try { localStorage.setItem("vecitap-tema", n); } catch (e) {}
+  try {
+    const r = document.documentElement.style;
+    r.setProperty("--tenue", C.tenue);
+    r.setProperty("--borde", C.borde);
+    r.setProperty("--panelAlt", C.panelAlt);
+    r.setProperty("--texto", C.texto);
+    r.setProperty("--campo", n === "claro" ? "#FFFFFF" : "#0B0B2E");
+    document.body.style.background = C.bg;
+    document.body.style.color = C.texto;
+  } catch (e) {}
+};
+ponerTema(leerTema());
+
+/* Un punto de color dice lo mismo que un borde de 3 px y no parte la
+   pantalla en franjas. */
+const Punto = ({ color }) => (
+  <span style={{ display:"inline-block", width:7, height:7, borderRadius:99,
+    background:color, marginRight:7, verticalAlign:"middle" }} />
+);
+
+/* Se resuelve al dibujar, no al cargar: los colores cambian con el tema. */
+const ESTADOS_T = {
+  prueba: "En prueba", activa: "Activa", vencida: "Pago vencido",
+  suspendida: "Suspendida", cancelada: "Cancelada",
+  "sin suscripción": "Sin suscripción",
+};
+const estado = (e) => {
+  const col = { prueba: C.tenue, activa: C.verde, vencida: C.ambar,
+                suspendida: C.rojo }[e] || C.tenue;
+  const bg  = { prueba: C.azulBg, activa: C.verdeBg, vencida: C.ambarBg,
+                suspendida: C.rojoBg }[e] || "transparent";
+  return { t: ESTADOS_T[e] || ESTADOS_T.cancelada, col, bg };
 };
 const PLANES = { mensual: "Mensual", trimestral: "Trimestral", anual: "Anual" };
 const DESCUENTO = { mensual: 0, trimestral: 10, anual: 20 };
@@ -79,7 +128,7 @@ const guardarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {
 const leerLocal = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
 const Panel = ({ children, style }) => (
-  <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 5,
+  <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 10,
     padding: 18, ...style }}>{children}</div>
 );
 const Boton = ({ children, onClick, tono = "acento", disabled, style }) => {
@@ -87,7 +136,7 @@ const Boton = ({ children, onClick, tono = "acento", disabled, style }) => {
               suave:  { background: "transparent", color: C.suave, border: `1px solid ${C.borde}` },
               rojo:   { background: "transparent", color: C.rojo, border: `1px solid ${C.borde}` },
               ambar:  { background: "transparent", color: C.ambar, border: `1px solid ${C.borde}` } }[tono];
-  return <button onClick={onClick} disabled={disabled} style={{ ...c, borderRadius: 4,
+  return <button onClick={onClick} disabled={disabled} style={{ ...c, borderRadius: 8,
     fontSize: 13, fontWeight: 600, padding: "8px 14px", cursor: disabled ? "not-allowed" : "pointer",
     display: "inline-flex", alignItems: "center", gap: 7, opacity: disabled ? .5 : 1,
     fontFamily: "inherit", whiteSpace: "nowrap", ...style }}>{children}</button>;
@@ -101,7 +150,7 @@ const Campo = ({ label, children, ayuda }) => (
 );
 const Kpi = ({ label, valor, pie, destaque }) => (
   <div style={{ padding: "16px 18px", background: destaque ? C.acentoBg : C.panel,
-    border: `1px solid ${destaque ? "rgba(79,178,134,.35)" : C.borde}`, borderRadius: 5 }}>
+    border: `1px solid ${destaque ? "rgba(249,133,19,.35)" : C.borde}`, borderRadius: 10 }}>
     <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
       color: C.tenue, marginBottom: 8 }}>{label}</div>
     <div className="num" style={{ fontSize: 25, fontWeight: 700,
@@ -110,7 +159,7 @@ const Kpi = ({ label, valor, pie, destaque }) => (
   </div>
 );
 const Etiqueta = ({ e }) => {
-  const x = ESTADOS[e] || ESTADOS.cancelada;
+  const x = estado(e);
   return <span style={{ background: x.bg, color: x.col, borderRadius: 3,
     padding: "3px 9px", fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>{x.t}</span>;
 };
@@ -146,6 +195,8 @@ function App() {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("todos");
   const [aviso, setAviso] = useState(null);
+  const [tema, setTema] = useState(leerTema);
+  useEffect(() => { ponerTema(tema); }, [tema]);
   const [tarea, setTarea] = useState(null);
   const [corriendo, setCorriendo] = useState(false);
   const [tasa, setTasa] = useState(null);
@@ -266,16 +317,19 @@ function App() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Boton tono="suave" title="Cambiar entre claro y oscuro"
+            onClick={() => { const n = tema === "claro" ? "oscuro" : "claro";
+                             ponerTema(n); setTema(n); }}>
+            {tema === "claro" ? "Oscuro" : "Claro"}</Boton>
           <Boton tono="suave" onClick={cargar}>Actualizar</Boton>
           <Boton tono="suave" onClick={() => sb.auth.signOut()}>Salir</Boton>
         </div>
       </header>
 
       {aviso && (
-        <div className="mb-4" style={{ padding: "10px 14px", borderRadius: 4, fontSize: 13.5,
+        <div className="mb-4" style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13.5,
           background: aviso.tipo === "error" ? C.rojoBg : C.verdeBg,
-          color: aviso.tipo === "error" ? C.rojo : C.verde,
-          borderLeft: `3px solid ${aviso.tipo === "error" ? C.rojo : C.verde}` }}>{aviso.t}</div>
+          color: aviso.tipo === "error" ? C.rojo : C.verde }}>{aviso.t}</div>
       )}
 
       <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
@@ -290,25 +344,22 @@ function App() {
           pie={activos.length ? `${usd(ingresoMes / activos.length)} por cliente` : ""} />
       </div>
 
-      <div className="mb-6" style={{ padding: "16px 18px", background: C.panel,
-        border: `1px solid ${C.borde}`, borderLeft: `3px solid ${cobrosPend ? C.ambar : C.verde}`,
-        borderRadius: 5 }}>
+      <div className="mb-3" style={{ padding: "16px 18px", background: C.panel,
+        border: `1px solid ${C.borde}`, borderRadius: 10 }}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
-              color: C.tenue, marginBottom: 3 }}>Por cobrarle a sus clientes</div>
+              color: C.tenue, marginBottom: 3 }}>
+              <Punto color={cobrosPend ? C.ambar : C.verde} />Por cobrarle a sus clientes</div>
             <div className="num" style={{ fontSize: 22, fontWeight: 700,
               color: cobrosPend ? C.ambar : C.texto }}>{usd(pendiente)}</div>
           </div>
-          <div style={{ fontSize: 12.5, color: C.tenue, maxWidth: 460 }}>
+          <div style={{ fontSize: 12.5, color: C.tenue, maxWidth: 420, textAlign: "right" }}>
             {cobrosPend
-              ? `${cobrosPend} cobros pendientes. Se cobran desde la ficha de cada cliente.`
-              : "No hay cobros pendientes."}
+              ? `${cobrosPend} cobros pendientes · se cobran desde la ficha del cliente`
+              : "Sin cobros pendientes"}
             <br />
-            <span style={{ color: C.suave }}>
-              La morosidad de los propietarios en los edificios de sus clientes suma {usd0(porCobrarClientes)}.
-              Ese es el tamaño del problema que resuelve el producto, no dinero suyo.
-            </span>
+            Morosidad en los edificios de sus clientes: {usd0(porCobrarClientes)}
           </div>
         </div>
       </div>
@@ -316,15 +367,14 @@ function App() {
       {/* ── Tasa del BCV ────────────────────────────────────────────
           Si esto se atrasa, ningún cliente puede registrar un pago en
           bolívares. Es la pieza más silenciosa y la que más rompe. */}
-      <div className="mb-6" style={{ padding: "14px 18px", background: C.panel,
-        border: `1px solid ${C.borde}`,
-        borderLeft: `3px solid ${diasTasa === null ? C.rojo : diasTasa > 2 ? C.rojo
-                                 : diasTasa > 0 ? C.ambar : C.verde}`,
-        borderRadius: 5 }}>
+      <div className="mb-3" style={{ padding: "14px 18px", background: C.panel,
+        border: `1px solid ${C.borde}`, borderRadius: 10 }}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div style={{ minWidth: 240 }}>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
-              color: C.tenue, marginBottom: 3 }}>Tasa del Banco Central</div>
+              color: C.tenue, marginBottom: 3 }}>
+              <Punto color={diasTasa === null || diasTasa > 2 ? C.rojo
+                            : diasTasa > 0 ? C.ambar : C.verde} />Tasa del Banco Central</div>
             {tasa ? (
               <>
                 <div className="num" style={{ fontSize: 22, fontWeight: 700,
@@ -362,14 +412,12 @@ function App() {
           </div>
         </div>
         <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 8 }}>
-          Se trae sola cada media hora entre las 8:00 y las 12:30 de Caracas desde DolarAPI.
-          Una tasa cargada a mano nunca la pisa la tarea automática. Los fines de semana y
-          feriados no hay publicación: ahí se usa la del último día hábil y no es un problema.
+          Se trae sola desde DolarAPI, cada media hora entre las 8:00 y las 12:30 de Caracas.
         </div>
       </div>
 
       <div className="mb-6" style={{ padding: "14px 18px", background: C.panel,
-        border: `1px solid ${C.borde}`, borderRadius: 5 }}>
+        border: `1px solid ${C.borde}`, borderRadius: 10 }}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
@@ -386,9 +434,7 @@ function App() {
                 activo y hay que correrla a mano.</span>}
             </div>
             <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 3 }}>
-              Corre todos los días a las 7:00 de Caracas. Genera los cobros vencidos y marca
-              como vencida a quien se pasó de su plazo de gracia. Nunca suspende a nadie: eso
-              se decide a mano.
+              Corre a las 7:00 de Caracas. Nunca suspende a nadie: eso se decide a mano.
             </div>
           </div>
           <Boton tono="suave" disabled={corriendo} onClick={correrAhora}>
@@ -631,7 +677,7 @@ function Ficha({ sb, c, notificar, fallo, onCerrar, onGuardado }) {
               <Campo label="Estado">
                 <select value={s.estado} onChange={(e) => setS({ ...s, estado: e.target.value })}>
                   {["prueba","activa","vencida","suspendida","cancelada"].map((k) =>
-                    <option key={k} value={k}>{ESTADOS[k].t}</option>)}
+                    <option key={k} value={k}>{ESTADOS_T[k]}</option>)}
                 </select>
               </Campo>
               <Campo label="Plan">

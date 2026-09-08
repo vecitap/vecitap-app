@@ -23,8 +23,9 @@
   .g1{gap:4px}.g2{gap:8px}.g3{gap:12px}.g4{gap:16px}
   .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}
   .mb4{margin-bottom:16px}.mb6{margin-bottom:24px}.mt3{margin-top:12px}.mt4{margin-top:16px}
-  input,select,textarea{background:#fff;border:1px solid #DAD1C8;border-radius:9px;
-    padding:11px 12px;font-size:16px;width:100%;outline:none;color:#111144;font-family:inherit}
+  input,select,textarea{background:var(--campo,#fff);border:1px solid var(--lineaF,#DAD1C8);
+    border-radius:9px;padding:11px 12px;font-size:16px;width:100%;outline:none;
+    color:var(--tinta,#111144);font-family:inherit}
   input:focus,select:focus,textarea:focus{border-color:#F98513;
     box-shadow:0 0 0 3px rgba(249,133,19,.20)}
   label{display:block}
@@ -52,15 +53,45 @@ const CONFIG = {
   key: "sb_publishable_75OWc-Q0F5PfZK-TG-2C4Q_hN0nam2H",
 };
 
-const T = {
-  papel:"#F4F1EC", tarjeta:"#FFFFFF", tinta:"#111144", tinta2:"#3D3D6B",
-  tenue:"#66668A", linea:"#E4DED4", lineaF:"#DAD1C8",
-  naranja:"#F98513", naranjaBg:"#FDEDDC", sobreNaranja:"#111144",
-  verde:"#1F6B4A", verdeBg:"#E8F0EB",
-  ambar:"#8A5A00", ambarBg:"#F7EFE0",
-  rojo:"#A32A1E",  rojoBg:"#FAEAE7",
-  azul:"#223382",  azulBg:"#EAEEF7",
+const TEMAS = {
+  claro: {
+    papel:"#F4F1EC", tarjeta:"#FFFFFF", tinta:"#111144", tinta2:"#3D3D6B",
+    tenue:"#66668A", linea:"#E4DED4", lineaF:"#DAD1C8",
+    naranja:"#F98513", naranjaBg:"#FDEDDC", sobreNaranja:"#111144",
+    verde:"#1F6B4A", verdeBg:"#E8F0EB",
+    ambar:"#8A5A00", ambarBg:"#F7EFE0",
+    rojo:"#A32A1E",  rojoBg:"#FAEAE7",
+    azul:"#223382",  azulBg:"#EAEEF7",
+  },
+  oscuro: {
+    papel:"#0B0B2E", tarjeta:"#141440", tinta:"#F4F1EC", tinta2:"#C3C6DE",
+    tenue:"#9494B8", linea:"#2C2C63", lineaF:"#3C3C7E",
+    naranja:"#F98513", naranjaBg:"rgba(249,133,19,.16)", sobreNaranja:"#111144",
+    verde:"#5FCB9B", verdeBg:"rgba(95,203,155,.14)",
+    ambar:"#E8A33C", ambarBg:"rgba(232,163,60,.14)",
+    rojo:"#E8776A",  rojoBg:"rgba(232,119,106,.14)",
+    azul:"#9BACD8",  azulBg:"rgba(155,172,216,.14)",
+  },
 };
+
+const leerTema = () => {
+  try { return localStorage.getItem("vecitap-tema") === "oscuro" ? "oscuro" : "claro"; }
+  catch (e) { return "claro"; }
+};
+let T = { ...TEMAS[leerTema()] };
+const ponerTema = (n) => {
+  Object.assign(T, TEMAS[n] || TEMAS.claro);
+  try { localStorage.setItem("vecitap-tema", n); } catch (e) {}
+  try {
+    const r = document.documentElement.style;
+    r.setProperty("--campo", n === "oscuro" ? "#0B0B2E" : "#FFFFFF");
+    r.setProperty("--lineaF", T.lineaF);
+    r.setProperty("--tinta", T.tinta);
+    document.body.style.background = T.papel;
+    document.body.style.color = T.tinta;
+  } catch (e) {}
+};
+ponerTema(leerTema());
 
 const nf = (d=2) => new Intl.NumberFormat("es-VE",{minimumFractionDigits:d,maximumFractionDigits:d});
 const usd = (v) => "$ " + nf(2).format(Number(v)||0);
@@ -144,7 +175,10 @@ function App() {
   const [unidades, setUnidades] = useState(null);
   const [elegida, setElegida] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [tema, setTema] = useState(leerTema);
   const tmp = useRef(null);
+
+  useEffect(() => { ponerTema(tema); }, [tema]);
 
   const notificar = (t, tipo="ok") => {
     setAviso({ t, tipo });
@@ -187,8 +221,16 @@ function App() {
           <h1 style={{ fontSize:21, margin:0, fontWeight:700 }}>Mi condominio</h1>
           <div style={{ fontSize:12.5, color:T.tenue, marginTop:3 }}>{sesion.user.email}</div>
         </div>
-        <Boton tono="fantasma" style={{ padding:"8px 10px", fontSize:13 }}
-          onClick={() => sb.auth.signOut()}>Salir</Boton>
+        <div className="flex g2">
+          <Boton tono="fantasma" style={{ padding:"8px 10px", fontSize:13 }}
+            title="Cambiar entre claro y oscuro"
+            onClick={() => { const n = tema === "oscuro" ? "claro" : "oscuro";
+                             ponerTema(n); setTema(n); }}>
+            {tema === "oscuro" ? "Claro" : "Oscuro"}
+          </Boton>
+          <Boton tono="fantasma" style={{ padding:"8px 10px", fontSize:13 }}
+            onClick={() => sb.auth.signOut()}>Salir</Boton>
+        </div>
       </header>
 
       {aviso && (
@@ -196,7 +238,7 @@ function App() {
           lineHeight:1.5,
           background: aviso.tipo==="error" ? T.rojoBg : T.verdeBg,
           color: aviso.tipo==="error" ? T.rojo : T.verde,
-          border:`1px solid ${aviso.tipo==="error" ? "#EFCFC9" : "#C9DDD1"}` }}>{aviso.t}</div>
+          border:`1px solid ${T.linea}` }}>{aviso.t}</div>
       )}
 
       {unidades.length > 1 && (
