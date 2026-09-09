@@ -68,11 +68,19 @@ const TEMAS = {
     tinta: "#111144",            // 15,7:1 sobre crema
     tinta2: "#3D3D6B",           //  8,9:1
     tenue: "#66668A",            //  4,9:1 — el mínimo para texto pequeño
-    linea: "#E4DED4", lineaFuerte: "#DAD1C8",
+    /* Grises fríos, no beige. El #DAD1C8 de la marca es precioso en
+       papel impreso y en material gráfico, pero como línea de interfaz
+       sobre el crema envejece la pantalla: la hace ver a los años 2000.
+       Estos dos salen del marino aclarado, así que siguen siendo de la
+       familia de la marca sin el tono tostado. */
+    linea: "#E6E3EC", lineaFuerte: "#D3D0DE",
     verde: "#1F6B4A", verdeBg: "#E8F0EB",
     ambar: "#8A5A00", ambarBg: "#F7EFE0",
     rojo:  "#A32A1E", rojoBg:  "#FAEAE7",
-    azul:  "#223382", azulBg:  "#EAEEF7",
+    /* El azul secundario salió de la interfaz: como fondo no se ve
+       elegante y compite con el marino. El saldo a favor va en marino
+       sobre un neutro frío. */
+    azul:  "#111144", azulBg:  "#ECEAF2",
     sombra: "0 1px 2px rgba(17,17,68,.04), 0 8px 24px -12px rgba(17,17,68,.14)",
     sombraAlta: "0 2px 6px rgba(17,17,68,.07), 0 20px 48px -16px rgba(17,17,68,.24)",
   },
@@ -1431,8 +1439,10 @@ function Inicio({ unidades, saldos, sumaAlicuotas, porCobrar, aFavor, conDeuda,
    obliga al propietario del momento: quien era dueño en marzo responde
    por marzo aunque venda en junio.
    ══════════════════════════════════════════════════════════════ */
+/* Tolera que la unidad no esté: un recibo de una unidad que ya no
+   aparece en la lista cargada tumbaba la pantalla entera. */
 const vigente = (u, tipo) =>
-  (u.vinculos || []).find((v) => v.tipo === tipo && !v.hasta) || null;
+  ((u && u.vinculos) || []).find((v) => v.tipo === tipo && !v.hasta) || null;
 const nombreDe = (v) => v?.personas
   ? [v.personas.prefijo, v.personas.nombre].filter(Boolean).join(" ") : "";
 
@@ -3561,7 +3571,7 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
           style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)",
             display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
           <div onClick={(e) => e.stopPropagation()}
-            style={{ background: "#fff", borderRadius: T.rp, maxWidth: 760, width: "100%",
+            style={{ background: "#fff", borderRadius: T.r, maxWidth: 760, width: "100%",
               maxHeight: "92vh", overflow: "auto", padding: 18 }}>
             <div className="flex justify-between items-start gap-3" style={{ marginBottom: 12 }}>
               <div>
@@ -4141,6 +4151,9 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
   const [plantilla, setPlantilla] = useState(() => leerLocal("vecitap_plantilla") || PLANTILLA);
   const [cargando, setCargando] = useState(false);
   const [previa, setPrevia] = useState(null);
+  const [nota, setNota] = useState({ texto: "", hasta: "" });
+  const [guardandoNota, setGuardandoNota] = useState(false);
+  const [verNota, setVerNota] = useState(false);
   const [prueba, setPrueba] = useState(null);
   const [correo, setCorreo] = useState(null);     // lo que devuelve la base
   const [destinos, setDestinos] = useState([]);  // uno por persona
@@ -4170,6 +4183,28 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
     setEnvio((Array.isArray(data) ? data[0] : data) || null);
   };
   useEffect(() => { cargarEnvio(); }, [org.id, periodoId]);
+
+  /* Nota de la administradora: un mensaje suyo que se anexa al correo
+     de todos los recibos. Se guarda por organización, no por envío. */
+  const cargarNota = async () => {
+    const { data } = await sb.from("ajustes_correo")
+      .select("nota,nota_hasta").eq("org_id", org.id).maybeSingle();
+    setNota({ texto: data?.nota || "", hasta: data?.nota_hasta || "" });
+  };
+  useEffect(() => { cargarNota(); }, [org.id]);
+
+  const guardarNota = async () => {
+    setGuardandoNota(true);
+    const { error } = await sb.from("ajustes_correo")
+      .upsert({ org_id: org.id, nota: nota.texto.trim() || null,
+                nota_hasta: nota.hasta || null }, { onConflict: "org_id" });
+    setGuardandoNota(false);
+    if (error) return fallo(error);
+    notificar(nota.texto.trim()
+      ? "Nota guardada. Va a salir en los correos de los recibos."
+      : "Nota borrada. Los correos vuelven a salir sin mensaje.");
+    cargarNota();
+  };
 
   /* Encolar y despachar son dos pasos a propósito: encolar deja los
      correos listos y no se queda esperando a que un servicio de afuera
@@ -4300,6 +4335,115 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
     recargar && recargar();
   };
 
+  /* ── El listado del mes, en papel ──────────────────────────────
+     Lo que la administradora lleva a la junta o archiva: quién debe qué
+     este mes, con el total abajo. Mismo lenguaje visual que el recibo,
+     con el "powered by Vecitap" al pie. */
+  const listadoPDF = () => {
+    if (!recibos.length) return notificar("No hay recibos que listar.", "error");
+    const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) =>
+      ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+    const base = String(location.href).replace(/[^/]*$/, "");
+
+    let tCuota = 0, tMora = 0, tAdm = 0, tAnt = 0, tTotal = 0;
+    const filas = recibos.map((r) => {
+      const u = unidades.find((x) => x.id === r.unidad_id);
+      const p = vigente(u, "propietario"), q = vigente(u, "inquilino");
+      const ant = Number(r.anterior) + Number(r.anterior_hon) + Number(r.anterior_serv);
+      tCuota += Number(r.cuota) + Number(r.directos); tMora += Number(r.mora);
+      tAdm += Number(r.honorario) + Number(r.servicio); tAnt += ant;
+      tTotal += Number(r.total);
+      return `<tr>
+        <td class="cod">${esc(u?.codigo)}</td>
+        <td>${esc(nombreDe(p) || nombreDe(q) || "sin registrar")}</td>
+        <td class="d">${usd(Number(r.cuota) + Number(r.directos))}</td>
+        <td class="d">${usd(ant)}</td>
+        <td class="d">${usd(r.mora)}</td>
+        <td class="d">${usd(Number(r.honorario) + Number(r.servicio))}</td>
+        <td class="d tot">${usd(r.total)}</td></tr>`;
+    }).join("");
+
+    const doc = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>Cortes ${esc(periodo?.etiqueta || "")}</title>
+<style>
+  @page { size: Letter; margin: 12mm 13mm 10mm; }
+  *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+        color:#111144; font-size:9.5pt }
+  .hoja{ width:100%; border-collapse:collapse }
+  .hoja > thead{ display:table-header-group }
+  .hoja > thead > tr > td, .hoja > tbody > tr > td{ padding:0; border:0 }
+  .cab{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px;
+        padding-bottom:9px; border-bottom:2.5px solid #111144; margin-bottom:12px }
+  h1{ font-size:15pt; margin:0; letter-spacing:-.01em }
+  .or{ font-size:8pt; color:#66668A; margin-top:2px }
+  .et{ font-size:6.7pt; text-transform:uppercase; letter-spacing:.1em; color:#66668A;
+       font-weight:700; display:block; text-align:right }
+  .mes{ font-size:12pt; font-weight:700; text-align:right; white-space:nowrap }
+  table.lista{ width:100%; border-collapse:collapse }
+  table.lista th{ font-size:6.8pt; text-transform:uppercase; letter-spacing:.09em;
+    color:#66668A; text-align:left; padding:0 6px 5px; border-bottom:1px solid #111144 }
+  table.lista th.d{ text-align:right }
+  table.lista td{ padding:4.4px 6px; border-bottom:1px solid #E6E3EC; font-size:8.6pt }
+  table.lista td.d{ text-align:right; white-space:nowrap;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+  table.lista td.cod{ font-weight:700;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+  table.lista td.tot{ font-weight:700 }
+  table.lista tr.suma td{ border-top:1.5px solid #111144; border-bottom:0;
+    padding-top:7px; font-weight:700; font-size:9.5pt }
+  .pie{ margin-top:14px; padding-top:8px; border-top:1px solid #D3D0DE;
+        display:flex; justify-content:space-between; align-items:flex-end; gap:18px }
+  .pie p{ margin:0; font-size:7.4pt; color:#66668A; line-height:1.5; max-width:74% }
+  .marca{ text-align:right; white-space:nowrap }
+  .marca span{ font-size:6.5pt; color:#8B8BAA; letter-spacing:.05em; display:block;
+               margin-bottom:2px }
+  .marca img{ height:15px }
+  .marca b{ font-size:9pt; color:#111144 }
+</style></head><body>
+<table class="hoja"><thead><tr><td>
+  <div class="cab">
+    <div>
+      <h1>${esc(edificio?.nombre || "")}</h1>
+      <div class="or">${esc(edificio?.rif ? "RIF " + edificio.rif + " · " : "")}${esc(org?.nombre || "")}</div>
+    </div>
+    <div>
+      <span class="et">Cortes de cuenta</span>
+      <div class="mes">${esc(periodo?.etiqueta || "")}</div>
+      <div class="or">${recibos.length} unidades</div>
+    </div>
+  </div>
+</td></tr></thead><tbody><tr><td>
+  <table class="lista">
+    <thead><tr><th>Unidad</th><th>Propietario</th><th class="d">Del mes</th>
+      <th class="d">Anterior</th><th class="d">Mora</th><th class="d">Administración</th>
+      <th class="d">Total</th></tr></thead>
+    <tbody>${filas}
+      <tr class="suma"><td colspan="2">Total del edificio</td>
+        <td class="d">${usd(tCuota)}</td><td class="d">${usd(tAnt)}</td>
+        <td class="d">${usd(tMora)}</td><td class="d">${usd(tAdm)}</td>
+        <td class="d">${usd(tTotal)}</td></tr>
+    </tbody>
+  </table>
+  <div class="pie">
+    <p>Listado de los recibos emitidos en ${esc(periodo?.etiqueta || "")}. Los montos están
+       en dólares; el equivalente en bolívares se calcula con la tasa del día en que cada
+       propietario pague.</p>
+    <div class="marca"><span>powered by</span>
+      <img src="${base}logo-claro.png" alt="Vecitap"
+           onerror="this.outerHTML='<b>vecitap</b>'"></div>
+  </div>
+</td></tr></tbody></table>
+</body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) return notificar("El navegador bloqueó la ventana. Permita las ventanas emergentes.", "error");
+    w.document.write(doc);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+    setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 800);
+  };
+
   const exportarCSV = () => {
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const filas = [
@@ -4331,7 +4475,7 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
   return (
     <div className="grid gap-5">
       <Tarjeta>
-        <Titulo sub="Los recibos ya emitidos. El envío masivo por correo necesita un servidor propio, que todavía no está montado; mientras tanto, WhatsApp y la impresión funcionan hoy.">
+        <Titulo sub="Los recibos ya emitidos. El correo sale solo con el diseño de Vecitap; WhatsApp y la impresión quedan para los casos sueltos.">
           Cortes de cuenta
         </Titulo>
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
@@ -4341,8 +4485,12 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
             </Selector>
           </Campo>
           <div style={{ alignSelf: "end" }} className="flex gap-2 flex-wrap">
-            <Boton tipo="suave" onClick={exportarCSV}>
-              <Ic n="Download" size={15} /> Exportar el listado
+            <Boton tipo="suave" onClick={listadoPDF}
+              title="Abre el listado del mes listo para imprimir o guardar como PDF">
+              <Ic n="Printer" size={15} /> Listado en PDF</Boton>
+            <Boton tipo="fantasma" onClick={exportarCSV}
+              title="El mismo listado como archivo de Excel, para el contador">
+              <Ic n="Download" size={15} /> CSV
             </Boton>
             <Boton tipo="suave" onClick={imprimirTodos}>
               <Ic n="Printer" size={15} /> Imprimir los {recibos.length} recibos
@@ -4375,12 +4523,23 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
               <b className="mono">{envio.malos}</b> direcciones que rebotaron</span>}
             {envio.ultimo_envio && <span style={{ color: T.tenue }}>
               último {String(envio.ultimo_envio).slice(0, 16).replace("T", " ")}</span>}
-            <Boton size="s" tipo="fantasma" onClick={async () => {
-              const d = await sb.rpc("despachar_ahora");
-              if (d.error) return fallo(d.error);
-              notificar("Cola despachada."); cargarEnvio();
-            }}>Despachar la cola</Boton>
+            <Boton size="s" tipo="fantasma"
+              title={"Los correos no salen en el instante: quedan en una cola y una tarea " +
+                     "automática los manda cada 5 minutos. Este botón los manda ya, sin " +
+                     "esperar esa tarea. Sirve para comprobar de una vez que están saliendo."}
+              onClick={async () => {
+                const d = await sb.rpc("despachar_ahora");
+                if (d.error) return fallo(d.error);
+                notificar("Se mandaron los correos que estaban en cola."); cargarEnvio();
+              }}>Enviar ahora los pendientes</Boton>
           </div>
+        )}
+        {envio && (
+          <p style={{ fontSize: 11.5, color: T.tenue, marginTop: 8, lineHeight: 1.6 }}>
+            Los correos no salen en el instante: quedan en una cola y una tarea automática
+            los manda cada 5 minutos. Así, si el servicio de correo falla un momento, el
+            envío se reintenta solo en vez de perderse.
+          </p>
         )}
 
         {periodo && (
@@ -4393,9 +4552,67 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
           </div>
         )}
 
+        {/* ── Nota opcional dentro del correo ──────────────────────
+            Va guardada por administradora y sale en el correo de todos
+            los recibos. Con fecha de caducidad para que no se quede
+            colgada de un mes al siguiente sin que nadie lo note. */}
+        <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: T.rs,
+          background: nota.texto ? T.ambarBg : T.fondo, border: `1px solid ${T.linea}` }}>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>
+                Mensaje de la administradora en el correo</div>
+              <div style={{ fontSize: 12.5, color: T.tinta2, marginTop: 2 }}>
+                {nota.texto
+                  ? <>Sale en el correo de todos los recibos
+                      {nota.hasta ? <> · hasta el {nota.hasta}</> : <> · sin fecha de fin</>}</>
+                  : "Ninguno. Opcional: un aviso suyo dentro del correo del recibo."}
+              </div>
+            </div>
+            <Boton size="s" tipo="suave" onClick={() => setVerNota(!verNota)}>
+              {verNota ? "Cerrar" : nota.texto ? "Cambiar" : "Escribir uno"}
+            </Boton>
+          </div>
+
+          {verNota && (
+            <div style={{ marginTop: 14 }}>
+              <Campo label="El mensaje"
+                ayuda="Por ejemplo: la asamblea es el sábado 12 a las 10 am en el salón.">
+                <textarea rows={3} value={nota.texto} maxLength={600}
+                  placeholder="Escriba aquí el aviso que quiere que lean sus propietarios"
+                  onChange={(e) => setNota({ ...nota, texto: e.target.value })}
+                  style={{ ...estiloEntrada(false), fontSize: 13.5 }} />
+              </Campo>
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
+                <Campo label="Dejar de mostrarlo el"
+                  ayuda="En blanco se queda hasta que usted lo borre.">
+                  <Entrada type="date" value={nota.hasta}
+                    onChange={(e) => setNota({ ...nota, hasta: e.target.value })} />
+                </Campo>
+                <div style={{ alignSelf: "end" }} className="flex gap-2">
+                  <Boton disabled={guardandoNota} onClick={guardarNota}>Guardar</Boton>
+                  {nota.texto && (
+                    <Boton tipo="fantasma" disabled={guardandoNota}
+                      onClick={() => { setNota({ texto: "", hasta: "" });
+                                       setTimeout(guardarNota, 0); }}>Quitar</Boton>
+                  )}
+                </div>
+              </div>
+              <p style={{ fontSize: 11.5, color: T.tenue, marginTop: 4, lineHeight: 1.6 }}>
+                Va dentro del correo, arriba del monto, en un recuadro aparte. Se guarda una
+                sola vez y sale en todos los envíos hasta que lo borre o llegue la fecha.
+                Use la vista previa de abajo para verlo antes de mandar nada.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div style={{ marginTop: 16 }}>
-          <Campo label="Mensaje" ayuda="Entre llaves van los datos que se reemplazan en cada envío.">
-            <textarea rows={7} value={plantilla}
+          <Campo label="Mensaje para WhatsApp"
+            ayuda={"Este es el texto de los botones de WhatsApp de la lista de abajo. " +
+                   "El correo NO usa esto: el correo se arma solo, con el diseño de Vecitap. " +
+                   "Entre llaves van los datos que se reemplazan en cada envío."}>
+            <textarea rows={6} value={plantilla}
               onChange={(e) => { setPlantilla(e.target.value); guardarLocal("vecitap_plantilla", e.target.value); }}
               style={{ ...estiloEntrada(false), fontSize: 13 }} />
           </Campo>
@@ -4504,7 +4721,7 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
             style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)",
               display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div onClick={(ev) => ev.stopPropagation()}
-              style={{ background: "#fff", borderRadius: T.rp, maxWidth: 720, width: "100%",
+              style={{ background: "#fff", borderRadius: T.r, maxWidth: 720, width: "100%",
                 maxHeight: "94vh", overflow: "auto", padding: 18 }}>
               <div className="flex justify-between items-start gap-3 flex-wrap mb-3">
                 <div>
@@ -4574,7 +4791,7 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
             style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)",
               display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div onClick={(ev) => ev.stopPropagation()}
-              style={{ background: "#fff", borderRadius: T.rp, maxWidth: 860, width: "100%",
+              style={{ background: "#fff", borderRadius: T.r, maxWidth: 860, width: "100%",
                 maxHeight: "94vh", overflow: "auto", padding: 18 }}>
               <div className="flex justify-between items-start gap-3 flex-wrap"
                 style={{ marginBottom: 12 }}>
@@ -4606,9 +4823,9 @@ function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo,
 
               <p style={{ fontSize: 12, color: T.tenue, marginTop: 12, lineHeight: 1.6 }}>
                 <b>Guardar PDF</b> usa la impresión del navegador: elija "Guardar como PDF"
-                como destino. Adjuntar ese PDF solo a un correo automático necesita un
-                servidor de envíos propio, que todavía no está montado; hoy el PDF se
-                guarda y se adjunta a mano, o se manda el mensaje por WhatsApp.
+                como destino. El correo automático no lleva el PDF adjunto a propósito: lleva
+                un enlace al portal, donde el propietario ve el recibo al día y se lo baja él
+                mismo. Un adjunto se queda viejo en cuanto el propietario paga.
               </p>
             </div>
           </div>
