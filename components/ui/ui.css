@@ -1,0 +1,114 @@
+/* Set mínimo de clases del sistema de diseño. Los componentes en
+   components/ui/*.tsx solo aplican estas clases — el color y el
+   espaciado viven acá, no repetidos en cada componente. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: var(--radio-chico);
+  border: 1px solid var(--acento);
+  background: var(--acento);
+  color: var(--acento-sobre);
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: filter .15s ease;
+}
+.btn:hover { filter: brightness(1.05); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-secundario {
+  background: transparent;
+  color: var(--acento-texto);
+  border-color: var(--linea-fuerte);
+}
+
+.btn-mini { padding: 5px 11px; font-size: 12px; }
+
+.campo { display: block; }
+.campo + .campo { margin-top: 12px; }
+.campo-etiqueta {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 600;
+  color: var(--tenue);
+  margin-bottom: 4px;
+}
+.campo-obligatorio { color: var(--rojo); margin-left: 3px; }
+.campo-error { color: var(--rojo); font-size: 13px; margin-top: 4px; }
+
+.control {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: var(--radio-chico);
+  border: 1px solid var(--linea-fuerte);
+  background: var(--campo);
+  color: var(--tinta);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.control:focus {
+  border-color: var(--acento);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acento) 20%, transparent);
+}
+
+.card {
+  background: var(--lienzo);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  padding: 18px;
+  box-shadow: var(--sombra);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radio-pill);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-verde  { color: var(--verde); background: var(--verde-bg); }
+.badge-ambar  { color: var(--ambar); background: var(--ambar-bg); }
+.badge-rojo   { color: var(--rojo);  background: var(--rojo-bg); }
+.badge-azul   { color: var(--azul);  background: var(--azul-bg); }
+.badge-tenue  { color: var(--tenue); background: var(--lienzo-alt); }
+
+.tabla-scroll { overflow-x: auto; }
+.tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tabla th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  font-weight: 600;
+  color: var(--tenue);
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--linea);
+  white-space: nowrap;
+}
+.tabla td { padding: 11px 12px; border-bottom: 1px solid var(--linea); }
+.tabla tbody tr:hover { background: var(--lienzo-alt); }
+
+.dialogo {
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  background: var(--lienzo);
+  color: var(--tinta);
+  max-width: 520px;
+  width: 92%;
+  padding: 18px;
+  box-shadow: var(--sombra-alta);
+}
+.dialogo::backdrop { background: rgba(0,0,0,.35); }
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

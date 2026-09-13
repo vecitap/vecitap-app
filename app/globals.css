@@ -1,49 +1,98 @@
+@import "../components/ui/ui.css";
+
+/* ══════════════════════════════════════════════════════════════
+   TOKENS · fuente única de verdad del tema
+   Antes duplicados (y con pequeñas diferencias entre sí) en
+   app.html, residente.html y operador.html. Los valores de estado
+   (verde/ambar/rojo/azul) y de superficie vienen de app.html y
+   residente.html, que coincidían entre sí byte a byte; donde
+   operador.html divergía (azul, tenue oscuro, opacidades de fondo)
+   se unificó a ese mismo valor.
+   ══════════════════════════════════════════════════════════════ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --fondo: #F4F1EC;
+  --lienzo: #FFFFFF;
+  --lienzo-alt: #EDE9E1;
+  --campo: #FFFFFF;
+
+  --tinta: #111144;
+  --tinta-2: #3D3D6B;
+  --tenue: #66668A;
+
+  --linea: #E6E3EC;
+  --linea-fuerte: #D3D0DE;
+
+  --verde: #1F6B4A;     --verde-bg: #E8F0EB;
+  --ambar: #8A5A00;     --ambar-bg: #F7EFE0;
+  --rojo:  #A32A1E;     --rojo-bg:  #FAEAE7;
+  --azul:  #111144;     --azul-bg:  #ECEAF2;
+
+  --sombra: 0 1px 2px rgba(17,17,68,.04), 0 8px 24px -12px rgba(17,17,68,.14);
+  --sombra-alta: 0 2px 6px rgba(17,17,68,.07), 0 20px 48px -16px rgba(17,17,68,.24);
+
+  /* Marca. No depende de claro/oscuro salvo donde el contraste lo exige
+     (acento-suave, acento-texto). Punto único de cambio cuando llegue el
+     manual de marca. */
+  --acento: #F98513;
+  --acento-sobre: #111144;
+  --acento-suave: #FDEDDC;
+  --acento-texto: #8A4A00;
+
+  --radio: 14px;
+  --radio-chico: 10px;
+  --radio-pill: 999px;
+
+  --font-texto: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-titulos: var(--font-poppins), var(--font-texto);
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root[data-theme="oscuro"] {
+  --fondo: #0B0B2E;
+  --lienzo: #141440;
+  --lienzo-alt: #1B1B4E;
+  --campo: #0B0B2E;
+
+  --tinta: #F4F1EC;
+  --tinta-2: #C3C6DE;
+  --tenue: #9494B8;
+
+  --linea: #2C2C63;
+  --linea-fuerte: #3C3C7E;
+
+  --verde: #5FCB9B;     --verde-bg: rgba(95,203,155,.14);
+  --ambar: #E8A33C;     --ambar-bg: rgba(232,163,60,.14);
+  --rojo:  #E8776A;     --rojo-bg:  rgba(232,119,106,.14);
+  --azul:  #9BACD8;     --azul-bg:  rgba(155,172,216,.14);
+
+  --sombra: 0 1px 2px rgba(0,0,0,.30), 0 8px 24px -12px rgba(0,0,0,.55);
+  --sombra-alta: 0 2px 6px rgba(0,0,0,.40), 0 20px 48px -16px rgba(0,0,0,.70);
+
+  --acento-suave: rgba(249,133,19,.16);
+  --acento-texto: #F98513;
 }
 
-html {
-  height: 100%;
-}
+* { box-sizing: border-box; }
 
-html,
-body {
+html { height: 100%; }
+
+html, body {
   max-width: 100vw;
   overflow-x: hidden;
 }
 
 body {
   min-height: 100%;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--fondo);
+  color: var(--tinta);
+  font-family: var(--font-texto);
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
-}
+a { color: inherit; }
