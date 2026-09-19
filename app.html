@@ -873,8 +873,32 @@ function App() {
      exactamente lo que pasó al entrar con sesión iniciada. */
   useEffect(() => { try { document.body.style.background = T.fondo; } catch (e) {} }, [tema]);
   const [aviso, setAviso] = useState(null);
+  /* Qué módulos tiene contratado esta administradora. Lo decide Vecitap
+     desde su panel y lo responde la base; acá solo se esconde lo que ya
+     está apagado del otro lado. Si la consulta falla no se esconde nada:
+     es preferible un botón de más que una pantalla mutilada sin causa
+     visible, y de todos modos la base rechaza lo que no corresponde. */
+  const [modulos, setModulos] = useState(null);
   const [fichaDe, setFichaDe] = useState(null);
   const [menuAbierto, setMenuAbierto] = useState(false);
+  useEffect(() => {
+    if (!sb || !edificio) return;
+    let vivo = true;
+    sb.rpc("mis_modulos", { p_edificio: edificio.id }).then(({ data, error }) => {
+      if (!vivo) return;
+      if (error) { setModulos(null); return; }
+      const m = {};
+      (data || []).forEach((x) => { m[x.clave] = x.activo; });
+      setModulos(m);
+    });
+    return () => { vivo = false; };
+  }, [sb, edificio && edificio.id]);
+  const hayModulo = (clave) => !modulos || modulos[clave] !== false;
+  /* Si estaba parado en una pantalla que acaban de apagar, se devuelve a
+     Inicio. Sin esto queda un área de contenido en blanco. */
+  useEffect(() => {
+    if (vista === "cortes" && !hayModulo("cortes")) setVista("inicio");
+  }, [modulos]);
   const [tasa, setTasa] = useState({ valor: 0, fuente: "", actualizada: null, cargando: false, error: null });
   const tmp = useRef(null);
 
@@ -1008,14 +1032,14 @@ function App() {
     { id: "cobros", label: "Cobros", icono: "ListChecks" },
     { id: "mes", label: "Cierre del mes", icono: "ReceiptText" },
     { id: "pagos", label: "Pagos", icono: "Wallet" },
-    { id: "cortes", label: "Cortes de cuenta", icono: "Send" },
+    { id: "cortes", label: "Cortes de cuenta", icono: "Send", modulo: "cortes" },
     { id: "accesos", label: "Accesos", icono: "KeyRound" },
-  ];
+  ].filter((m) => !m.modulo || hayModulo(m.modulo));
   const menuBajo = [
     { id: "ajustes", label: "Ajustes", icono: "Settings2" },
   ];
 
-  const comun = { sb, org, edificio, unidades, saldos, conceptos, periodos, periodoAbierto,
+  const comun = { hayModulo, sb, org, edificio, unidades, saldos, conceptos, periodos, periodoAbierto,
     sumaAlicuotas, porCobrar, aFavor, conDeuda, tasa, notificar, fallo,
     recargar: cargarEdificio, recargarEdificios: cargarEdificios,
     setVista, verFicha: setFichaDe };
@@ -1272,7 +1296,7 @@ function App() {
                 {vista === "cobros" && <Cobros {...comun} />}
                 {vista === "mes" && <CierreMes {...comun} />}
                 {vista === "pagos" && <Pagos {...comun} />}
-                {vista === "cortes" && <Cortes {...comun} />}
+                {vista === "cortes" && hayModulo("cortes") && <Cortes {...comun} />}
                 {vista === "accesos" && <Accesos {...comun} />}
                 {vista === "ajustes" && <Ajustes {...comun} cargarOrgs={cargarOrgs} />}
               </>

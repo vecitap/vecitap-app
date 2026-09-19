@@ -50,7 +50,7 @@ try {
 } catch (e) {
   fallaCDN = e;
 }
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useCallback } = React;
 
 /* Dos temas. El azul secundario de la marca no se usa para texto:
    en pantalla llena todo de azul y compite con el naranja. Los grises
@@ -595,6 +595,152 @@ function Entrar({ sb, notificar, aviso }) {
   );
 }
 
+/* ── Qué módulos tiene contratado este cliente ──
+   El interruptor vive en la base (migración 40). Acá solo se muestra y
+   se cambia: si alguien apaga un módulo, la base lo rechaza aunque la
+   pantalla del cliente siguiera mostrando el botón. */
+function PanelModulos({ sb, orgId, edificios, notificar, fallo }) {
+  const [filas, setFilas] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [nuevo, setNuevo] = useState({ clave: "", edificio: "" });
+
+  const cargar = useCallback(() => {
+    return sb.rpc("modulos_de", { p_org: orgId }).then(({ data, error }) => {
+      if (error) return fallo(error);
+      setFilas(data || []);
+    });
+  }, [orgId]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const fijar = async (clave, activo, edificio) => {
+    setOcupado(true);
+    const { error } = await sb.rpc("fijar_modulo", {
+      p_org: orgId, p_clave: clave, p_activo: activo,
+      p_edificio: edificio || null, p_nota: null });
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar(activo ? "Módulo habilitado." : "Módulo deshabilitado.");
+    cargar();
+  };
+
+  const soltar = async (clave, edificio) => {
+    setOcupado(true);
+    const { error } = await sb.rpc("soltar_modulo", {
+      p_org: orgId, p_clave: clave, p_edificio: edificio || null });
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar("La excepción se quitó: vuelve a mandar la regla general.");
+    cargar();
+  };
+
+  const base = (filas || []).filter((f) => !f.edificio_id);
+  const exc = (filas || []).filter((f) => f.edificio_id);
+  const apagables = base.filter((f) => !f.nucleo);
+
+  return (
+    <Panel>
+      <h3 style={{ margin: "0 0 4px", fontSize: 13, textTransform: "uppercase",
+        letterSpacing: ".08em", color: C.suave }}>Módulos</h3>
+      <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 12 }}>
+        Lo que este cliente puede usar. Lo que se apaga acá deja de funcionar
+        de verdad, no solo se esconde.
+      </div>
+
+      {filas === null && <div style={{ fontSize: 12.5, color: C.tenue }}>Cargando…</div>}
+
+      <div className="grid" style={{ gap: 1, background: C.borde, borderRadius: 8,
+        overflow: "hidden", border: `1px solid ${C.borde}` }}>
+        {base.map((f) => (
+          <div key={f.clave} className="flex items-center justify-between gap-3 flex-wrap"
+            style={{ background: C.panel, padding: "10px 12px" }}>
+            <div style={{ minWidth: 190, flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600 }}>{f.nombre}</div>
+              <div style={{ fontSize: 11.5, color: C.tenue }}>{f.descripcion}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              {f.fijado && !f.nucleo && (
+                <span style={{ fontSize: 10.5, color: C.tenue }}>fijado a mano</span>
+              )}
+              {f.nucleo ? (
+                <span style={{ fontSize: 11.5, color: C.tenue,
+                  border: `1px solid ${C.borde}`, borderRadius: 999,
+                  padding: "4px 10px" }}>siempre incluido</span>
+              ) : (
+                <button disabled={ocupado} onClick={() => fijar(f.clave, !f.activo, null)}
+                  title={f.activo ? "Quitarle este módulo al cliente" : "Darle este módulo al cliente"}
+                  style={{ cursor: ocupado ? "wait" : "pointer", fontFamily: "inherit",
+                    fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "5px 14px",
+                    border: `1px solid ${f.activo ? "transparent" : C.borde}`,
+                    background: f.activo ? C.verdeBg : "transparent",
+                    color: f.activo ? C.verde : C.tenue }}>
+                  {f.activo ? "Habilitado" : "Apagado"}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {exc.length > 0 && (
+        <div className="mt-4">
+          <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 6 }}>
+            Excepciones por edificio (mandan sobre la regla de arriba)
+          </div>
+          <div className="grid gap-2">
+            {exc.map((f) => (
+              <div key={f.clave + f.edificio_id}
+                className="flex items-center justify-between gap-3 flex-wrap"
+                style={{ background: C.panelAlt, borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 12.5 }}>
+                  <b>{f.edificio}</b> · {f.nombre} ·{" "}
+                  <span style={{ color: f.activo ? C.verde : C.rojo, fontWeight: 700 }}>
+                    {f.activo ? "habilitado" : "apagado"}
+                  </span>
+                </div>
+                <Boton tono="suave" onClick={() => soltar(f.clave, f.edificio_id)}>
+                  Quitar la excepción
+                </Boton>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(edificios || []).length > 1 && apagables.length > 0 && (
+        <div className="mt-4" style={{ borderTop: `1px solid ${C.borde}`, paddingTop: 14 }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+            <Campo label="Módulo">
+              <select value={nuevo.clave} onChange={(e) => setNuevo({ ...nuevo, clave: e.target.value })}>
+                <option value="">Elegir…</option>
+                {apagables.map((f) => <option key={f.clave} value={f.clave}>{f.nombre}</option>)}
+              </select>
+            </Campo>
+            <Campo label="Solo para el edificio">
+              <select value={nuevo.edificio} onChange={(e) => setNuevo({ ...nuevo, edificio: e.target.value })}>
+                <option value="">Elegir…</option>
+                {(edificios || []).map((e2) => (
+                  <option key={e2.edificio_id} value={e2.edificio_id}>{e2.nombre}</option>
+                ))}
+              </select>
+            </Campo>
+          </div>
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <Boton disabled={!nuevo.clave || !nuevo.edificio || ocupado}
+              onClick={() => fijar(nuevo.clave, true, nuevo.edificio)}>
+              Habilitar solo ahí
+            </Boton>
+            <Boton tono="rojo" disabled={!nuevo.clave || !nuevo.edificio || ocupado}
+              onClick={() => fijar(nuevo.clave, false, nuevo.edificio)}>
+              Apagar solo ahí
+            </Boton>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 /* ── Ficha de un cliente ── */
 function Ficha({ sb, c, notificar, fallo, onCerrar, onGuardado }) {
   const [s, setS] = useState({
@@ -742,6 +888,9 @@ function Ficha({ sb, c, notificar, fallo, onCerrar, onGuardado }) {
                   {usd0(cuotaPrevista * 12)}</div></div>
             </div>
           </Panel>
+
+          <PanelModulos sb={sb} orgId={c.org_id} edificios={edificios}
+            notificar={notificar} fallo={fallo} />
 
           <Panel>
             <h3 style={{ margin: "0 0 12px", fontSize: 13, textTransform: "uppercase",
