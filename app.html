@@ -898,6 +898,7 @@ function App() {
      Inicio. Sin esto queda un área de contenido en blanco. */
   useEffect(() => {
     if (vista === "cortes" && !hayModulo("cortes")) setVista("inicio");
+    if (vista === "estadisticas" && !hayModulo("estadisticas")) setVista("inicio");
   }, [modulos]);
   const [tasa, setTasa] = useState({ valor: 0, fuente: "", actualizada: null, cargando: false, error: null });
   const tmp = useRef(null);
@@ -1033,6 +1034,7 @@ function App() {
     { id: "mes", label: "Cierre del mes", icono: "ReceiptText" },
     { id: "pagos", label: "Pagos", icono: "Wallet" },
     { id: "cortes", label: "Cortes de cuenta", icono: "Send", modulo: "cortes" },
+    { id: "estadisticas", label: "Estadísticas", icono: "ChartColumn", modulo: "estadisticas" },
     { id: "accesos", label: "Accesos", icono: "KeyRound" },
   ].filter((m) => !m.modulo || hayModulo(m.modulo));
   const menuBajo = [
@@ -1297,6 +1299,7 @@ function App() {
                 {vista === "mes" && <CierreMes {...comun} />}
                 {vista === "pagos" && <Pagos {...comun} />}
                 {vista === "cortes" && hayModulo("cortes") && <Cortes {...comun} />}
+                {vista === "estadisticas" && hayModulo("estadisticas") && <Estadisticas {...comun} />}
                 {vista === "accesos" && <Accesos {...comun} />}
                 {vista === "ajustes" && <Ajustes {...comun} cargarOrgs={cargarOrgs} />}
               </>
@@ -4167,6 +4170,420 @@ function htmlRecibo(d) {
    Tampoco lleva el recibo adjunto: lleva el aviso y el enlace al portal.
    Un recibo por correo envejece — el propietario paga y el correo que le
    quedó en la bandeja sigue diciendo que debe. */
+
+/* ── Estadísticas del edificio, para llevar a la asamblea ──
+
+   Regla de este módulo: **ningún número se calcula acá**. Todo viene de
+   la base (migración 42), que a su vez lo lee de lo que quedó congelado
+   al cerrar el mes. Si la pantalla hiciera sus propias cuentas,
+   volveríamos a la familia de error que ya mordió tres veces: la
+   pantalla promete un número y el recibo trae otro, y el administrador
+   queda como mentiroso delante de cien personas.
+
+   Sobre los gráficos: las barras de gasto son UNA medida comparada
+   entre categorías, así que van todas del mismo color. Pintar cada
+   categoría de un color distinto sugiere que el color significa algo, y
+   no significa nada. En la serie del año sí hay dos medidas distintas
+   —lo facturado y lo cobrado— y ahí sí hacen falta dos colores, con su
+   leyenda. */
+
+const Cifra = ({ rotulo, valor, pie, tono }) => (
+  <Tarjeta style={{ padding: "16px 18px" }}>
+    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em",
+      color: T.tenue, fontWeight: 700, marginBottom: 7 }}>{rotulo}</div>
+    <div style={{ fontFamily: FUENTES.numeros, fontSize: 23, fontWeight: 600,
+      color: tono ? T[tono] : T.tinta }}>{valor}</div>
+    {pie && <div style={{ fontSize: 11.5, color: T.tenue, marginTop: 3 }}>{pie}</div>}
+  </Tarjeta>
+);
+
+const BarraGasto = ({ nombre, monto, pct, variacion, max }) => (
+  <div style={{ marginBottom: 12 }}>
+    <div className="flex items-baseline justify-between gap-3" style={{ marginBottom: 5 }}>
+      <span style={{ fontSize: 13.5, color: T.tinta, fontWeight: 500 }}>{nombre}</span>
+      <span className="flex items-baseline gap-2" style={{ whiteSpace: "nowrap" }}>
+        {variacion !== null && variacion !== undefined && Math.abs(variacion) >= 0.5 && (
+          <span style={{ fontSize: 11.5, fontWeight: 600,
+            color: variacion > 0 ? T.rojo : T.verde }}>
+            {variacion > 0 ? "▲" : "▼"} {nf(0).format(Math.abs(variacion))} %
+          </span>
+        )}
+        <span style={{ fontFamily: FUENTES.numeros, fontSize: 13, color: T.tinta }}>
+          {usd(monto)}
+        </span>
+        <span style={{ fontSize: 11.5, color: T.tenue, minWidth: 38, textAlign: "right",
+          display: "inline-block" }}>{nf(1).format(pct)} %</span>
+      </span>
+    </div>
+    <div style={{ height: 9, background: T.fondo, borderRadius: 999, overflow: "hidden" }}
+      title={`${nombre}: ${usd(monto)} · ${nf(1).format(pct)} % del gasto del mes`}>
+      <div style={{ height: "100%", width: `${max > 0 ? (monto / max) * 100 : 0}%`,
+        background: A.base, borderRadius: 999, minWidth: monto > 0 ? 4 : 0 }} />
+    </div>
+  </div>
+);
+
+function SerieAnual({ filas }) {
+  if (!filas || filas.length < 2) return null;
+  const max = Math.max(...filas.map((f) => Math.max(num0(f.facturado), num0(f.cobrado))), 1);
+  const corto = (m) => (MESES[(m || 1) - 1] || "").slice(0, 3);
+
+  return (
+    <div>
+      <div className="flex gap-4 flex-wrap" style={{ marginBottom: 14 }}>
+        {[["Facturado", T.tinta], ["Cobrado", A.base]].map(([t, c]) => (
+          <span key={t} className="flex items-center gap-2" style={{ fontSize: 12, color: T.tinta2 }}>
+            <i style={{ width: 11, height: 11, borderRadius: 3, background: c,
+              display: "inline-block" }} />{t}
+          </span>
+        ))}
+      </div>
+      {/* Ancho tope por mes: con dos o tres meses cerrados, unas barras
+          que ocupan media pantalla exageran la diferencia y se leen como
+          otra cosa. */}
+      <div className="flex items-end gap-2" style={{ height: 150, overflowX: "auto",
+        paddingBottom: 2, justifyContent: filas.length < 6 ? "flex-start" : "stretch" }}>
+        {filas.map((f) => (
+          <div key={`${f.anio}-${f.mes}`}
+            style={{ flex: "1 1 44px", maxWidth: 78, minWidth: 38, textAlign: "center" }}>
+            <div className="flex items-end justify-center" style={{ height: 116, gap: 2 }}>
+              <div title={`${f.etiqueta} · facturado ${usd(f.facturado)}`}
+                style={{ width: 20, background: T.tinta, borderRadius: "4px 4px 0 0",
+                  height: `${(num0(f.facturado) / max) * 100}%`, minHeight: 2 }} />
+              <div title={`${f.etiqueta} · cobrado ${usd(f.cobrado)} (${nf(0).format(f.pct_cobrado)} %)`}
+                style={{ width: 20, background: A.base, borderRadius: "4px 4px 0 0",
+                  height: `${(num0(f.cobrado) / max) * 100}%`, minHeight: 2 }} />
+            </div>
+            <div style={{ fontSize: 10.5, color: T.tenue, marginTop: 6 }}>{corto(f.mes)}</div>
+            <div style={{ fontSize: 10, color: T.tenue }}>{String(f.anio).slice(2)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Estadisticas({ sb, org, edificio, periodos, notificar, fallo }) {
+  const cerrados = (periodos || []).filter((p) => p.estado === "cerrado")
+    .slice().sort((a, b) => (b.anio - a.anio) || (b.mes - a.mes));
+  const [periodoId, setPeriodoId] = useState(cerrados[0]?.id || "");
+  const [d, setD] = useState({ resumen: null, categorias: [], top: [], serie: [], mora: [] });
+  const [cargando, setCargando] = useState(false);
+  const [bloqueado, setBloqueado] = useState(null);
+
+  const periodo = cerrados.find((p) => p.id === periodoId) || null;
+
+  useEffect(() => {
+    if (!periodoId && cerrados[0]) setPeriodoId(cerrados[0].id);
+  }, [cerrados.length]);
+
+  useEffect(() => {
+    if (!sb || !periodoId || !edificio) return;
+    let vivo = true;
+    setCargando(true); setBloqueado(null);
+    Promise.all([
+      sb.rpc("estadisticas_periodo", { p_periodo: periodoId }),
+      sb.rpc("gastos_por_categoria", { p_periodo: periodoId }),
+      sb.rpc("top_gastos", { p_periodo: periodoId, p_n: 6 }),
+      sb.rpc("serie_edificio", { p_edificio: edificio.id, p_meses: 12 }),
+      sb.rpc("morosidad_edificio", { p_edificio: edificio.id }),
+    ]).then(([r1, r2, r3, r4, r5]) => {
+      if (!vivo) return;
+      setCargando(false);
+      /* El primer error se muestra tal cual. Antes esta pantalla se
+         tragaba el error y quedaba igual que "todavía no hay datos",
+         que es la peor forma de fallar: nadie sabe qué arreglar. */
+      const err = [r1, r2, r3, r4, r5].map((x) => x.error).find(Boolean);
+      if (err) { setBloqueado(err.message || String(err)); return; }
+      setD({ resumen: (r1.data || [])[0] || null, categorias: r2.data || [],
+             top: r3.data || [], serie: r4.data || [], mora: r5.data || [] });
+    });
+    return () => { vivo = false; };
+  }, [sb, periodoId, edificio && edificio.id]);
+
+  const maxCat = Math.max(...(d.categorias || []).map((c) => num0(c.monto)), 0);
+  const r = d.resumen;
+
+  const imprimir = () => {
+    if (!r) return notificar("Todavía no hay un mes cerrado que presentar.", "error");
+    const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) =>
+      ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+    const base = String(location.href).replace(/[^/]*$/, "");
+    const m = Math.max(...(d.categorias || []).map((c) => num0(c.monto)), 1);
+
+    const cats = (d.categorias || []).map((c) => `<tr>
+      <td>${esc(c.categoria)}</td>
+      <td class="barra"><i style="width:${(num0(c.monto) / m) * 100}%"></i></td>
+      <td class="d">${usd(c.monto)}</td>
+      <td class="d pq">${nf(1).format(c.pct)} %</td>
+      <td class="d pq">${c.variacion_pct === null || c.variacion_pct === undefined ? "—"
+        : (num0(c.variacion_pct) > 0 ? "+" : "") + nf(0).format(c.variacion_pct) + " %"}</td></tr>`).join("");
+
+    const tops = (d.top || []).map((g) => `<tr>
+      <td>${esc(g.concepto)}</td><td class="pq">${esc(g.categoria)}</td>
+      <td class="d">${usd(g.monto)}</td>
+      <td class="d pq">${nf(1).format(g.pct)} %</td></tr>`).join("");
+
+    const mora = (d.mora || []).map((t) => `<tr>
+      <td>${esc(t.tramo)}</td>
+      <td class="d">${t.unidades}</td>
+      <td class="d">${usd(t.monto)}</td>
+      <td class="d pq">${nf(1).format(t.pct_monto)} %</td></tr>`).join("");
+
+    const maxS = Math.max(...(d.serie || []).map((f) =>
+      Math.max(num0(f.facturado), num0(f.cobrado))), 1);
+    const serie = (d.serie || []).map((f) => `<div class="col">
+      <div class="par">
+        <i class="a" style="height:${(num0(f.facturado) / maxS) * 100}%"></i>
+        <i class="b" style="height:${(num0(f.cobrado) / maxS) * 100}%"></i>
+      </div><span>${esc((MESES[(f.mes || 1) - 1] || "").slice(0, 3))}</span></div>`).join("");
+
+    const doc = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>Informe ${esc(periodo?.etiqueta || "")}</title>
+<style>
+  @page { size: Letter; margin: 12mm 13mm 10mm; }
+  *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+        color:#111144; font-size:9.5pt }
+  .hoja{ width:100%; border-collapse:collapse }
+  .hoja > thead{ display:table-header-group }
+  .hoja > thead > tr > td, .hoja > tbody > tr > td{ padding:0; border:0 }
+  .cab{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px;
+        padding-bottom:9px; border-bottom:2.5px solid #111144; margin-bottom:13px }
+  h1{ font-size:15pt; margin:0; letter-spacing:-.01em }
+  h2{ font-size:8pt; text-transform:uppercase; letter-spacing:.1em; color:#66668A;
+      margin:0 0 7px; font-weight:700 }
+  .or{ font-size:8pt; color:#66668A; margin-top:2px }
+  .et{ font-size:6.7pt; text-transform:uppercase; letter-spacing:.1em; color:#66668A;
+       font-weight:700; display:block; text-align:right }
+  .mes{ font-size:12pt; font-weight:700; text-align:right; white-space:nowrap }
+  .kpis{ display:flex; gap:7px; margin-bottom:15px }
+  .kpi{ flex:1; border:1px solid #E6E3EC; border-radius:7px; padding:7px 9px }
+  .kpi span{ display:block; font-size:6.6pt; text-transform:uppercase; letter-spacing:.08em;
+             color:#66668A; font-weight:700; margin-bottom:3px }
+  .kpi b{ font-size:11.5pt; font-family:ui-monospace,Menlo,Consolas,monospace }
+  .kpi em{ font-style:normal; font-size:7pt; color:#66668A; display:block; margin-top:1px }
+  .bloque{ margin-bottom:15px; break-inside:avoid }
+  table.t{ width:100%; border-collapse:collapse }
+  table.t th{ font-size:6.8pt; text-transform:uppercase; letter-spacing:.09em; color:#66668A;
+    text-align:left; padding:0 5px 4px; border-bottom:1px solid #111144 }
+  table.t th.d{ text-align:right }
+  table.t td{ padding:4px 5px; border-bottom:1px solid #E6E3EC; font-size:8.6pt }
+  table.t td.d{ text-align:right; white-space:nowrap;
+    font-family:ui-monospace,Menlo,Consolas,monospace }
+  table.t td.pq{ font-size:7.6pt; color:#66668A }
+  td.barra{ width:34%; padding-right:10px }
+  td.barra i{ display:block; height:7px; background:#F98513; border-radius:999px; min-width:2px }
+  .serie{ display:flex; align-items:flex-end; justify-content:flex-start; gap:6px;
+          height:74px; margin-top:4px }
+  .serie .col{ flex:0 0 46px; text-align:center }
+  .serie .par{ display:flex; align-items:flex-end; justify-content:center; gap:2px; height:58px }
+  .serie i{ display:block; width:13px; border-radius:2px 2px 0 0; min-height:1px }
+  .serie i.a{ background:#111144 } .serie i.b{ background:#F98513 }
+  .serie span{ font-size:6.4pt; color:#66668A; display:block; margin-top:3px }
+  .ley{ font-size:7pt; color:#66668A; margin-bottom:2px }
+  .ley i{ display:inline-block; width:7px; height:7px; border-radius:2px; margin-right:3px }
+  .dos{ display:flex; gap:16px; align-items:flex-start }
+  .dos > div{ flex:1 }
+  .pie{ margin-top:14px; padding-top:8px; border-top:1px solid #D3D0DE;
+        display:flex; justify-content:space-between; align-items:flex-end; gap:18px }
+  .pie p{ margin:0; font-size:7.4pt; color:#66668A; line-height:1.5; max-width:74% }
+  .marca{ text-align:right; white-space:nowrap }
+  .marca span{ font-size:6.5pt; color:#8B8BAA; letter-spacing:.05em; display:block; margin-bottom:2px }
+  .marca img{ height:15px }
+  .marca b{ font-size:9pt; color:#111144 }
+</style></head><body>
+<table class="hoja"><thead><tr><td>
+  <div class="cab">
+    <div><h1>${esc(edificio?.nombre || "")}</h1>
+      <div class="or">${esc(edificio?.rif ? "RIF " + edificio.rif + " · " : "")}${esc(org?.nombre || "")}</div></div>
+    <div><span class="et">Informe para la asamblea</span>
+      <div class="mes">${esc(periodo?.etiqueta || "")}</div>
+      <div class="or">${r.unidades} unidades</div></div>
+  </div>
+</td></tr></thead><tbody><tr><td>
+
+  <div class="kpis">
+    <div class="kpi"><span>Gasto del mes</span><b>${usd(r.total_gastos)}</b>
+      <em>${r.presupuesto ? "presupuesto " + usd(r.presupuesto) : "sin presupuesto"}</em></div>
+    <div class="kpi"><span>Facturado</span><b>${usd(r.facturado_mes)}</b>
+      <em>promedio ${usd(r.cuota_promedio)} por unidad</em></div>
+    <div class="kpi"><span>Cobrado</span><b>${nf(1).format(r.pct_cobrado)} %</b>
+      <em>${usd(r.cobrado)}</em></div>
+    <div class="kpi"><span>Deuda al cierre</span><b>${usd(r.deuda_total)}</b>
+      <em>${r.unidades_con_deuda} de ${r.unidades} unidades</em></div>
+  </div>
+
+  <div class="bloque">
+    <h2>En qué se gastó</h2>
+    <table class="t"><thead><tr><th>Categoría</th><th></th><th class="d">Monto</th>
+      <th class="d">Del gasto</th><th class="d">vs. mes anterior</th></tr></thead>
+      <tbody>${cats}</tbody></table>
+  </div>
+
+  <div class="bloque dos">
+    <div><h2>Los gastos más grandes</h2>
+      <table class="t"><thead><tr><th>Concepto</th><th>Categoría</th>
+        <th class="d">Monto</th><th class="d">%</th></tr></thead>
+        <tbody>${tops}</tbody></table></div>
+    <div><h2>Cómo está la morosidad</h2>
+      <table class="t"><thead><tr><th>Situación</th><th class="d">Unidades</th>
+        <th class="d">Monto</th><th class="d">%</th></tr></thead>
+        <tbody>${mora}</tbody></table></div>
+  </div>
+
+  ${(d.serie || []).length > 1 ? `<div class="bloque">
+    <h2>Los últimos meses</h2>
+    <div class="ley"><i style="background:#111144"></i>Facturado
+      &nbsp;&nbsp;<i style="background:#F98513"></i>Cobrado</div>
+    <div class="serie">${serie}</div>
+  </div>` : ""}
+
+  <div class="pie">
+    <p>Informe de ${esc(periodo?.etiqueta || "")} generado a partir de los recibos emitidos.
+       Los montos están en dólares. La morosidad se expresa en cuotas equivalentes y va sin
+       nombres: el detalle por unidad se consulta en el estado de cuenta.</p>
+    <div class="marca"><span>powered by</span>
+      <img src="${base}logo-claro.png" alt="Vecitap"
+           onerror="this.outerHTML='<b>vecitap</b>'"></div>
+  </div>
+</td></tr></tbody></table>
+</body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) return notificar("El navegador bloqueó la ventana. Permita las ventanas emergentes.", "error");
+    w.document.write(doc); w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+    setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 800);
+  };
+
+  if (!cerrados.length) return (
+    <Vacio icono={icono("ChartColumn")} titulo="Todavía no hay un mes cerrado"
+      texto="Las estadísticas se arman con lo que quedó congelado al cerrar el mes. Cierre un período y vuelva a esta pantalla." />
+  );
+
+  if (bloqueado) return (
+    <Vacio icono={icono("TriangleAlert")} titulo="No se pudieron cargar las estadísticas"
+      texto={bloqueado} />
+  );
+
+  return (
+    <div className="grid gap-4">
+      <Titulo sub="Lo mismo que dicen los recibos, listo para proyectar en la reunión."
+        accion={
+          <div className="flex gap-2 flex-wrap items-center">
+            <Selector value={periodoId} onChange={(e) => setPeriodoId(e.target.value)}
+              style={{ minWidth: 170 }}>
+              {cerrados.map((p) => <option key={p.id} value={p.id}>{p.etiqueta}</option>)}
+            </Selector>
+            <Boton tipo="suave" onClick={imprimir}>Informe para la asamblea</Boton>
+          </div>
+        }>Estadísticas del edificio</Titulo>
+
+      {cargando && <Tarjeta><span style={{ fontSize: 13.5, color: T.tinta2 }}>Cargando…</span></Tarjeta>}
+
+      {r && (
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(168px,1fr))" }}>
+          <Cifra rotulo="Gasto del mes" valor={usd(r.total_gastos)}
+            pie={r.presupuesto ? `Presupuesto ${usd(r.presupuesto)}` : "Sin presupuesto"} />
+          <Cifra rotulo="Facturado" valor={usd(r.facturado_mes)}
+            pie={`Promedio ${usd(r.cuota_promedio)} por unidad`} />
+          <Cifra rotulo="Cobrado" valor={`${nf(1).format(r.pct_cobrado)} %`}
+            pie={usd(r.cobrado)}
+            tono={num0(r.pct_cobrado) >= 80 ? "verde" : num0(r.pct_cobrado) >= 60 ? "ambar" : "rojo"} />
+          <Cifra rotulo="Deuda al cierre" valor={usd(r.deuda_total)}
+            pie={`${r.unidades_con_deuda} de ${r.unidades} unidades`} />
+        </div>
+      )}
+
+      {(d.categorias || []).length > 0 && (
+        <Tarjeta>
+          <h3 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 15,
+            color: T.tinta, margin: "0 0 4px" }}>En qué se gastó</h3>
+          <p style={{ fontSize: 12.5, color: T.tenue, margin: "0 0 16px" }}>
+            Comparado contra {periodo ? "el mes anterior" : "el mes anterior"} de calendario.
+          </p>
+          {d.categorias.map((c) => (
+            <BarraGasto key={c.categoria} nombre={c.categoria} monto={c.monto}
+              pct={c.pct} variacion={c.variacion_pct} max={maxCat} />
+          ))}
+        </Tarjeta>
+      )}
+
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))" }}>
+        {(d.top || []).length > 0 && (
+          <Tarjeta>
+            <h3 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 15,
+              color: T.tinta, margin: "0 0 14px" }}>Los gastos más grandes</h3>
+            {d.top.map((g, i) => (
+              <div key={i} className="flex items-baseline justify-between gap-3"
+                style={{ padding: "7px 0", borderBottom: i < d.top.length - 1 ? `1px solid ${T.linea}` : "none" }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 13.5, color: T.tinta, display: "block" }}>{g.concepto}</span>
+                  <span style={{ fontSize: 11.5, color: T.tenue }}>{g.categoria}</span>
+                </span>
+                <span style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                  <span style={{ fontFamily: FUENTES.numeros, fontSize: 13, color: T.tinta,
+                    display: "block" }}>{usd(g.monto)}</span>
+                  <span style={{ fontSize: 11.5, color: T.tenue }}>{nf(1).format(g.pct)} %</span>
+                </span>
+              </div>
+            ))}
+          </Tarjeta>
+        )}
+
+        {(d.mora || []).length > 0 && (
+          <Tarjeta>
+            <h3 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 15,
+              color: T.tinta, margin: "0 0 4px" }}>Cómo está la morosidad</h3>
+            <p style={{ fontSize: 12.5, color: T.tenue, margin: "0 0 14px" }}>
+              En cuotas equivalentes y sin nombres. El detalle por unidad va en el estado de cuenta.
+            </p>
+            {d.mora.map((t) => {
+              const tono = [null, T.verde, T.ambar, T.rojo, T.rojo][t.orden] || T.tenue;
+              /* El tramo peor lleva además fondo: el punto de color solo
+                 no distingue "tres meses" de "más de tres", y ese es
+                 justo el que la junta necesita ver de lejos. */
+              const grave = t.orden === 4 && num0(t.monto) > 0;
+              return (
+                <div key={t.orden} className="flex items-baseline justify-between gap-3"
+                  style={{ padding: grave ? "7px 10px" : "7px 0",
+                    margin: grave ? "0 -10px" : 0,
+                    borderRadius: grave ? T.rs : 0,
+                    background: grave ? T.rojoBg : "transparent",
+                    borderBottom: t.orden < 4 ? `1px solid ${T.linea}` : "none" }}>
+                  <span className="flex items-center gap-2" style={{ fontSize: 13.5, color: T.tinta }}>
+                    <i style={{ width: 9, height: 9, borderRadius: 999, background: tono,
+                      display: "inline-block", flexShrink: 0 }} />
+                    {t.tramo}
+                  </span>
+                  <span style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                    <span style={{ fontFamily: FUENTES.numeros, fontSize: 13, color: T.tinta,
+                      display: "block" }}>
+                      {t.unidades} {t.unidades === 1 ? "unidad" : "unidades"}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: T.tenue }}>{usd(t.monto)}</span>
+                  </span>
+                </div>
+              );
+            })}
+          </Tarjeta>
+        )}
+      </div>
+
+      {(d.serie || []).length > 1 && (
+        <Tarjeta>
+          <h3 style={{ fontFamily: "Poppins", fontWeight: 600, fontSize: 15,
+            color: T.tinta, margin: "0 0 4px" }}>Los últimos meses</h3>
+          <p style={{ fontSize: 12.5, color: T.tenue, margin: "0 0 16px" }}>
+            Cuánto se facturó y cuánto entró de verdad, mes a mes.
+          </p>
+          <SerieAnual filas={d.serie} />
+        </Tarjeta>
+      )}
+    </div>
+  );
+}
 
 function Cortes({ sb, org, edificio, unidades, periodos, tasa, notificar, fallo, verFicha, recargar }) {
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
