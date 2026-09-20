@@ -41,6 +41,7 @@
   margin-bottom: 4px;
 }
 .campo-obligatorio { color: var(--rojo); margin-left: 3px; }
+.campo-ayuda { color: var(--tenue); font-size: 12px; line-height: 1.5; margin: 5px 0 0; }
 .campo-error { color: var(--rojo); font-size: 13px; margin-top: 4px; }
 
 .control {

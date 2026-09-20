@@ -8,3 +8,4 @@ export { Card } from "./Card";
 export { Table } from "./Table";
 export { Dialog } from "./Dialog";
 export { ThemeToggle } from "./ThemeToggle";
+export { Logo } from "./Logo";
