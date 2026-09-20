@@ -665,7 +665,7 @@ function ClaveNueva({ sb, sesion, notificar, aviso, onListo }) {
   const [otra, setOtra] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const guardar = async () => {
-    if (clave.length < 6) return notificar("La clave necesita al menos 6 caracteres.", "error");
+    if (clave.length < 8) return notificar("La clave necesita al menos 8 caracteres.", "error");
     if (clave !== otra) return notificar("Las dos claves no son iguales.", "error");
     setOcupado(true);
     const { error } = await sb.auth.updateUser({ password: clave });
@@ -685,7 +685,7 @@ function ClaveNueva({ sb, sesion, notificar, aviso, onListo }) {
         {aviso && <div className="mb-3" style={{ fontSize: 13,
           color: aviso.tipo === "error" ? C.rojo : C.verde }}>{aviso.t}</div>}
         <div className="grid gap-3">
-          <Campo label="Clave nueva" ayuda="Mínimo 6 caracteres.">
+          <Campo label="Clave nueva" ayuda="Mínimo 8 caracteres.">
             <ClaveEntrada value={clave} autoComplete="new-password" autoFocus
               onChange={(e) => setClave(e.target.value)} /></Campo>
           <Campo label="Repítala">

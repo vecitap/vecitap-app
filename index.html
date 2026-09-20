@@ -419,7 +419,7 @@ function Entrar({ sb, aviso, notificar, fallo }) {
             onChange={(e)=>setCorreo(e.target.value)} /></Campo>
         {modo !== "olvide" && (
           <Campo label="Contraseña"
-            ayuda={modo==="crear" ? "Mínimo 6 caracteres." : ""}>
+            ayuda={modo==="crear" ? "Mínimo 8 caracteres." : ""}>
             <ClaveEntrada value={clave} onChange={(e)=>setClave(e.target.value)}
               autoComplete={modo==="crear" ? "new-password" : "current-password"}
               onKeyDown={(e)=> e.key==="Enter" && enviar()} /></Campo>
@@ -457,7 +457,7 @@ function ClaveNueva({ sb, sesion, aviso, notificar, fallo, onListo }) {
   const [ocupado, setOcupado] = useState(false);
 
   const guardar = async () => {
-    if (clave.length < 6) return notificar("La clave necesita al menos 6 caracteres.", "error");
+    if (clave.length < 8) return notificar("La clave necesita al menos 8 caracteres.", "error");
     if (clave !== otra) return notificar("Las dos claves no son iguales.", "error");
     setOcupado(true);
     const { error } = await sb.auth.updateUser({ password: clave });
@@ -481,7 +481,7 @@ function ClaveNueva({ sb, sesion, aviso, notificar, fallo, onListo }) {
             background: aviso.tipo==="error" ? T.rojoBg : T.verdeBg,
             color: aviso.tipo==="error" ? T.rojo : T.verde }}>{aviso.t}</div>
         )}
-        <Campo label="Clave nueva" ayuda="Mínimo 6 caracteres.">
+        <Campo label="Clave nueva" ayuda="Mínimo 8 caracteres.">
           <ClaveEntrada value={clave} onChange={(e)=>setClave(e.target.value)}
             autoComplete="new-password" autoFocus /></Campo>
         <Campo label="Repítala">

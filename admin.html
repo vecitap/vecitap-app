@@ -786,7 +786,7 @@ function Entrar({ sb, notificar, aviso }) {
 
   const accion = async (crear) => {
     if (!correoValido(correo)) return notificar("El correo no parece válido.", "error");
-    if (clave.length < 6) return notificar("La contraseña necesita al menos 6 caracteres.", "error");
+    if (clave.length < 8) return notificar("La contraseña necesita al menos 8 caracteres.", "error");
     setOcupado(true);
     const { error } = crear
       ? await sb.auth.signUp({ email: correo.trim(), password: clave })
@@ -872,7 +872,7 @@ function ClaveNueva({ sb, sesion, notificar, aviso, onListo }) {
   const [ocupado, setOcupado] = useState(false);
 
   const guardar = async () => {
-    if (clave.length < 6) return notificar("La clave necesita al menos 6 caracteres.", "error");
+    if (clave.length < 8) return notificar("La clave necesita al menos 8 caracteres.", "error");
     if (clave !== otra) return notificar("Las dos claves no son iguales.", "error");
     setOcupado(true);
     const { error } = await sb.auth.updateUser({ password: clave });
@@ -893,7 +893,7 @@ function ClaveNueva({ sb, sesion, notificar, aviso, onListo }) {
         </p>
         <AvisoSuelto aviso={aviso} />
         <div className="grid gap-3">
-          <Campo label="Clave nueva" ayuda="Mínimo 6 caracteres.">
+          <Campo label="Clave nueva" ayuda="Mínimo 8 caracteres.">
             <ClaveEntrada value={clave} autoComplete="new-password" autoFocus
               onChange={(e) => setClave(e.target.value)} />
           </Campo>

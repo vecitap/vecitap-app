@@ -453,7 +453,7 @@ const pintarClaveNueva = () => {
         <div id="zonaAviso"></div>
         <p style="font-size:14px;color:var(--tenue);margin:0 0 14px;line-height:1.5">
           El enlace que usó no sirve otra vez. Escriba una clave de al menos
-          6 caracteres y repítala.
+          8 caracteres y repítala.
         </p>
         <div style="margin-bottom:12px">
           <label for="cn1">Clave nueva</label>
@@ -476,7 +476,7 @@ const pintarClaveNueva = () => {
 
   const guardar = async () => {
     const a = $("#cn1").value || "", b2 = $("#cn2").value || "";
-    if (a.length < 6) return aviso("La clave necesita al menos 6 caracteres.", "mal");
+    if (a.length < 8) return aviso("La clave necesita al menos 8 caracteres.", "mal");
     if (a !== b2) return aviso("Las dos claves no son iguales.", "mal");
     const b = $("#btnClave"); b.disabled = true; b.textContent = "Guardando…";
     const { error } = await sb.auth.updateUser({ password: a });
