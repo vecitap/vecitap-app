@@ -558,6 +558,19 @@ function Visitas({ sb, u, notificar, fallo }) {
   const [autos, setAutos] = useState([]);
   const [nueva, setNueva] = useState(null);      // la recién creada, con su QR
   const [qr, setQr] = useState("");
+  /* La tarjeta del código aparece ARRIBA del formulario y de la lista.
+     Quien la pide está mirando más abajo, así que sin esto la tarjeta
+     sale fuera de la pantalla y parece que el botón no hizo nada.
+     Pasó de verdad: "cuando le das ver el código, no se carga nada". */
+  const refCodigo = useRef(null);
+  useEffect(() => {
+    if (!nueva || !refCodigo.current) return;
+    try {
+      refCodigo.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (e) {
+      refCodigo.current.scrollIntoView();
+    }
+  }, [nueva]);
   const [ocupado, setOcupado] = useState(false);
   const [f, setF] = useState({ nombre:"", documento:"", placa:"", usos:"1",
                                hasta: "" });
@@ -669,6 +682,7 @@ function Visitas({ sb, u, notificar, fallo }) {
     <div className="grid g3">
 
       {nueva && (
+        <div ref={refCodigo}>
         <Tarjeta style={{ textAlign:"center" }}>
           <div style={{ fontSize:12, color:T.tinta2, textTransform:"uppercase",
             letterSpacing:".08em", fontWeight:600 }}>Código para {nueva.nombre}</div>
@@ -688,6 +702,7 @@ function Visitas({ sb, u, notificar, fallo }) {
             <Boton tono="suave" onClick={() => { setNueva(null); setQr(""); }}>Listo</Boton>
           </div>
         </Tarjeta>
+        </div>
       )}
 
       <Tarjeta>
