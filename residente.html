@@ -17,7 +17,7 @@
        font-family:Inter,system-ui,-apple-system,sans-serif;font-size:15px;
        -webkit-text-size-adjust:100%}
   .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
-  .flex{display:flex}.wrap{flex-wrap:wrap}
+  .flex{display:flex}.wrap{flex-wrap:wrap}.grid{display:grid}
   .ai-c{align-items:center}.ai-e{align-items:flex-end}.ai-s{align-items:flex-start}
   .jc-b{justify-content:space-between}.jc-e{justify-content:flex-end}
   .g1{gap:4px}.g2{gap:8px}.g3{gap:12px}.g4{gap:16px}
@@ -417,6 +417,10 @@ function Invitacion({ sb, sesion, aviso, notificar, fallo, onListo }) {
    ═══════════════════════════════════════════════════════════════ */
 function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
   const [pest, setPest] = useState("estado");
+  /* La pestaña de visitas solo existe si el edificio tiene contratado
+     el panel de garita. Si la consulta falla no se muestra: es
+     preferible una pestaña de menos que una que da error al tocarla. */
+  const [verVisitas, setVerVisitas] = useState(false);
   const [pagos, setPagos] = useState([]);
   const [recibo, setRecibo] = useState(null);
   const [falloRecibo, setFalloRecibo] = useState(null);
@@ -457,6 +461,16 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
   };
   useEffect(() => { cargar(); }, [u.unidad_id]);
 
+  useEffect(() => {
+    let vivo = true;
+    sb.rpc("mis_modulos", { p_edificio: u.edificio_id }).then(({ data, error }) => {
+      if (!vivo || error) return;
+      const g = (data || []).find((m) => m.clave === "garita");
+      setVerVisitas(!!(g && g.activo));
+    });
+    return () => { vivo = false; };
+  }, [u.edificio_id]);
+
   const mios = pagos.filter((p) => true);   // la base ya decide qué puede ver
 
   return (
@@ -491,7 +505,8 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
       </Tarjeta>
 
       <div className="flex g2 mb4">
-        {[["estado","Mi recibo"],["reportar","Reportar un pago"],["pagos","Mis pagos"]].map(([k,t]) => (
+        {[["estado","Mi recibo"],["reportar","Reportar un pago"],["pagos","Mis pagos"],
+          ...(verVisitas ? [["visitas","Mis visitas"]] : [])].map(([k,t]) => (
           <Boton key={k} tono={pest===k?"primario":"suave"} onClick={()=>setPest(k)}
             style={{ flex:1, padding:"10px 8px", fontSize:13.5 }}>{t}</Boton>
         ))}
@@ -505,6 +520,10 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
       )}
 
       {pest === "pagos" && <MisPagos sb={sb} pagos={mios} />}
+
+      {pest === "visitas" && verVisitas && (
+        <Visitas sb={sb} u={u} notificar={notificar} fallo={fallo} />
+      )}
     </>
   );
 }
@@ -524,6 +543,280 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
    · print-color-adjust: exact para que los fondos de marca salgan
      impresos; sin eso el navegador los blanquea "para ahorrar tinta".
    ═════════════════════════════════════════════════════════════════ */
+/* ── Mis visitas · invitar, anular y ver quién entró ──
+
+   El código de la invitación es lo único que viaja en el QR: no lleva
+   dentro ni la unidad ni el nombre de nadie. Un código perdido o
+   reenviado no dice a quién iban a visitar, y de todos modos vence y
+   se gasta al usarse.
+
+   El QR se dibuja acá en el teléfono, no lo manda la base: así el
+   código no pasa por ningún servicio de imágenes de terceros. */
+function Visitas({ sb, u, notificar, fallo }) {
+  const [inv, setInv] = useState([]);
+  const [visitas, setVisitas] = useState([]);
+  const [autos, setAutos] = useState([]);
+  const [nueva, setNueva] = useState(null);      // la recién creada, con su QR
+  const [qr, setQr] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [f, setF] = useState({ nombre:"", documento:"", placa:"", usos:"1",
+                               hasta: "" });
+  const [auto, setAuto] = useState({ placa:"", marca:"", modelo:"", color:"", puesto:"" });
+
+  const enDosHoras = () => {
+    const d = new Date(Date.now() + 2 * 3600 * 1000);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+  };
+
+  const cargar = async () => {
+    const [ri, rv, ra] = await Promise.all([
+      sb.from("invitaciones_visita")
+        .select("id,codigo,nombre,documento,placa,desde,hasta,usos,usos_max,estado")
+        .eq("unidad_id", u.unidad_id).order("creada_en", { ascending:false }).limit(20),
+      sb.rpc("mis_visitas", { p_unidad: u.unidad_id, p_limite: 20 }),
+      sb.from("vehiculos").select("id,placa,marca,modelo,color,puesto,activo")
+        .eq("unidad_id", u.unidad_id).order("placa"),
+    ]);
+    if (ri.error) fallo(ri.error); else setInv(ri.data || []);
+    if (rv.error) fallo(rv.error); else setVisitas(rv.data || []);
+    if (ra.error) fallo(ra.error); else setAutos(ra.data || []);
+  };
+  useEffect(() => { setF((x) => ({ ...x, hasta: enDosHoras() })); cargar(); }, [u.unidad_id]);
+
+  /* El dibujante del QR se baja solo cuando de verdad hace falta, y si
+     no se puede bajar queda el código en letras grandes: la garita
+     siempre lo puede escribir a mano. */
+  const dibujarQR = async (codigo) => {
+    setQr("");
+    try {
+      const m = await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");
+      const QR = m.default || m;
+      const url = await QR.toDataURL(codigo, { margin: 1, width: 320,
+        color: { dark: "#111144", light: "#FFFFFF" } });
+      setQr(url);
+    } catch (e) { setQr(""); }
+  };
+
+  const crear = async () => {
+    const nombre = (f.nombre || "").trim();
+    if (!nombre) return notificar("Falta el nombre de la visita.", "error");
+    if (!f.hasta) return notificar("Falta hasta cuándo vale la invitación.", "error");
+    setOcupado(true);
+    const { data, error } = await sb.rpc("crear_invitacion_visita", {
+      p_unidad: u.unidad_id, p_nombre: nombre,
+      p_hasta: new Date(f.hasta).toISOString(),
+      p_documento: (f.documento || "").trim() || null,
+      p_placa: (f.placa || "").trim() || null,
+      p_desde: null, p_usos: Math.max(1, parseInt(f.usos, 10) || 1), p_nota: null });
+    setOcupado(false);
+    if (error) return fallo(error);
+    const r = Array.isArray(data) ? data[0] : data;
+    if (!r) return;
+    setNueva({ ...r, nombre });
+    dibujarQR(r.codigo);
+    setF({ nombre:"", documento:"", placa:"", usos:"1", hasta: enDosHoras() });
+    cargar();
+  };
+
+  const anular = async (id) => {
+    const { error } = await sb.rpc("anular_invitacion_visita", { p_invitacion: id });
+    if (error) return fallo(error);
+    notificar("Invitación anulada.");
+    if (nueva && nueva.id === id) { setNueva(null); setQr(""); }
+    cargar();
+  };
+
+  const guardarAuto = async () => {
+    const placa = (auto.placa || "").trim().toUpperCase();
+    if (!placa) return notificar("Falta la placa.", "error");
+    const { error } = await sb.from("vehiculos").insert({
+      org_id: u.org_id, edificio_id: u.edificio_id, unidad_id: u.unidad_id,
+      placa, marca: auto.marca || null, modelo: auto.modelo || null,
+      color: auto.color || null, puesto: auto.puesto || null });
+    if (error) return fallo(error);
+    setAuto({ placa:"", marca:"", modelo:"", color:"", puesto:"" });
+    notificar("Vehículo agregado a la lista del edificio.");
+    cargar();
+  };
+
+  const quitarAuto = async (id) => {
+    const { error } = await sb.from("vehiculos").delete().eq("id", id);
+    if (error) return fallo(error);
+    notificar("Vehículo quitado.");
+    cargar();
+  };
+
+  const compartir = (codigo, nombre) => {
+    const txt = `Hola ${nombre}: este es su código de entrada a ${u.edificio}, ` +
+      `unidad ${u.codigo}. Muéstrelo en la garita.\n\n${codigo}`;
+    if (navigator.share) {
+      navigator.share({ text: txt }).catch(() => {});
+    } else {
+      window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+    }
+  };
+
+  const fechaHora = (t) => t
+    ? new Date(t).toLocaleString("es-VE",
+        { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })
+    : "—";
+
+  const activas = inv.filter((i) => i.estado === "activa"
+    && new Date(i.hasta) > new Date() && i.usos < i.usos_max);
+
+  return (
+    <div className="grid g3">
+
+      {nueva && (
+        <Tarjeta style={{ textAlign:"center" }}>
+          <div style={{ fontSize:12, color:T.tinta2, textTransform:"uppercase",
+            letterSpacing:".08em", fontWeight:600 }}>Código para {nueva.nombre}</div>
+          {qr
+            ? <img src={qr} alt="Código QR de la invitación"
+                style={{ width:220, height:220, margin:"14px auto 8px", display:"block",
+                  borderRadius:12, background:"#fff", padding:8 }} />
+            : <div style={{ fontSize:13, color:T.tenue, margin:"14px 0 8px" }}>
+                No se pudo dibujar el QR. Pase el código escrito.</div>}
+          <div className="mono" style={{ fontSize:19, fontWeight:700, letterSpacing:".06em",
+            wordBreak:"break-all" }}>{nueva.codigo}</div>
+          <div style={{ fontSize:12.5, color:T.tenue, marginTop:8, lineHeight:1.5 }}>
+            Muéstrelo en la garita. Vence solo y se gasta al usarse.
+          </div>
+          <div className="flex g2 wrap" style={{ justifyContent:"center", marginTop:14 }}>
+            <Boton onClick={() => compartir(nueva.codigo, nueva.nombre)}>Enviar la invitación</Boton>
+            <Boton tono="suave" onClick={() => { setNueva(null); setQr(""); }}>Listo</Boton>
+          </div>
+        </Tarjeta>
+      )}
+
+      <Tarjeta>
+        <h3 style={{ fontSize:16, fontWeight:700, margin:"0 0 14px" }}>Invitar a alguien</h3>
+        <Campo label="Nombre de quien viene">
+          <input value={f.nombre} onChange={(e)=>setF({...f, nombre:e.target.value})}
+            placeholder="Nombre y apellido" /></Campo>
+        <Campo label="Hasta cuándo vale">
+          <input type="datetime-local" className="mono" value={f.hasta}
+            onChange={(e)=>setF({...f, hasta:e.target.value})} /></Campo>
+        <div className="flex g2 wrap">
+          <Campo label="Cédula (opcional)" >
+            <input className="mono" value={f.documento} autoCapitalize="characters"
+              onChange={(e)=>setF({...f, documento:e.target.value})}
+              placeholder="V-12345678" /></Campo>
+          <Campo label="Placa (opcional)">
+            <input className="mono" value={f.placa} autoCapitalize="characters"
+              onChange={(e)=>setF({...f, placa:e.target.value})}
+              placeholder="AB123CD" /></Campo>
+        </div>
+        <Campo label="Cuántas entradas"
+          ayuda="Una sola para una visita normal. Varias si va a entrar y salir el mismo día.">
+          <input className="mono" inputMode="numeric" value={f.usos}
+            onChange={(e)=>setF({...f, usos:e.target.value})} /></Campo>
+        <Boton onClick={crear} disabled={ocupado} style={{ width:"100%" }}>
+          {ocupado ? "Creando…" : "Crear la invitación"}</Boton>
+      </Tarjeta>
+
+      <Tarjeta>
+        <h3 style={{ fontSize:16, fontWeight:700, margin:"0 0 4px" }}>Invitaciones activas</h3>
+        <p style={{ fontSize:12.5, color:T.tenue, margin:"0 0 14px" }}>
+          Si ya no quiere que entre, anúlela: deja de servir en el momento.
+        </p>
+        {activas.length === 0
+          ? <div style={{ fontSize:13.5, color:T.tenue }}>No hay invitaciones activas.</div>
+          : <div className="grid" style={{ gap:8 }}>
+              {activas.map((i) => (
+                <div key={i.id} className="flex ai-c jc-b g3 wrap"
+                  style={{ background:T.papel, borderRadius:10, padding:"11px 13px" }}>
+                  <div>
+                    <div style={{ fontSize:14.5, fontWeight:600 }}>{i.nombre}</div>
+                    <div style={{ fontSize:12, color:T.tenue }}>
+                      Hasta {fechaHora(i.hasta)} · {i.usos} de {i.usos_max} usadas
+                    </div>
+                  </div>
+                  <div className="flex g2">
+                    <Boton tono="suave" onClick={() => { setNueva(i); dibujarQR(i.codigo); }}
+                      style={{ padding:"8px 12px", fontSize:13 }}>Ver el código</Boton>
+                    <Boton tono="fantasma" onClick={() => anular(i.id)}
+                      style={{ padding:"8px 12px", fontSize:13, color:T.rojo }}>Anular</Boton>
+                  </div>
+                </div>
+              ))}
+            </div>}
+      </Tarjeta>
+
+      <Tarjeta>
+        <h3 style={{ fontSize:16, fontWeight:700, margin:"0 0 4px" }}>Mis vehículos</h3>
+        <p style={{ fontSize:12.5, color:T.tenue, margin:"0 0 14px" }}>
+          La garita usa esta lista para saber qué carros son del edificio.
+        </p>
+        {autos.length > 0 && (
+          <div className="grid" style={{ gap:8, marginBottom:14 }}>
+            {autos.map((v) => (
+              <div key={v.id} className="flex ai-c jc-b g3 wrap"
+                style={{ background:T.papel, borderRadius:10, padding:"11px 13px" }}>
+                <div>
+                  <div className="mono" style={{ fontSize:15, fontWeight:700 }}>{v.placa}</div>
+                  <div style={{ fontSize:12, color:T.tenue }}>
+                    {[v.marca, v.modelo, v.color].filter(Boolean).join(" ") || "sin detalle"}
+                    {v.puesto ? ` · puesto ${v.puesto}` : ""}
+                  </div>
+                </div>
+                <Boton tono="fantasma" onClick={() => quitarAuto(v.id)}
+                  style={{ padding:"8px 12px", fontSize:13, color:T.rojo }}>Quitar</Boton>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex g2 wrap">
+          <Campo label="Placa">
+            <input className="mono" value={auto.placa} autoCapitalize="characters"
+              onChange={(e)=>setAuto({...auto, placa:e.target.value})}
+              placeholder="AB123CD" /></Campo>
+          <Campo label="Marca y modelo">
+            <input value={auto.marca}
+              onChange={(e)=>setAuto({...auto, marca:e.target.value})}
+              placeholder="Toyota Corolla" /></Campo>
+        </div>
+        <div className="flex g2 wrap">
+          <Campo label="Color">
+            <input value={auto.color}
+              onChange={(e)=>setAuto({...auto, color:e.target.value})} /></Campo>
+          <Campo label="Puesto (opcional)">
+            <input value={auto.puesto}
+              onChange={(e)=>setAuto({...auto, puesto:e.target.value})} /></Campo>
+        </div>
+        <Boton tono="suave" onClick={guardarAuto} style={{ width:"100%" }}>
+          Agregar el vehículo</Boton>
+      </Tarjeta>
+
+      <Tarjeta>
+        <h3 style={{ fontSize:16, fontWeight:700, margin:"0 0 14px" }}>Quién ha entrado</h3>
+        {visitas.length === 0
+          ? <div style={{ fontSize:13.5, color:T.tenue }}>Todavía no hay visitas registradas.</div>
+          : <div className="grid" style={{ gap:8 }}>
+              {visitas.map((v, i) => (
+                <div key={i} className="flex ai-c jc-b g3 wrap"
+                  style={{ background:T.papel, borderRadius:10, padding:"11px 13px" }}>
+                  <div>
+                    <div style={{ fontSize:14.5, fontWeight:600 }}>{v.nombre}</div>
+                    <div style={{ fontSize:12, color:T.tenue }}>
+                      {fechaHora(v.entrada_en)}
+                      {v.placa ? ` · ${v.placa}` : ""}
+                      {v.tipo === "anunciada" ? " · anunciada" : " · sin anunciar"}
+                    </div>
+                  </div>
+                  <span style={{ fontSize:12, fontWeight:600,
+                    color: v.estado === "dentro" ? T.ambar : T.tenue }}>
+                    {v.estado === "dentro" ? "Adentro" : "Salió " + fechaHora(v.salida_en)}
+                  </span>
+                </div>
+              ))}
+            </div>}
+      </Tarjeta>
+    </div>
+  );
+}
+
 function papelRecibo(d) {
   const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) =>
     ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));

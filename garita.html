@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0B0B2E">
+<title>Garita · Vecitap</title>
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="favicon-180.png">
+<!--
+  ─────────────────────────────────────────────────────────────────────
+  PANEL DE SEGURIDAD (GARITA) · versión 1, en línea
+
+  Por qué esta página NO está hecha como las otras tres:
+
+  app.html, residente.html y operador.html usan React compilado en el
+  navegador con Babel. Eso son casi dos megabytes que hay que bajar y
+  compilar en cada arranque. En una laptop de oficina no se nota; en la
+  tableta barata de una garita son varios segundos de pantalla en
+  blanco, cada vez que alguien la reinicia — y la reinician.
+
+  Esta página es JavaScript pelado: sin React, sin Babel, sin compilar
+  nada. Lo único que baja de afuera es la librería de Supabase. Arranca
+  en el primer segundo aunque el equipo sea viejo.
+
+  El precio es que el código se lee distinto al del resto del sistema.
+  Se aceptó a propósito: quien la usa es otra persona, en otro equipo,
+  parado en una puerta con gente esperando.
+
+  Lo que esta versión NO hace: trabajar sin internet. Si se cae la
+  conexión, el vigilante anota en papel y transcribe. Una caché vieja
+  que pinta verde a un invitado ya revocado no es una comodidad.
+  ─────────────────────────────────────────────────────────────────────
+-->
+<style>
+  :root{
+    --fondo:#0B0B2E; --lienzo:#141440; --alto:#1C1C52;
+    --tinta:#F4F1EC; --tinta2:#C3C6DE; --tenue:#9494B8;
+    --linea:#2C2C63; --lineaFuerte:#3C3C7E;
+    --acento:#F98513; --sobreAcento:#111144;
+    --verde:#1F8F63; --rojo:#C1392B;
+    --r:14px; --rs:10px;
+  }
+  :root[data-tema="claro"]{
+    --fondo:#F4F1EC; --lienzo:#FFFFFF; --alto:#EDE9E1;
+    --tinta:#111144; --tinta2:#3D3D6B; --tenue:#66668A;
+    --linea:#E6E3EC; --lineaFuerte:#D3D0DE;
+    --verde:#1F6B4A; --rojo:#A32A1E;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent }
+  html,body{ margin:0; height:100% }
+  body{
+    background:var(--fondo); color:var(--tinta);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    font-size:17px; line-height:1.45;
+    /* Nada de selección accidental al tocar botones grandes */
+    -webkit-user-select:none; user-select:none;
+  }
+  input,select,textarea{ -webkit-user-select:text; user-select:text }
+  .mono{ font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+
+  /* ── Estructura ── */
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 16px; background:var(--lienzo);
+    border-bottom:1px solid var(--linea); position:sticky; top:0; z-index:20;
+  }
+  header .quien{ font-size:13px; color:var(--tenue); line-height:1.3 }
+  header .quien b{ display:block; font-size:17px; color:var(--tinta) }
+  header .der{ display:flex; gap:8px; align-items:center }
+
+  nav{
+    display:flex; gap:6px; padding:10px 12px; overflow-x:auto;
+    background:var(--fondo); position:sticky; top:63px; z-index:19;
+  }
+  nav button{
+    flex:1 0 auto; min-width:120px; min-height:56px;
+    font-size:17px; font-weight:700; border-radius:var(--rs); cursor:pointer;
+    border:1px solid var(--linea); background:var(--lienzo); color:var(--tinta2);
+    font-family:inherit;
+  }
+  nav button[aria-current="true"]{
+    background:var(--acento); color:var(--sobreAcento); border-color:transparent;
+  }
+  main{ padding:12px 12px 40px; max-width:1100px; margin:0 auto }
+
+  .tarjeta{
+    background:var(--lienzo); border:1px solid var(--linea);
+    border-radius:var(--r); padding:16px; margin-bottom:12px;
+  }
+  h2{ font-size:15px; text-transform:uppercase; letter-spacing:.08em;
+      color:var(--tenue); margin:0 0 12px; font-weight:700 }
+
+  label{ display:block; font-size:14px; color:var(--tenue); margin:0 0 6px }
+  input,select,textarea{
+    width:100%; min-height:56px; padding:12px 14px; font-size:19px;
+    border-radius:var(--rs); border:1.5px solid var(--lineaFuerte);
+    background:var(--fondo); color:var(--tinta); font-family:inherit;
+  }
+  textarea{ min-height:88px; resize:vertical }
+  input:focus,select:focus,textarea:focus{ outline:3px solid var(--acento); outline-offset:1px }
+  .campos{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)) }
+
+  button.b{
+    min-height:60px; padding:14px 22px; font-size:18px; font-weight:700;
+    border-radius:var(--rs); cursor:pointer; font-family:inherit;
+    border:1px solid transparent; background:var(--acento); color:var(--sobreAcento);
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  }
+  button.b.suave{ background:transparent; color:var(--tinta); border-color:var(--lineaFuerte) }
+  button.b.ancho{ width:100% }
+  button.b:disabled{ opacity:.45; cursor:not-allowed }
+  button.b.chico{ min-height:46px; padding:8px 14px; font-size:15px }
+  .fila{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px }
+
+  /* ── El veredicto: tiene que verse desde lejos y de reojo ── */
+  #veredicto{
+    position:fixed; inset:0; z-index:60; display:none;
+    flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:24px; color:#fff;
+  }
+  #veredicto.si{ background:var(--verde) } #veredicto.no{ background:var(--rojo) }
+  #veredicto .signo{ font-size:clamp(90px,22vw,190px); line-height:1; font-weight:700 }
+  #veredicto .titulo{ font-size:clamp(28px,6vw,46px); font-weight:700; margin-top:6px }
+  #veredicto .datos{ font-size:clamp(18px,3.4vw,26px); margin-top:18px; line-height:1.6;
+                     max-width:640px }
+  #veredicto .datos b{ display:block; font-size:clamp(24px,4.4vw,34px) }
+  #veredicto .acciones{ display:flex; gap:12px; flex-wrap:wrap; justify-content:center;
+                        margin-top:26px }
+  #veredicto button{
+    min-height:64px; padding:14px 26px; font-size:19px; font-weight:700;
+    border-radius:var(--rs); cursor:pointer; font-family:inherit; border:2px solid #fff;
+    background:transparent; color:#fff;
+  }
+  #veredicto button.fuerte{ background:#fff; color:#111144; border-color:#fff }
+
+  /* ── Listas ── */
+  .lista{ display:grid; gap:2px }
+  .item{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:14px; background:var(--alto); border-radius:var(--rs); flex-wrap:wrap;
+  }
+  .item .prin{ font-size:19px; font-weight:600 }
+  .item .sec{ font-size:14px; color:var(--tenue) }
+  .vacio{ padding:26px 14px; text-align:center; color:var(--tenue); font-size:16px }
+
+  .aviso{ padding:13px 15px; border-radius:var(--rs); font-size:16px; margin-bottom:12px }
+  .aviso.ok{ background:rgba(31,143,99,.16); color:var(--tinta) }
+  .aviso.mal{ background:rgba(193,57,43,.16); color:var(--tinta) }
+
+  #camara{ width:100%; max-height:44vh; border-radius:var(--rs); background:#000;
+           display:none; object-fit:cover }
+  .pie{ text-align:center; color:var(--tenue); font-size:13px; padding:10px 0 0 }
+  .entrar{ max-width:420px; margin:8vh auto; }
+  .oculto{ display:none !important }
+</style>
+</head>
+<body>
+
+<div id="veredicto" role="alert" aria-live="assertive"></div>
+
+<header>
+  <div class="quien">
+    <b id="hEdificio">Garita</b>
+    <span id="hVigilante">—</span>
+  </div>
+  <div class="der">
+    <select id="selEdificio" class="oculto" style="min-height:46px;font-size:15px;width:auto"></select>
+    <button class="b suave chico" id="btnTema" type="button">Tema</button>
+    <button class="b suave chico oculto" id="btnSalir" type="button">Salir</button>
+  </div>
+</header>
+
+<nav id="nav" class="oculto">
+  <button type="button" data-v="entrada" aria-current="true">Entrada</button>
+  <button type="button" data-v="adentro">Adentro</button>
+  <button type="button" data-v="buscar">Consultar</button>
+  <button type="button" data-v="bitacora">Bitácora</button>
+</nav>
+
+<main id="main"></main>
+
+<script type="module">
+/* ═══════════════════════════════════════════════════════════════════
+   Conexión
+   La llave que va acá es la pública (anon / publishable). Es la única
+   que puede vivir dentro de una página web: lo que protege los datos
+   son las políticas de la base, no esconder la llave.
+   ═══════════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  url: "https://hdivffuorclzulijkyry.supabase.co",
+  key: "sb_publishable_75OWc-Q0F5PfZK-TG-2C4Q_hN0nam2H",
+};
+
+let createClient;
+try {
+  ({ createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'));
+} catch (e) {
+  document.getElementById('main').innerHTML =
+    '<div class="tarjeta"><h2>Sin conexión</h2><p>No se pudo cargar el sistema. ' +
+    'Revise el internet de la garita y vuelva a abrir esta página.</p></div>';
+  throw e;
+}
+
+/* Llave de sesión propia: las cuatro páginas viven en el mismo dominio
+   y con la llave por omisión entrar en una cerraba la sesión de otra. */
+const sb = createClient(CONFIG.url, CONFIG.key,
+  { auth: { storageKey: "vecitap-garita", persistSession: true } });
+
+/* ═══════════════════════════════════════════════════════════════════
+   Utilidades
+   ═══════════════════════════════════════════════════════════════════ */
+const $  = (s) => document.querySelector(s);
+const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const hora = (t) => t ? new Date(t).toLocaleTimeString("es-VE",
+  { hour: "2-digit", minute: "2-digit" }) : "—";
+const hoyISO = () => {
+  const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+};
+
+const leerTema = () => {
+  try { return localStorage.getItem("vecitap-tema-garita") === "claro" ? "claro" : "oscuro"; }
+  catch (e) { return "oscuro"; }
+};
+const ponerTema = (t) => {
+  document.documentElement.dataset.tema = t;
+  try { localStorage.setItem("vecitap-tema-garita", t); } catch (e) {}
+};
+ponerTema(leerTema());
+$("#btnTema").onclick = () =>
+  ponerTema(document.documentElement.dataset.tema === "claro" ? "oscuro" : "claro");
+
+const estado = {
+  sesion: null, correo: "", edificios: [], edificio: null,
+  vista: "entrada", directorio: [], adentro: [],
+};
+
+let avisoTmp = null;
+const aviso = (texto, tipo = "ok") => {
+  const d = $("#zonaAviso");
+  if (!d) return;
+  d.innerHTML = `<div class="aviso ${tipo === "mal" ? "mal" : "ok"}">${esc(texto)}</div>`;
+  clearTimeout(avisoTmp);
+  avisoTmp = setTimeout(() => { if (d) d.innerHTML = ""; }, 6000);
+};
+
+/* Un error de la base nunca se traga en silencio: en una puerta, "no
+   pasó nada" es peor que un mensaje feo. */
+const falla = (e) => aviso(e?.message || String(e), "mal");
+
+const rpc = async (nombre, args) => {
+  const { data, error } = await sb.rpc(nombre, args || {});
+  if (error) { falla(error); return null; }
+  return data;
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   El veredicto a pantalla completa
+   ═══════════════════════════════════════════════════════════════════ */
+let sonar = null;
+const pitar = (ok) => {
+  try {
+    sonar = sonar || new (window.AudioContext || window.webkitAudioContext)();
+    const o = sonar.createOscillator(), g = sonar.createGain();
+    o.connect(g); g.connect(sonar.destination);
+    o.frequency.value = ok ? 880 : 220;
+    g.gain.value = 0.07;
+    o.start(); o.stop(sonar.currentTime + (ok ? 0.12 : 0.35));
+  } catch (e) {}
+  try { navigator.vibrate && navigator.vibrate(ok ? 60 : [90, 70, 90]); } catch (e) {}
+};
+
+const cerrarVeredicto = () => { $("#veredicto").style.display = "none"; };
+
+const mostrarVeredicto = (ok, titulo, datos, acciones) => {
+  const v = $("#veredicto");
+  v.className = ok ? "si" : "no";
+  v.innerHTML =
+    `<div class="signo">${ok ? "✓" : "✕"}</div>
+     <div class="titulo">${esc(titulo)}</div>
+     <div class="datos">${datos || ""}</div>
+     <div class="acciones" id="vAcciones"></div>`;
+  const cont = v.querySelector("#vAcciones");
+  (acciones || [{ texto: "Cerrar", fuerte: true, fn: cerrarVeredicto }]).forEach((a) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = a.texto;
+    if (a.fuerte) b.className = "fuerte";
+    b.onclick = a.fn;
+    cont.appendChild(b);
+  });
+  v.style.display = "flex";
+  pitar(ok);
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   Entrar
+   ═══════════════════════════════════════════════════════════════════ */
+const pintarEntrar = (msg) => {
+  $("#nav").classList.add("oculto");
+  $("#btnSalir").classList.add("oculto");
+  $("#selEdificio").classList.add("oculto");
+  $("#hEdificio").textContent = "Garita";
+  $("#hVigilante").textContent = "Vecitap";
+  $("#main").innerHTML = `
+    <div class="entrar">
+      <div class="tarjeta">
+        <h2>Entrar a la garita</h2>
+        <div id="zonaAviso"></div>
+        <div style="margin-bottom:12px">
+          <label for="correo">Correo</label>
+          <input id="correo" type="email" autocomplete="username" inputmode="email">
+        </div>
+        <div>
+          <label for="clave">Clave</label>
+          <input id="clave" type="password" autocomplete="current-password">
+        </div>
+        <div class="fila">
+          <button class="b ancho" id="btnEntrar" type="button">Entrar</button>
+        </div>
+      </div>
+      <p class="pie">Vecitap · panel de seguridad</p>
+    </div>`;
+  if (msg) aviso(msg, "mal");
+  const entrar = async () => {
+    const b = $("#btnEntrar"); b.disabled = true; b.textContent = "Entrando…";
+    const { error } = await sb.auth.signInWithPassword({
+      email: ($("#correo").value || "").trim(), password: $("#clave").value || "" });
+    b.disabled = false; b.textContent = "Entrar";
+    if (error) return aviso("No se pudo entrar. Revise el correo y la clave.", "mal");
+    arrancar();
+  };
+  $("#btnEntrar").onclick = entrar;
+  $("#clave").onkeydown = (e) => { if (e.key === "Enter") entrar(); };
+};
+
+$("#btnSalir").onclick = async () => {
+  await sb.auth.signOut();
+  estado.sesion = null;
+  pintarEntrar();
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   Vista 1 · ENTRADA (el QR y la visita espontánea)
+   ═══════════════════════════════════════════════════════════════════ */
+let lector = null;      // el bucle de la cámara
+let flujo = null;       // el MediaStream
+
+const pararCamara = () => {
+  if (lector) { cancelAnimationFrame(lector); lector = null; }
+  if (flujo) { flujo.getTracks().forEach((t) => t.stop()); flujo = null; }
+  const v = $("#camara"); if (v) { v.style.display = "none"; v.srcObject = null; }
+};
+
+/* Se prueba primero el lector que trae el propio navegador (no hay que
+   bajar nada). Si no existe, se baja jsQR. Si tampoco, queda el campo
+   de texto: el código SIEMPRE se puede escribir a mano. */
+const arrancarCamara = async () => {
+  const video = $("#camara");
+  try {
+    flujo = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }, audio: false });
+  } catch (e) {
+    return aviso("No se pudo abrir la cámara. Escriba el código a mano.", "mal");
+  }
+  video.srcObject = flujo; video.style.display = "block";
+  await video.play().catch(() => {});
+
+  let detector = null;
+  try {
+    if ("BarcodeDetector" in window) {
+      const tipos = await window.BarcodeDetector.getSupportedFormats();
+      if (tipos.includes("qr_code")) detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+    }
+  } catch (e) { detector = null; }
+
+  let jsQR = null;
+  if (!detector) {
+    try {
+      const m = await import('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm');
+      jsQR = m.default || m;
+    } catch (e) {
+      aviso("Este equipo no puede leer el QR. Escriba el código a mano.", "mal");
+      return;
+    }
+  }
+
+  const lienzo = document.createElement("canvas");
+  const ctx = lienzo.getContext("2d", { willReadFrequently: true });
+  let ultimo = 0;
+
+  const mirar = async () => {
+    lector = requestAnimationFrame(mirar);
+    if (!video.videoWidth) return;
+    const ahora = performance.now();
+    if (ahora - ultimo < 220) return;   // 4 o 5 lecturas por segundo bastan
+    ultimo = ahora;
+    let codigo = null;
+    try {
+      if (detector) {
+        const r = await detector.detect(video);
+        if (r && r[0]) codigo = r[0].rawValue;
+      } else {
+        lienzo.width = video.videoWidth; lienzo.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const d = ctx.getImageData(0, 0, lienzo.width, lienzo.height);
+        const r = jsQR(d.data, d.width, d.height);
+        if (r) codigo = r.data;
+      }
+    } catch (e) { /* un cuadro fallido no importa */ }
+    if (codigo) { pararCamara(); validar(codigo); }
+  };
+  mirar();
+};
+
+const validar = async (codigo) => {
+  const limpio = String(codigo || "").trim().replace(/^.*\//, "");  // acepta un enlace completo
+  if (!limpio) return;
+  const d = await rpc("garita_validar",
+    { p_edificio: estado.edificio, p_codigo: limpio });
+  if (!d) return;
+  const r = Array.isArray(d) ? d[0] : d;
+  if (!r) return;
+
+  const datos = r.nombre
+    ? `<b>${esc(r.nombre)}</b>
+       ${r.documento ? esc(r.documento) + "<br>" : ""}
+       Unidad ${esc(r.unidad || "—")}
+       ${r.placa ? "<br>Vehículo " + esc(r.placa) : ""}`
+    : "";
+
+  if (r.valido) {
+    mostrarVeredicto(true, "Puede pasar", datos, [
+      { texto: "Registrar entrada", fuerte: true, fn: async () => {
+          cerrarVeredicto();
+          const unidad = (estado.directorio.find((u) => u.codigo === r.unidad) || {}).unidad_id;
+          const id = await rpc("garita_entrada", {
+            p_edificio: estado.edificio, p_unidad: unidad || null,
+            p_nombre: r.nombre, p_documento: r.documento,
+            p_placa: r.placa, p_invitacion: r.invitacion_id, p_nota: null });
+          if (!id) return;
+          aviso("Entrada registrada. " + r.nombre);
+          rpc("garita_avisar", { p_visita: id });
+          cargarAdentro();
+        } },
+      { texto: "Cancelar", fn: cerrarVeredicto },
+    ]);
+  } else {
+    mostrarVeredicto(false, r.motivo || "No puede pasar", datos);
+  }
+};
+
+const vistaEntrada = () => {
+  const ops = estado.directorio.map((u) =>
+    `<option value="${esc(u.unidad_id)}">${esc(u.codigo)}${
+      u.residente ? " · " + esc(u.residente) : ""}</option>`).join("");
+
+  $("#main").innerHTML = `
+    <div id="zonaAviso"></div>
+
+    <div class="tarjeta">
+      <h2>Visita anunciada · código QR</h2>
+      <video id="camara" playsinline muted></video>
+      <div class="fila">
+        <button class="b" id="btnCam" type="button">Abrir la cámara</button>
+        <button class="b suave" id="btnCamNo" type="button">Cerrar la cámara</button>
+      </div>
+      <div style="margin-top:14px">
+        <label for="codigo">O escriba el código que trae la visita</label>
+        <input id="codigo" class="mono" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="A1B2C3D4E5F6A7B8">
+      </div>
+      <div class="fila">
+        <button class="b ancho" id="btnValidar" type="button">Comprobar</button>
+      </div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Visita sin anunciar</h2>
+      <div class="campos">
+        <div>
+          <label for="doc">Cédula</label>
+          <input id="doc" inputmode="text" autocomplete="off" autocapitalize="characters"
+                 spellcheck="false" placeholder="V-12345678">
+        </div>
+        <div>
+          <label for="nom">Nombre</label>
+          <input id="nom" autocomplete="off" placeholder="Nombre y apellido">
+        </div>
+        <div>
+          <label for="uni">Unidad que visita</label>
+          <select id="uni"><option value="">Elegir…</option>${ops}</select>
+        </div>
+        <div>
+          <label for="placa">Vehículo <span style="opacity:.7">(opcional)</span></label>
+          <input id="placa" autocomplete="off" autocapitalize="characters"
+                 spellcheck="false" placeholder="AB123CD">
+        </div>
+      </div>
+      <div class="fila">
+        <button class="b ancho" id="btnCrear" type="button">Registrar y avisar al residente</button>
+      </div>
+      <p class="pie" id="pistaDoc"></p>
+    </div>`;
+
+  $("#btnCam").onclick = arrancarCamara;
+  $("#btnCamNo").onclick = pararCamara;
+  $("#btnValidar").onclick = () => validar($("#codigo").value);
+  $("#codigo").onkeydown = (e) => { if (e.key === "Enter") validar($("#codigo").value); };
+
+  /* Autocompletado por cédula: en cuanto hay algo que parezca un
+     documento, se pregunta si esa persona ya vino antes. */
+  let tmp = null;
+  $("#doc").oninput = () => {
+    clearTimeout(tmp);
+    const v = $("#doc").value || "";
+    if (v.replace(/[^0-9A-Za-z]/g, "").length < 6) { $("#pistaDoc").textContent = ""; return; }
+    tmp = setTimeout(async () => {
+      const d = await rpc("garita_visitante",
+        { p_edificio: estado.edificio, p_documento: v });
+      const r = (d || [])[0];
+      if (!r) { $("#pistaDoc").textContent = ""; return; }
+      if (!($("#nom").value || "").trim()) $("#nom").value = r.nombre;
+      $("#pistaDoc").textContent =
+        `Ya vino ${r.veces} ${r.veces === 1 ? "vez" : "veces"}` +
+        (r.ultima_unidad ? ` · la última a la ${r.ultima_unidad}` : "");
+    }, 350);
+  };
+
+  $("#btnCrear").onclick = async () => {
+    const nombre = ($("#nom").value || "").trim();
+    if (!nombre) return aviso("Falta el nombre de quien entra.", "mal");
+    const b = $("#btnCrear"); b.disabled = true;
+    const id = await rpc("garita_entrada", {
+      p_edificio: estado.edificio,
+      p_unidad: $("#uni").value || null,
+      p_nombre: nombre,
+      p_documento: ($("#doc").value || "").trim() || null,
+      p_placa: ($("#placa").value || "").trim() || null,
+      p_invitacion: null, p_nota: null });
+    b.disabled = false;
+    if (!id) return;
+    const n = await rpc("garita_avisar", { p_visita: id });
+    aviso(n > 0 ? `Entrada registrada. Se le avisó al residente.`
+                : `Entrada registrada. No se le pudo avisar al residente.`,
+          n > 0 ? "ok" : "mal");
+    ["doc", "nom", "placa"].forEach((k) => { $("#" + k).value = ""; });
+    $("#uni").value = ""; $("#pistaDoc").textContent = "";
+    cargarAdentro();
+  };
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   Vista 2 · ADENTRO
+   ═══════════════════════════════════════════════════════════════════ */
+const cargarAdentro = async () => {
+  const d = await rpc("garita_dentro", { p_edificio: estado.edificio });
+  estado.adentro = d || [];
+  if (estado.vista === "adentro") vistaAdentro();
+};
+
+const vistaAdentro = () => {
+  const filas = estado.adentro.map((v) => `
+    <div class="item">
+      <div>
+        <div class="prin">${esc(v.nombre)}</div>
+        <div class="sec">
+          ${v.unidad ? "Unidad " + esc(v.unidad) + " · " : ""}entró ${hora(v.entrada_en)}
+          ${v.placa ? " · " + esc(v.placa) : ""}
+          ${v.documento ? " · " + esc(v.documento) : ""}
+        </div>
+      </div>
+      <button class="b chico" type="button" data-salida="${esc(v.visita_id)}">Registrar salida</button>
+    </div>`).join("");
+
+  $("#main").innerHTML = `
+    <div id="zonaAviso"></div>
+    <div class="tarjeta">
+      <h2>Adentro ahora · ${estado.adentro.length}</h2>
+      <div class="lista">${filas || '<div class="vacio">No hay visitas adentro.</div>'}</div>
+      <div class="fila"><button class="b suave" id="btnRef" type="button">Actualizar</button></div>
+    </div>`;
+
+  $("#btnRef").onclick = cargarAdentro;
+  $("#main").querySelectorAll("[data-salida]").forEach((b) => {
+    b.onclick = async () => {
+      b.disabled = true;
+      const r = await sb.rpc("garita_salida", { p_visita: b.dataset.salida });
+      if (r.error) { b.disabled = false; return falla(r.error); }
+      aviso("Salida registrada.");
+      cargarAdentro();
+    };
+  });
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   Vista 3 · CONSULTAR (lista blanca de vehículos y directorio)
+   ═══════════════════════════════════════════════════════════════════ */
+const vistaBuscar = () => {
+  $("#main").innerHTML = `
+    <div id="zonaAviso"></div>
+    <div class="tarjeta">
+      <h2>Vehículos autorizados</h2>
+      <label for="q">Placa o unidad</label>
+      <input id="q" autocomplete="off" autocapitalize="characters" spellcheck="false"
+             placeholder="AB123CD  ·  01A">
+      <div class="lista" id="resVeh" style="margin-top:12px"></div>
+    </div>
+    <div class="tarjeta">
+      <h2>Directorio del edificio</h2>
+      <label for="qd">Unidad o residente</label>
+      <input id="qd" autocomplete="off" placeholder="01A  ·  apellido">
+      <div class="lista" id="resDir" style="margin-top:12px"></div>
+    </div>`;
+
+  let tmp = null;
+  $("#q").oninput = () => {
+    clearTimeout(tmp);
+    tmp = setTimeout(async () => {
+      const t = ($("#q").value || "").trim();
+      if (t.length < 2) { $("#resVeh").innerHTML = ""; return; }
+      const d = await rpc("garita_vehiculos",
+        { p_edificio: estado.edificio, p_texto: t });
+      $("#resVeh").innerHTML = (d || []).length
+        ? d.map((v) => `
+            <div class="item">
+              <div>
+                <div class="prin mono">${esc(v.placa)}</div>
+                <div class="sec">${esc([v.marca, v.modelo, v.color].filter(Boolean).join(" "))}</div>
+              </div>
+              <div style="text-align:right">
+                <div class="prin">${esc(v.unidad)}</div>
+                <div class="sec">${esc(v.residente || "")}${
+                  v.puesto ? " · puesto " + esc(v.puesto) : ""}</div>
+              </div>
+            </div>`).join("")
+        : '<div class="vacio">Ese vehículo no está en la lista del edificio.</div>';
+    }, 280);
+  };
+
+  const pintarDir = () => {
+    const t = ($("#qd").value || "").trim().toLowerCase();
+    const f = estado.directorio.filter((u) =>
+      !t || (u.codigo || "").toLowerCase().includes(t)
+         || (u.residente || "").toLowerCase().includes(t)).slice(0, 60);
+    $("#resDir").innerHTML = f.length
+      ? f.map((u) => `
+          <div class="item">
+            <div class="prin">${esc(u.codigo)}</div>
+            <div class="sec">${esc(u.residente || "sin registrar")}</div>
+          </div>`).join("")
+      : '<div class="vacio">Sin resultados.</div>';
+  };
+  $("#qd").oninput = pintarDir;
+  pintarDir();
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   Vista 4 · BITÁCORA
+   ═══════════════════════════════════════════════════════════════════ */
+const vistaBitacora = async () => {
+  $("#main").innerHTML = `
+    <div id="zonaAviso"></div>
+    <div class="tarjeta">
+      <h2>Anotar una novedad</h2>
+      <textarea id="nota" placeholder="Qué pasó, a qué hora, quién estaba."></textarea>
+      <div class="campos" style="margin-top:12px">
+        <div>
+          <label for="tipoNota">Tipo</label>
+          <select id="tipoNota">
+            <option value="novedad">Novedad</option>
+            <option value="ronda">Ronda</option>
+            <option value="relevo">Relevo de turno</option>
+          </select>
+        </div>
+      </div>
+      <div class="fila"><button class="b ancho" id="btnNota" type="button">Anotar</button></div>
+      <p class="pie">Lo anotado queda con su nombre y la hora, y no se puede
+        borrar ni corregir después. Si se equivocó, anote una línea nueva.</p>
+    </div>
+    <div class="tarjeta">
+      <h2>El día</h2>
+      <input type="date" id="fecha" value="${hoyISO()}">
+      <div class="lista" id="resBit" style="margin-top:12px"></div>
+    </div>`;
+
+  const cargar = async () => {
+    const d = await rpc("garita_bitacora",
+      { p_edificio: estado.edificio, p_fecha: $("#fecha").value || hoyISO(), p_limite: 200 });
+    const ET = { entrada: "Entrada", salida: "Salida", rechazo: "Rechazo",
+                 novedad: "Novedad", ronda: "Ronda", relevo: "Relevo" };
+    $("#resBit").innerHTML = (d || []).length
+      ? d.map((b) => `
+          <div class="item">
+            <div>
+              <div class="prin">${esc(b.texto)}</div>
+              <div class="sec">${esc(ET[b.tipo] || b.tipo)} · ${esc(b.vigilante)}</div>
+            </div>
+            <div class="mono" style="font-size:19px">${hora(b.creado_en)}</div>
+          </div>`).join("")
+      : '<div class="vacio">Nada anotado ese día.</div>';
+  };
+
+  $("#fecha").onchange = cargar;
+  $("#btnNota").onclick = async () => {
+    const t = ($("#nota").value || "").trim();
+    if (!t) return aviso("La nota está vacía.", "mal");
+    const b = $("#btnNota"); b.disabled = true;
+    const id = await rpc("garita_nota", { p_edificio: estado.edificio,
+      p_texto: t, p_tipo: $("#tipoNota").value });
+    b.disabled = false;
+    if (!id) return;
+    $("#nota").value = "";
+    aviso("Anotado.");
+    $("#fecha").value = hoyISO();
+    cargar();
+  };
+  cargar();
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   Navegación
+   ═══════════════════════════════════════════════════════════════════ */
+const ir = (v) => {
+  pararCamara();
+  estado.vista = v;
+  $("#nav").querySelectorAll("button").forEach((b) =>
+    b.setAttribute("aria-current", b.dataset.v === v ? "true" : "false"));
+  if (v === "entrada")  vistaEntrada();
+  if (v === "adentro")  { vistaAdentro(); cargarAdentro(); }
+  if (v === "buscar")   vistaBuscar();
+  if (v === "bitacora") vistaBitacora();
+};
+$("#nav").querySelectorAll("button").forEach((b) => { b.onclick = () => ir(b.dataset.v); });
+
+/* ═══════════════════════════════════════════════════════════════════
+   Arranque
+   ═══════════════════════════════════════════════════════════════════ */
+const arrancar = async () => {
+  const { data } = await sb.auth.getSession();
+  estado.sesion = data?.session || null;
+  if (!estado.sesion) return pintarEntrar();
+  estado.correo = estado.sesion.user?.email || "";
+
+  $("#main").innerHTML = '<div class="tarjeta"><div class="vacio">Cargando la garita…</div></div>';
+
+  const eds = await rpc("garita_edificios");
+  estado.edificios = eds || [];
+
+  if (!estado.edificios.length) {
+    $("#nav").classList.add("oculto");
+    $("#btnSalir").classList.remove("oculto");
+    $("#hVigilante").textContent = estado.correo;
+    $("#main").innerHTML = `
+      <div class="tarjeta">
+        <h2>Sin garita asignada</h2>
+        <p style="font-size:17px;line-height:1.6">
+          Esta cuenta no tiene ningún edificio asignado, o el edificio no tiene
+          contratado el panel de seguridad.</p>
+        <p style="font-size:17px;line-height:1.6;color:var(--tenue)">
+          Pídale a la administradora que lo asigne como vigilante del edificio.</p>
+      </div>`;
+    return;
+  }
+
+  estado.edificio = estado.edificios[0].edificio_id;
+
+  const sel = $("#selEdificio");
+  if (estado.edificios.length > 1) {
+    sel.innerHTML = estado.edificios.map((e) =>
+      `<option value="${esc(e.edificio_id)}">${esc(e.nombre)}</option>`).join("");
+    sel.classList.remove("oculto");
+    sel.onchange = async () => {
+      estado.edificio = sel.value;
+      await cargarEdificio();
+      ir(estado.vista);
+    };
+  } else {
+    sel.classList.add("oculto");
+  }
+
+  $("#btnSalir").classList.remove("oculto");
+  $("#nav").classList.remove("oculto");
+  await cargarEdificio();
+  ir("entrada");
+};
+
+const cargarEdificio = async () => {
+  const e = estado.edificios.find((x) => x.edificio_id === estado.edificio);
+  $("#hEdificio").textContent = e ? e.nombre : "Garita";
+  $("#hVigilante").textContent = estado.correo;
+  const d = await rpc("garita_directorio", { p_edificio: estado.edificio });
+  estado.directorio = d || [];
+  await cargarAdentro();
+};
+
+/* Si la tableta se queda abierta toda la noche, la lista de adentro se
+   refresca sola: el relevo de turno tiene que ver lo que dejó el
+   anterior sin tener que acordarse de tocar nada. */
+setInterval(() => {
+  if (estado.sesion && estado.edificio) cargarAdentro();
+}, 60000);
+
+window.addEventListener("pagehide", pararCamara);
+
+arrancar();
+</script>
+</body>
+</html>
