@@ -1041,7 +1041,7 @@ function App() {
     { id: "ajustes", label: "Ajustes", icono: "Settings2" },
   ];
 
-  const comun = { hayModulo, sb, org, edificio, unidades, saldos, conceptos, periodos, periodoAbierto,
+  const comun = { hayModulo, sb, org, edificio, edificios, unidades, saldos, conceptos, periodos, periodoAbierto,
     sumaAlicuotas, porCobrar, aFavor, conDeuda, tasa, notificar, fallo,
     recargar: cargarEdificio, recargarEdificios: cargarEdificios,
     setVista, verFicha: setFichaDe };
@@ -3722,8 +3722,16 @@ function Pagos({ sb, org, edificio, unidades, tasa, notificar, fallo, recargar }
 /* ══════════════════════════════════════════════════════════════
    ACCESOS · quién entra a cada unidad y qué ve
    ══════════════════════════════════════════════════════════════ */
-function Accesos({ sb, org, edificio, unidades, notificar, fallo, recargar }) {
+function Accesos({ sb, org, edificio, edificios, unidades, hayModulo,
+                  notificar, fallo, recargar }) {
   const [pest, setPest] = useState("invitar");
+  /* Los vigilantes solo aparecen si el edificio tiene contratada la
+     garita. Sin el módulo, invitar a un vigilante sería darle una
+     cuenta para entrar a una pantalla donde la base le niega todo. */
+  const verVigilantes = hayModulo ? hayModulo("garita") : false;
+  const [vigis, setVigis] = useState([]);
+  const [fv, setFv] = useState({ correo: "", edificio: "" });
+  const [codigoVig, setCodigoVig] = useState(null);
   const [f, setF] = useState({ unidad: "", correo: "", relacion: "propietario" });
   const [codigo, setCodigo] = useState(null);
   const [invs, setInvs] = useState([]);
@@ -3738,6 +3746,37 @@ function Accesos({ sb, org, edificio, unidades, notificar, fallo, recargar }) {
     const b = await sb.rpc("residentes_de", { p_edificio: edificio.id });
     if (b.error) return fallo(b.error);
     setGente(b.data || []);
+  };
+
+  const cargarVigis = async () => {
+    const { data, error } = await sb.rpc("vigilantes_de", { p_org: org.id });
+    if (error) return fallo(error);
+    setVigis(data || []);
+  };
+  useEffect(() => { if (verVigilantes) cargarVigis(); }, [org.id, verVigilantes]);
+
+  const invitarVigilante = async () => {
+    const correo = (fv.correo || "").trim().toLowerCase();
+    const ed = fv.edificio || edificio?.id;
+    if (!ed) return notificar("Elija el edificio de la garita.", "error");
+    if (!/.+@.+\..+/.test(correo)) return notificar("Ese correo no se entiende.", "error");
+    setOcupado(true);
+    const { data, error } = await sb.rpc("crear_invitacion", {
+      p_org: org.id, p_correo: correo, p_rol: "vigilante",
+      p_edificio: ed, p_unidad: null, p_relacion: null });
+    setOcupado(false);
+    if (error) return fallo(error);
+    setCodigoVig({ token: data, correo });
+    setFv({ ...fv, correo: "" });
+    cargarVigis();
+  };
+
+  const fijarVigilante = async (id, activo, ed) => {
+    const { error } = await sb.rpc("fijar_vigilante",
+      { p_membresia: id, p_activo: activo, p_edificio: ed || null });
+    if (error) return fallo(error);
+    notificar(activo ? "Vigilante reactivado." : "Ese vigilante ya no entra a la garita.");
+    cargarVigis();
   };
   useEffect(() => { cargar(); }, [org.id, edificio?.id]);
 
@@ -3786,7 +3825,8 @@ function Accesos({ sb, org, edificio, unidades, notificar, fallo, recargar }) {
     <div className="grid gap-5">
       <div className="flex gap-2 flex-wrap">
         {[["invitar", "Invitar"], ["pendientes", "Invitaciones"],
-          ["gente", "Quién tiene acceso"]].map(([k, t]) => (
+          ["gente", "Quién tiene acceso"],
+          ...(verVigilantes ? [["vigilantes", "Vigilantes"]] : [])].map(([k, t]) => (
           <Boton key={k} size="s" tipo={pest === k ? "oscuro" : "suave"}
             onClick={() => setPest(k)}>{t}</Boton>
         ))}
@@ -3928,6 +3968,101 @@ function Accesos({ sb, org, edificio, unidades, notificar, fallo, recargar }) {
             </div>
           )}
         </Tarjeta>
+      )}
+
+      {pest === "vigilantes" && verVigilantes && (
+        <>
+          <Tarjeta>
+            <Titulo sub="Un correo por persona o por turno, nunca uno compartido: la bitácora guarda quién hizo cada cosa, y con una cuenta compartida esa firma no sirve de nada.">
+              Invitar a un vigilante
+            </Titulo>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+              <Campo label="Edificio de la garita">
+                <Selector value={fv.edificio || edificio?.id || ""}
+                  onChange={(e) => setFv({ ...fv, edificio: e.target.value })}>
+                  {(edificios || []).map((e2) =>
+                    <option key={e2.id} value={e2.id}>{e2.nombre}</option>)}
+                </Selector>
+              </Campo>
+              <Campo label="Correo del vigilante">
+                <Entrada value={fv.correo} placeholder="vigilante@correo.com"
+                  onChange={(e) => setFv({ ...fv, correo: e.target.value })} />
+              </Campo>
+            </div>
+            <div className="mt-4" style={{ fontSize: 12.5, color: T.tinta2, lineHeight: 1.6 }}>
+              El vigilante solo ve el edificio donde lo asigne, y dentro de él solo el
+              código de cada unidad y el nombre de quien vive ahí. No ve saldos, ni
+              recibos, ni pagos, ni teléfonos.
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <Boton disabled={ocupado} onClick={invitarVigilante}>
+                Generar la invitación</Boton>
+            </div>
+          </Tarjeta>
+
+          {codigoVig && (
+            <Tarjeta>
+              <Titulo sub="Este código se muestra una sola vez. Pásaselo al vigilante junto con el enlace de la garita.">
+                Código para {codigoVig.correo}
+              </Titulo>
+              <div className="mono" style={{ padding: "14px 16px", background: T.fondo,
+                borderRadius: T.rs, wordBreak: "break-all", fontSize: 13.5 }}>
+                {codigoVig.token}
+              </div>
+              <div className="flex gap-2 mt-4 flex-wrap">
+                <Boton tipo="suave" onClick={() => copiar(codigoVig.token)}>Copiar el código</Boton>
+                <Boton tipo="fantasma" onClick={() => setCodigoVig(null)}>Listo</Boton>
+              </div>
+            </Tarjeta>
+          )}
+
+          <Tarjeta pad={false}>
+            <div style={{ padding: "20px 20px 0" }}>
+              <Titulo sub="Al que deja el puesto se le da de baja, no se le borra: la bitácora que firmó tiene que seguir teniendo a quién apuntar.">
+                Vigilantes
+              </Titulo>
+            </div>
+            {vigis.length === 0 ? (
+              <div style={{ padding: 34, textAlign: "center", color: T.tenue, fontSize: 14 }}>
+                Todavía no hay vigilantes dados de alta.
+              </div>
+            ) : (
+              <div className="scroll-x">
+                <table className="apila">
+                  <thead>
+                    <tr>
+                      <th>Correo</th><th>Edificio</th><th>Anotaciones</th>
+                      <th>Última vez</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vigis.map((v) => (
+                      <tr key={v.membresia_id} style={{ opacity: v.activo ? 1 : .55 }}>
+                        <td data-t="Correo" className="cabeza">{v.correo}</td>
+                        <td data-t="Edificio">{v.edificio || "—"}</td>
+                        <td data-t="Anotaciones" className="num">{v.anotaciones}</td>
+                        <td data-t="Última vez">
+                          {v.ultima_anotacion
+                            ? fechaDia(v.ultima_anotacion)
+                            : <span style={{ color: T.tenue }}>nunca</span>}
+                        </td>
+                        <td data-t="">
+                          {v.activo
+                            ? <Boton size="s" tipo="suave"
+                                onClick={() => fijarVigilante(v.membresia_id, false)}>
+                                Dar de baja</Boton>
+                            : <Boton size="s" tipo="suave"
+                                onClick={() => fijarVigilante(v.membresia_id, true)}>
+                                Reactivar</Boton>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Tarjeta>
+        </>
       )}
     </div>
   );

@@ -297,42 +297,69 @@ const mostrarVeredicto = (ok, titulo, datos, acciones) => {
 /* ═══════════════════════════════════════════════════════════════════
    Entrar
    ═══════════════════════════════════════════════════════════════════ */
+let modoEntrar = "entrar";   // "entrar" o "crear"
+
 const pintarEntrar = (msg) => {
   $("#nav").classList.add("oculto");
   $("#btnSalir").classList.add("oculto");
   $("#selEdificio").classList.add("oculto");
   $("#hEdificio").textContent = "Garita";
   $("#hVigilante").textContent = "Vecitap";
+  const crear = modoEntrar === "crear";
   $("#main").innerHTML = `
     <div class="entrar">
       <div class="tarjeta">
-        <h2>Entrar a la garita</h2>
+        <h2>${crear ? "Crear mi clave" : "Entrar a la garita"}</h2>
         <div id="zonaAviso"></div>
+        <p style="font-size:14px;color:var(--tenue);margin:0 0 14px;line-height:1.5">
+          ${crear
+            ? "Use el mismo correo al que la administración le mandó la invitación."
+            : "Con el correo y la clave que le dio la administración."}
+        </p>
         <div style="margin-bottom:12px">
           <label for="correo">Correo</label>
           <input id="correo" type="email" autocomplete="username" inputmode="email">
         </div>
         <div>
           <label for="clave">Clave</label>
-          <input id="clave" type="password" autocomplete="current-password">
+          <input id="clave" type="password"
+                 autocomplete="${crear ? "new-password" : "current-password"}">
         </div>
         <div class="fila">
-          <button class="b ancho" id="btnEntrar" type="button">Entrar</button>
+          <button class="b ancho" id="btnEntrar" type="button">
+            ${crear ? "Crear la clave" : "Entrar"}</button>
+        </div>
+        <div class="fila" style="justify-content:center">
+          <button class="b suave chico" id="btnModo" type="button">
+            ${crear ? "Ya tengo clave" : "Es mi primera vez"}</button>
         </div>
       </div>
       <p class="pie">Vecitap · panel de seguridad</p>
     </div>`;
   if (msg) aviso(msg, "mal");
-  const entrar = async () => {
-    const b = $("#btnEntrar"); b.disabled = true; b.textContent = "Entrando…";
-    const { error } = await sb.auth.signInWithPassword({
-      email: ($("#correo").value || "").trim(), password: $("#clave").value || "" });
-    b.disabled = false; b.textContent = "Entrar";
-    if (error) return aviso("No se pudo entrar. Revise el correo y la clave.", "mal");
+
+  const enviar = async () => {
+    const b = $("#btnEntrar"); const t = b.textContent;
+    b.disabled = true; b.textContent = "Un momento…";
+    const correo = ($("#correo").value || "").trim().toLowerCase();
+    const clave = $("#clave").value || "";
+    const r = crear
+      ? await sb.auth.signUp({ email: correo, password: clave })
+      : await sb.auth.signInWithPassword({ email: correo, password: clave });
+    b.disabled = false; b.textContent = t;
+    if (r.error) {
+      return aviso(crear
+        ? (r.error.message || "No se pudo crear la clave.")
+        : "No se pudo entrar. Revise el correo y la clave.", "mal");
+    }
     arrancar();
   };
-  $("#btnEntrar").onclick = entrar;
-  $("#clave").onkeydown = (e) => { if (e.key === "Enter") entrar(); };
+  $("#btnEntrar").onclick = enviar;
+  $("#btnModo").onclick = () => {
+    modoEntrar = crear ? "entrar" : "crear";
+    pintarEntrar();
+  };
+  $("#clave").onkeydown = (e) => { if (e.key === "Enter") enviar(); };
 };
 
 $("#btnSalir").onclick = async () => {
@@ -753,14 +780,40 @@ const arrancar = async () => {
     $("#btnSalir").classList.remove("oculto");
     $("#hVigilante").textContent = estado.correo;
     $("#main").innerHTML = `
-      <div class="tarjeta">
-        <h2>Sin garita asignada</h2>
-        <p style="font-size:17px;line-height:1.6">
-          Esta cuenta no tiene ningún edificio asignado, o el edificio no tiene
-          contratado el panel de seguridad.</p>
-        <p style="font-size:17px;line-height:1.6;color:var(--tenue)">
-          Pídale a la administradora que lo asigne como vigilante del edificio.</p>
+      <div class="entrar">
+        <div class="tarjeta">
+          <h2>Falta un paso</h2>
+          <div id="zonaAviso"></div>
+          <p style="font-size:16px;line-height:1.6;color:var(--tinta2);margin-top:0">
+            Su cuenta existe pero todavía no está asignada a ninguna garita.
+            Pegue el código que le dio la administración. La invitación va a
+            <b>${esc(estado.correo)}</b> y no sirve para otro correo.
+          </p>
+          <label for="codInv">Código de invitación</label>
+          <input id="codInv" class="mono" autocomplete="off" autocapitalize="off"
+                 spellcheck="false" placeholder="a1b2c3…">
+          <div class="fila">
+            <button class="b ancho" id="btnInv" type="button">Usar la invitación</button>
+          </div>
+          <p class="pie">
+            Si no tiene código, pídaselo a la administración. Si ya lo usó y sigue
+            viendo esto, puede que el edificio todavía no tenga contratado el panel
+            de seguridad.
+          </p>
+        </div>
       </div>`;
+
+    const usar = async () => {
+      const cod = ($("#codInv").value || "").trim();
+      if (!cod) return aviso("Pegue el código de la invitación.", "mal");
+      const b = $("#btnInv"); b.disabled = true; b.textContent = "Comprobando…";
+      const { error } = await sb.rpc("aceptar_invitacion", { p_token: cod });
+      b.disabled = false; b.textContent = "Usar la invitación";
+      if (error) return aviso(error.message || "Ese código no sirvió.", "mal");
+      arrancar();
+    };
+    $("#btnInv").onclick = usar;
+    $("#codInv").onkeydown = (e) => { if (e.key === "Enter") usar(); };
     return;
   }
 
