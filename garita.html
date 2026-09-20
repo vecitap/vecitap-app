@@ -99,6 +99,14 @@
   }
   textarea{ min-height:88px; resize:vertical }
   input:focus,select:focus,textarea:focus{ outline:3px solid var(--acento); outline-offset:1px }
+  /* El ojo para ver la clave. En una garita se escribe de pie, con guantes
+     o con lluvia: escribir a ciegas es donde más se equivoca la gente. */
+  .conOjo{ position:relative }
+  .conOjo input{ padding-right:62px }
+  .ojo{ position:absolute; right:6px; top:50%; transform:translateY(-50%);
+        background:none; border:none; cursor:pointer; padding:10px 12px;
+        color:var(--tenue); display:flex; align-items:center; min-height:0 }
+  .ojo.visible{ color:var(--acento) }
   .campos{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)) }
 
   button.b{
@@ -108,6 +116,8 @@
     display:inline-flex; align-items:center; justify-content:center; gap:10px;
   }
   button.b.suave{ background:transparent; color:var(--tinta); border-color:var(--lineaFuerte) }
+  button.b.fantasma{ background:transparent; color:var(--tenue); border-color:transparent;
+                     text-decoration:underline }
   button.b.ancho{ width:100% }
   button.b:disabled{ opacity:.45; cursor:not-allowed }
   button.b.chico{ min-height:46px; padding:8px 14px; font-size:15px }
@@ -237,6 +247,12 @@ const estado = {
   vista: "entrada", directorio: [], adentro: [],
 };
 
+/* Supabase avisa con PASSWORD_RECOVERY al volver del correo, pero ese
+   aviso puede llegar antes de que este archivo se suscriba. Por eso
+   también se mira el # de la dirección, que es donde viene la marca. */
+let recuperando = false;
+try { recuperando = /type=recovery/.test(location.hash || ""); } catch (e) {}
+
 let avisoTmp = null;
 const aviso = (texto, tipo = "ok") => {
   const d = $("#zonaAviso");
@@ -297,7 +313,39 @@ const mostrarVeredicto = (ok, titulo, datos, acciones) => {
 /* ═══════════════════════════════════════════════════════════════════
    Entrar
    ═══════════════════════════════════════════════════════════════════ */
-let modoEntrar = "entrar";   // "entrar" o "crear"
+let modoEntrar = "entrar";   // "entrar" · "crear" · "olvide"
+
+/* El dibujo del ojo, y el botón que lo enciende. Se escribe una sola vez
+   y se usa en las tres pantallas que piden clave. */
+const svgOjo = (abierto) => `
+  <svg viewBox="0 0 24 24" width="26" height="26" fill="none"
+       stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+       stroke-linejoin="round" aria-hidden="true">
+    <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z"/>
+    <circle cx="12" cy="12" r="3.2"/>
+    ${abierto ? "" : '<line x1="3" y1="3" x2="21" y2="21"/>'}
+  </svg>`;
+
+const campoClave = (id, autocompletar) => `
+  <div class="conOjo">
+    <input id="${id}" type="password" autocomplete="${autocompletar}">
+    <button class="ojo" id="ojo_${id}" type="button" aria-label="Ver la clave"
+            title="Ver la clave">${svgOjo(false)}</button>
+  </div>`;
+
+const engancharOjo = (id) => {
+  const b = $("#ojo_" + id), i = $("#" + id);
+  if (!b || !i) return;
+  b.onclick = () => {
+    const ver = i.type === "password";
+    i.type = ver ? "text" : "password";
+    b.innerHTML = svgOjo(ver);
+    b.classList.toggle("visible", ver);
+    b.setAttribute("aria-label", ver ? "Ocultar la clave" : "Ver la clave");
+    b.title = b.getAttribute("aria-label");
+    i.focus();
+  };
+};
 
 const pintarEntrar = (msg) => {
   $("#nav").classList.add("oculto");
@@ -305,43 +353,66 @@ const pintarEntrar = (msg) => {
   $("#selEdificio").classList.add("oculto");
   $("#hEdificio").textContent = "Garita";
   $("#hVigilante").textContent = "Vecitap";
-  const crear = modoEntrar === "crear";
+  const crear  = modoEntrar === "crear";
+  const olvide = modoEntrar === "olvide";
+  const titulo = olvide ? "Recuperar mi clave"
+                 : crear ? "Crear mi clave" : "Entrar a la garita";
+  const explica = olvide
+    ? "Le mandamos un enlace al correo con el que entra. Solo sirve una vez. Si no le llega en unos minutos, avise a la administración."
+    : crear
+      ? "Use el mismo correo al que la administración le mandó la invitación."
+      : "Con el correo y la clave que le dio la administración.";
   $("#main").innerHTML = `
     <div class="entrar">
       <div class="tarjeta">
-        <h2>${crear ? "Crear mi clave" : "Entrar a la garita"}</h2>
+        <h2>${titulo}</h2>
         <div id="zonaAviso"></div>
         <p style="font-size:14px;color:var(--tenue);margin:0 0 14px;line-height:1.5">
-          ${crear
-            ? "Use el mismo correo al que la administración le mandó la invitación."
-            : "Con el correo y la clave que le dio la administración."}
+          ${explica}
         </p>
         <div style="margin-bottom:12px">
           <label for="correo">Correo</label>
           <input id="correo" type="email" autocomplete="username" inputmode="email">
         </div>
+        ${olvide ? "" : `
         <div>
           <label for="clave">Clave</label>
-          <input id="clave" type="password"
-                 autocomplete="${crear ? "new-password" : "current-password"}">
-        </div>
+          ${campoClave("clave", crear ? "new-password" : "current-password")}
+        </div>`}
         <div class="fila">
           <button class="b ancho" id="btnEntrar" type="button">
-            ${crear ? "Crear la clave" : "Entrar"}</button>
+            ${olvide ? "Mandarme el enlace" : crear ? "Crear la clave" : "Entrar"}</button>
         </div>
         <div class="fila" style="justify-content:center">
           <button class="b suave chico" id="btnModo" type="button">
-            ${crear ? "Ya tengo clave" : "Es mi primera vez"}</button>
+            ${olvide ? "Volver" : crear ? "Ya tengo clave" : "Es mi primera vez"}</button>
         </div>
+        ${olvide ? "" : `
+        <div class="fila" style="justify-content:center;margin-top:0">
+          <button class="b fantasma chico" id="btnOlvide" type="button">
+            Olvidé mi clave</button>
+        </div>`}
       </div>
       <p class="pie">Vecitap · panel de seguridad</p>
     </div>`;
   if (msg) aviso(msg, "mal");
+  if (!olvide) engancharOjo("clave");
 
   const enviar = async () => {
     const b = $("#btnEntrar"); const t = b.textContent;
-    b.disabled = true; b.textContent = "Un momento…";
     const correo = ($("#correo").value || "").trim().toLowerCase();
+    if (!/.+@.+\..+/.test(correo)) return aviso("Escriba su correo.", "mal");
+    b.disabled = true; b.textContent = "Un momento…";
+
+    if (olvide) {
+      const { error } = await sb.auth.resetPasswordForEmail(correo,
+        { redirectTo: location.href.split("#")[0].split("?")[0] });
+      b.disabled = false; b.textContent = t;
+      if (error) return aviso(error.message || "No se pudo enviar el enlace.", "mal");
+      modoEntrar = "entrar";
+      return pintarEntrar("Enlace enviado a " + correo + ". Revise también la carpeta de spam.");
+    }
+
     const clave = $("#clave").value || "";
     const r = crear
       ? await sb.auth.signUp({ email: correo, password: clave })
@@ -356,10 +427,74 @@ const pintarEntrar = (msg) => {
   };
   $("#btnEntrar").onclick = enviar;
   $("#btnModo").onclick = () => {
-    modoEntrar = crear ? "entrar" : "crear";
+    modoEntrar = olvide ? "entrar" : crear ? "entrar" : "crear";
     pintarEntrar();
   };
-  $("#clave").onkeydown = (e) => { if (e.key === "Enter") enviar(); };
+  if ($("#btnOlvide")) $("#btnOlvide").onclick = () => { modoEntrar = "olvide"; pintarEntrar(); };
+  $("#correo").onkeydown = (e) => { if (e.key === "Enter" && olvide) enviar(); };
+  if ($("#clave")) $("#clave").onkeydown = (e) => { if (e.key === "Enter") enviar(); };
+};
+
+/* ── Volvió del correo de recuperación ──
+   Supabase deja abierta una sesión especial al entrar por ese enlace.
+   Mientras esa sesión está viva hay que cambiar la clave: si el vigilante
+   se va sin hacerlo, la garita queda abierta con su cuenta. Por eso esta
+   pantalla no tiene más salida que poner la clave o cerrar sesión. */
+const pintarClaveNueva = () => {
+  $("#nav").classList.add("oculto");
+  $("#btnSalir").classList.add("oculto");
+  $("#selEdificio").classList.add("oculto");
+  $("#hEdificio").textContent = "Garita";
+  $("#hVigilante").textContent = estado.correo || "Vecitap";
+  $("#main").innerHTML = `
+    <div class="entrar">
+      <div class="tarjeta">
+        <h2>Poner una clave nueva</h2>
+        <div id="zonaAviso"></div>
+        <p style="font-size:14px;color:var(--tenue);margin:0 0 14px;line-height:1.5">
+          El enlace que usó no sirve otra vez. Escriba una clave de al menos
+          6 caracteres y repítala.
+        </p>
+        <div style="margin-bottom:12px">
+          <label for="cn1">Clave nueva</label>
+          ${campoClave("cn1", "new-password")}
+        </div>
+        <div>
+          <label for="cn2">Repítala</label>
+          ${campoClave("cn2", "new-password")}
+        </div>
+        <div class="fila">
+          <button class="b ancho" id="btnClave" type="button">Guardar la clave</button>
+        </div>
+        <div class="fila" style="justify-content:center">
+          <button class="b suave chico" id="btnCancelar" type="button">Cancelar y salir</button>
+        </div>
+      </div>
+      <p class="pie">Vecitap · panel de seguridad</p>
+    </div>`;
+  engancharOjo("cn1"); engancharOjo("cn2");
+
+  const guardar = async () => {
+    const a = $("#cn1").value || "", b2 = $("#cn2").value || "";
+    if (a.length < 6) return aviso("La clave necesita al menos 6 caracteres.", "mal");
+    if (a !== b2) return aviso("Las dos claves no son iguales.", "mal");
+    const b = $("#btnClave"); b.disabled = true; b.textContent = "Guardando…";
+    const { error } = await sb.auth.updateUser({ password: a });
+    b.disabled = false; b.textContent = "Guardar la clave";
+    if (error) return aviso(error.message || "No se pudo cambiar la clave.", "mal");
+    recuperando = false;
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    arrancar();
+  };
+  $("#btnClave").onclick = guardar;
+  $("#cn2").onkeydown = (e) => { if (e.key === "Enter") guardar(); };
+  $("#btnCancelar").onclick = async () => {
+    recuperando = false;
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    await sb.auth.signOut();
+    estado.sesion = null;
+    pintarEntrar();
+  };
 };
 
 $("#btnSalir").onclick = async () => {
@@ -770,6 +905,10 @@ const arrancar = async () => {
   if (!estado.sesion) return pintarEntrar();
   estado.correo = estado.sesion.user?.email || "";
 
+  /* Si llegó por el enlace del correo, primero la clave nueva. No se le
+     deja entrar a la garita con una sesión que existe solo para eso. */
+  if (recuperando) return pintarClaveNueva();
+
   $("#main").innerHTML = '<div class="tarjeta"><div class="vacio">Cargando la garita…</div></div>';
 
   const eds = await rpc("garita_edificios");
@@ -856,6 +995,11 @@ setInterval(() => {
 }, 60000);
 
 window.addEventListener("pagehide", pararCamara);
+
+/* El aviso de recuperación puede llegar después del primer dibujado. */
+sb.auth.onAuthStateChange((evento) => {
+  if (evento === "PASSWORD_RECOVERY") { recuperando = true; arrancar(); }
+});
 
 arrancar();
 </script>

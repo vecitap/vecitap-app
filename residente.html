@@ -160,6 +160,37 @@ const Boton = ({ children, onClick, tono="primario", disabled, tipo, style }) =>
       display:"inline-flex", alignItems:"center", gap:8, justifyContent:"center", ...style }}>
     {children}</button>;
 };
+/* El ojo para ver la clave. En un teléfono, escribir una clave larga a
+   ciegas es la razón número uno por la que la gente pone claves cortas. */
+const Ojo = ({ abierto }) => (
+  <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+    strokeLinejoin="round" aria-hidden="true">
+    <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z" />
+    <circle cx="12" cy="12" r="3.2" />
+    {!abierto && <line x1="3" y1="3" x2="21" y2="21" />}
+  </svg>
+);
+
+const ClaveEntrada = ({ value, onChange, onKeyDown, autoComplete, autoFocus }) => {
+  const [ver, setVer] = useState(false);
+  return (
+    <div style={{ position:"relative" }}>
+      <input type={ver ? "text" : "password"} value={value} onChange={onChange}
+        onKeyDown={onKeyDown} autoComplete={autoComplete} autoFocus={autoFocus}
+        style={{ paddingRight:48, width:"100%" }} />
+      <button type="button" onClick={() => setVer(!ver)}
+        aria-label={ver ? "Ocultar la clave" : "Ver la clave"}
+        title={ver ? "Ocultar la clave" : "Ver la clave"}
+        style={{ position:"absolute", right:4, top:"50%", transform:"translateY(-50%)",
+          background:"none", border:"none", cursor:"pointer", padding:"8px 10px",
+          color: ver ? T.naranja : T.tenue, display:"flex", alignItems:"center" }}>
+        <Ojo abierto={ver} />
+      </button>
+    </div>
+  );
+};
+
 const Campo = ({ label, ayuda, children }) => (
   <label className="mb3">
     <span style={{ fontSize:12.5, color:T.tinta2, display:"block", marginBottom:6,
@@ -204,6 +235,12 @@ function App() {
   const [elegida, setElegida] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [tema, setTema] = useState(leerTema);
+  /* Se mira la dirección ANTES de que Supabase la limpie: al entrar por
+     el enlace del correo, la marca viene en el pedacito después del #. */
+  const [recuperando, setRecuperando] = useState(() => {
+    try { return /type=recovery/.test(window.location.hash || ""); }
+    catch (e) { return false; }
+  });
   const tmp = useRef(null);
 
   useEffect(() => { ponerTema(tema); }, [tema]);
@@ -218,8 +255,10 @@ function App() {
   useEffect(() => {
     if (!sb) return;
     sb.auth.getSession().then(({ data }) => setSesion(data.session || null));
-    const { data: s } = sb.auth.onAuthStateChange((_e, ses) => {
-      setSesion(ses || null); if (!ses) { setUnidades(null); setElegida(null); } });
+    const { data: s } = sb.auth.onAuthStateChange((evento, ses) => {
+      if (evento === "PASSWORD_RECOVERY") setRecuperando(true);
+      setSesion(ses || null);
+      if (!ses) { setUnidades(null); setElegida(null); setRecuperando(false); } });
     return () => s?.subscription?.unsubscribe();
   }, [sb]);
 
@@ -234,6 +273,14 @@ function App() {
   if (!cfg) return <Conexion onListo={(url,key) => setCfg({url,key})} />;
   if (sesion === undefined) return <Centro><Tarjeta>Abriendo su sesión…</Tarjeta></Centro>;
   if (!sesion) return <Entrar sb={sb} aviso={aviso} notificar={notificar} fallo={fallo} />;
+
+  if (recuperando)
+    return <ClaveNueva sb={sb} sesion={sesion} aviso={aviso} notificar={notificar}
+             fallo={fallo} onListo={() => {
+               setRecuperando(false);
+               try { history.replaceState(null, "", location.pathname); } catch (e) {}
+             }} />;
+
   if (unidades === null) return <Centro><Tarjeta>Cargando…</Tarjeta></Centro>;
 
   if (unidades.length === 0)
@@ -314,12 +361,28 @@ function Conexion({ onListo }) {
 
 /* ── Entrar o crear la cuenta ── */
 function Entrar({ sb, aviso, notificar, fallo }) {
-  const [modo, setModo] = useState("entrar");
+  const [modo, setModo] = useState("entrar");   // entrar · crear · olvide
   const [correo, setCorreo] = useState("");
   const [clave, setClave] = useState("");
   const [ocupado, setOcupado] = useState(false);
 
+  /* La recuperación vuelve a ESTA misma página. Cada panel se encarga de
+     la suya: así el residente no termina en la pantalla del
+     administrador con una sesión a medio hacer. */
+  const recuperar = async () => {
+    const c = correo.trim().toLowerCase();
+    if (!/.+@.+\..+/.test(c)) return notificar("Escriba su correo primero.", "error");
+    setOcupado(true);
+    const { error } = await sb.auth.resetPasswordForEmail(c, {
+      redirectTo: window.location.href.split("#")[0].split("?")[0] });
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar("Le mandamos un enlace a " + c + ". Revise su correo, y también la carpeta de spam.");
+    setModo("entrar");
+  };
+
   const enviar = async () => {
+    if (modo === "olvide") return recuperar();
     if (!correo.trim() || !clave) return notificar("Falta el correo o la clave.", "error");
     setOcupado(true);
     const f = modo === "entrar"
@@ -336,9 +399,12 @@ function Entrar({ sb, aviso, notificar, fallo }) {
       <Tarjeta>
         <LogoVecitap alto={30} tema={leerTema()} style={{ marginBottom:14 }} />
         <h2 style={{ margin:"0 0 4px", fontSize:19 }}>
-          {modo === "entrar" ? "Entrar" : "Crear mi cuenta"}</h2>
+          {modo === "entrar" ? "Entrar"
+            : modo === "crear" ? "Crear mi cuenta" : "Recuperar mi clave"}</h2>
         <p style={{ color:T.tinta2, fontSize:13.5, lineHeight:1.6, marginTop:0 }}>
-          Use el mismo correo al que le llegó la invitación de su administración.
+          {modo === "olvide"
+            ? "Le mandamos un enlace para poner una clave nueva. Va al correo con el que entra, y solo sirve una vez."
+            : "Use el mismo correo al que le llegó la invitación de su administración."}
         </p>
 
         {aviso && (
@@ -351,18 +417,82 @@ function Entrar({ sb, aviso, notificar, fallo }) {
         <Campo label="Correo">
           <input type="email" inputMode="email" autoCapitalize="off" value={correo}
             onChange={(e)=>setCorreo(e.target.value)} /></Campo>
-        <Campo label="Contraseña"
-          ayuda={modo==="crear" ? "Mínimo 6 caracteres." : ""}>
-          <input type="password" value={clave} onChange={(e)=>setClave(e.target.value)}
-            onKeyDown={(e)=> e.key==="Enter" && enviar()} /></Campo>
+        {modo !== "olvide" && (
+          <Campo label="Contraseña"
+            ayuda={modo==="crear" ? "Mínimo 6 caracteres." : ""}>
+            <ClaveEntrada value={clave} onChange={(e)=>setClave(e.target.value)}
+              autoComplete={modo==="crear" ? "new-password" : "current-password"}
+              onKeyDown={(e)=> e.key==="Enter" && enviar()} /></Campo>
+        )}
 
         <Boton style={{ width:"100%" }} disabled={ocupado} onClick={enviar}>
-          {ocupado ? "Un momento…" : modo==="entrar" ? "Entrar" : "Crear la cuenta"}</Boton>
+          {ocupado ? "Un momento…"
+            : modo==="entrar" ? "Entrar"
+            : modo==="crear" ? "Crear la cuenta" : "Mandarme el enlace"}</Boton>
 
         <div style={{ textAlign:"center", marginTop:14 }}>
           <Boton tono="fantasma" style={{ fontSize:13.5, padding:"6px 8px" }}
             onClick={() => setModo(modo==="entrar" ? "crear" : "entrar")}>
             {modo==="entrar" ? "No tengo cuenta todavía" : "Ya tengo cuenta"}</Boton>
+        </div>
+        {modo !== "olvide" && (
+          <div style={{ textAlign:"center", marginTop:2 }}>
+            <Boton tono="fantasma" style={{ fontSize:13, padding:"6px 8px" }}
+              onClick={() => setModo("olvide")}>Olvidé mi clave</Boton>
+          </div>
+        )}
+      </Tarjeta>
+    </Centro>
+  );
+}
+
+/* ── Volvió del correo de recuperación: poner clave nueva ──
+   Supabase deja abierta una sesión especial al entrar por ese enlace.
+   Mientras esa sesión está viva hay que cambiar la clave: si el usuario
+   se va sin hacerlo, queda dentro sin saberlo. Por eso esta pantalla no
+   tiene salida más que poner la clave o cerrar sesión. */
+function ClaveNueva({ sb, sesion, aviso, notificar, fallo, onListo }) {
+  const [clave, setClave] = useState("");
+  const [otra, setOtra] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+
+  const guardar = async () => {
+    if (clave.length < 6) return notificar("La clave necesita al menos 6 caracteres.", "error");
+    if (clave !== otra) return notificar("Las dos claves no son iguales.", "error");
+    setOcupado(true);
+    const { error } = await sb.auth.updateUser({ password: clave });
+    setOcupado(false);
+    if (error) return fallo(error);
+    notificar("Clave cambiada. Ya puede entrar con la nueva.");
+    onListo();
+  };
+
+  return (
+    <Centro>
+      <Tarjeta>
+        <LogoVecitap alto={26} tema={leerTema()} style={{ marginBottom:14 }} />
+        <h2 style={{ margin:"0 0 4px", fontSize:19 }}>Poner una clave nueva</h2>
+        <p style={{ color:T.tinta2, fontSize:13.5, lineHeight:1.6, marginTop:0 }}>
+          Para <b>{sesion?.user?.email}</b>. El enlace que usó no sirve otra vez.
+        </p>
+        {aviso && (
+          <div className="mb3" style={{ padding:"11px 13px", borderRadius:10, fontSize:13.5,
+            lineHeight:1.5,
+            background: aviso.tipo==="error" ? T.rojoBg : T.verdeBg,
+            color: aviso.tipo==="error" ? T.rojo : T.verde }}>{aviso.t}</div>
+        )}
+        <Campo label="Clave nueva" ayuda="Mínimo 6 caracteres.">
+          <ClaveEntrada value={clave} onChange={(e)=>setClave(e.target.value)}
+            autoComplete="new-password" autoFocus /></Campo>
+        <Campo label="Repítala">
+          <ClaveEntrada value={otra} onChange={(e)=>setOtra(e.target.value)}
+            autoComplete="new-password"
+            onKeyDown={(e)=> e.key==="Enter" && guardar()} /></Campo>
+        <Boton style={{ width:"100%" }} disabled={ocupado} onClick={guardar}>
+          {ocupado ? "Guardando…" : "Guardar la clave"}</Boton>
+        <div style={{ textAlign:"center", marginTop:12 }}>
+          <Boton tono="fantasma" style={{ fontSize:13 }}
+            onClick={() => sb.auth.signOut()}>Cancelar y salir</Boton>
         </div>
       </Tarjeta>
     </Centro>
@@ -558,6 +688,7 @@ function Visitas({ sb, u, notificar, fallo }) {
   const [autos, setAutos] = useState([]);
   const [nueva, setNueva] = useState(null);      // la recién creada, con su QR
   const [qr, setQr] = useState("");
+  const [tarjeta, setTarjeta] = useState("");    // el QR con marca, para compartir
   /* La tarjeta del código aparece ARRIBA del formulario y de la lista.
      Quien la pide está mirando más abajo, así que sin esto la tarjeta
      sale fuera de la pantalla y parece que el botón no hizo nada.
@@ -599,16 +730,126 @@ function Visitas({ sb, u, notificar, fallo }) {
 
   /* El dibujante del QR se baja solo cuando de verdad hace falta, y si
      no se puede bajar queda el código en letras grandes: la garita
-     siempre lo puede escribir a mano. */
-  const dibujarQR = async (codigo) => {
-    setQr("");
+     siempre lo puede escribir a mano.
+
+     Con el QR se arma una TARJETA: el código, a quién pertenece, la
+     unidad, hasta cuándo vale, y abajo la marca. Eso es lo que se manda
+     por WhatsApp o se descarga — un QR suelto no le dice nada a quien
+     lo recibe tres días después. */
+  const armarTarjeta = async (inv) => {
+    setQr(""); setTarjeta("");
+    let url = "";
     try {
       const m = await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");
       const QR = m.default || m;
-      const url = await QR.toDataURL(codigo, { margin: 1, width: 320,
+      url = await QR.toDataURL(inv.codigo, { margin: 1, width: 560,
         color: { dark: "#111144", light: "#FFFFFF" } });
       setQr(url);
-    } catch (e) { setQr(""); }
+    } catch (e) { setQr(""); return; }
+
+    try { setTarjeta(await componerTarjeta(inv, url)); } catch (e) { setTarjeta(""); }
+  };
+
+  const cargarImagen = (src) => new Promise((ok, mal) => {
+    const i = new Image();
+    i.onload = () => ok(i);
+    i.onerror = mal;
+    i.src = src;
+  });
+
+  const componerTarjeta = async (inv, qrUrl) => {
+    const W = 760, H = 1060, P = 28;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const x = c.getContext("2d");
+
+    x.fillStyle = "#F4F1EC"; x.fillRect(0, 0, W, H);
+    x.fillStyle = "#FFFFFF";
+    if (x.roundRect) { x.beginPath(); x.roundRect(P, P, W - P * 2, H - P * 2, 26); x.fill(); }
+    else x.fillRect(P, P, W - P * 2, H - P * 2);
+
+    const centro = (t, y, font, color) => {
+      x.font = font; x.fillStyle = color; x.textAlign = "center";
+      x.fillText(t, W / 2, y);
+    };
+    const F = "-apple-system, Segoe UI, Roboto, Arial, sans-serif";
+    const M = "ui-monospace, Menlo, Consolas, monospace";
+
+    centro((u.edificio || "").toUpperCase(), 104, "600 21px " + F, "#66668A");
+    centro("Unidad " + (u.codigo || ""), 142, "700 30px " + F, "#111144");
+    centro("Visita de", 200, "400 20px " + F, "#66668A");
+    centro(inv.nombre || "", 240, "700 34px " + F, "#111144");
+
+    const qr = await cargarImagen(qrUrl);
+    const lado = 420, qx = (W - lado) / 2, qy = 286;
+    x.fillStyle = "#FFFFFF"; x.fillRect(qx - 14, qy - 14, lado + 28, lado + 28);
+    x.drawImage(qr, qx, qy, lado, lado);
+
+    centro(inv.codigo || "", qy + lado + 58, "700 27px " + M, "#111144");
+    if (inv.hasta) {
+      const d = new Date(inv.hasta).toLocaleString("es-VE",
+        { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" });
+      centro("Vence el " + d, qy + lado + 96, "400 21px " + F, "#8A5A00");
+    }
+    centro("Muéstrelo en la garita", qy + lado + 134, "400 20px " + F, "#66668A");
+
+    // El pie de marca: "powered by" y el logo, como en el recibo
+    const yPie = H - 96;
+    x.strokeStyle = "#E6E3EC"; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(P + 40, yPie - 34); x.lineTo(W - P - 40, yPie - 34); x.stroke();
+    centro("powered by", yPie, "400 17px " + F, "#8B8BAA");
+    try {
+      const logo = await cargarImagen("logo-claro.png");
+      const alto = 30, ancho = logo.width * (alto / logo.height);
+      x.drawImage(logo, (W - ancho) / 2, yPie + 12, ancho, alto);
+    } catch (e) {
+      centro("vecitap", yPie + 36, "700 27px " + F, "#111144");
+    }
+    return c.toDataURL("image/png");
+  };
+
+  const nombreArchivo = (inv) =>
+    "visita-" + String(inv.nombre || "invitado").normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-")
+      .toLowerCase().replace(/^-|-$/g, "") + ".png";
+
+  const descargar = (inv) => {
+    if (!tarjeta) return notificar("La imagen todavía se está armando.", "error");
+    const a = document.createElement("a");
+    a.href = tarjeta; a.download = nombreArchivo(inv);
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+
+  const copiarImagen = async (inv) => {
+    if (!tarjeta) return notificar("La imagen todavía se está armando.", "error");
+    try {
+      const blob = await (await fetch(tarjeta)).blob();
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      notificar("Imagen copiada. Péguela donde quiera.");
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(inv.codigo);
+        notificar("Su navegador no copia imágenes. Se copió el código.", "error");
+      } catch (e2) {
+        notificar("No se pudo copiar. Use Descargar.", "error");
+      }
+    }
+  };
+
+  const porWhatsApp = async (inv) => {
+    const txt = `Hola ${inv.nombre}: este es su acceso a ${u.edificio}, unidad ` +
+      `${u.codigo}. Muestre el código en la garita.\n\n${inv.codigo}`;
+    try {
+      if (tarjeta && navigator.canShare) {
+        const blob = await (await fetch(tarjeta)).blob();
+        const arch = new File([blob], nombreArchivo(inv), { type: "image/png" });
+        if (navigator.canShare({ files: [arch] })) {
+          await navigator.share({ files: [arch], text: txt });
+          return;
+        }
+      }
+    } catch (e) { /* si cancela o no se puede, se cae al enlace de abajo */ }
+    window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
   };
 
   const crear = async () => {
@@ -627,7 +868,7 @@ function Visitas({ sb, u, notificar, fallo }) {
     const r = Array.isArray(data) ? data[0] : data;
     if (!r) return;
     setNueva({ ...r, nombre });
-    dibujarQR(r.codigo);
+    armarTarjeta({ ...r, nombre });
     setF({ nombre:"", documento:"", placa:"", usos:"1", hasta: enDosHoras() });
     cargar();
   };
@@ -636,7 +877,7 @@ function Visitas({ sb, u, notificar, fallo }) {
     const { error } = await sb.rpc("anular_invitacion_visita", { p_invitacion: id });
     if (error) return fallo(error);
     notificar("Invitación anulada.");
-    if (nueva && nueva.id === id) { setNueva(null); setQr(""); }
+    if (nueva && nueva.id === id) { setNueva(null); setQr(""); setTarjeta(""); }
     cargar();
   };
 
@@ -660,16 +901,6 @@ function Visitas({ sb, u, notificar, fallo }) {
     cargar();
   };
 
-  const compartir = (codigo, nombre) => {
-    const txt = `Hola ${nombre}: este es su código de entrada a ${u.edificio}, ` +
-      `unidad ${u.codigo}. Muéstrelo en la garita.\n\n${codigo}`;
-    if (navigator.share) {
-      navigator.share({ text: txt }).catch(() => {});
-    } else {
-      window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
-    }
-  };
-
   const fechaHora = (t) => t
     ? new Date(t).toLocaleString("es-VE",
         { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })
@@ -686,20 +917,29 @@ function Visitas({ sb, u, notificar, fallo }) {
         <Tarjeta style={{ textAlign:"center" }}>
           <div style={{ fontSize:12, color:T.tinta2, textTransform:"uppercase",
             letterSpacing:".08em", fontWeight:600 }}>Código para {nueva.nombre}</div>
-          {qr
-            ? <img src={qr} alt="Código QR de la invitación"
-                style={{ width:220, height:220, margin:"14px auto 8px", display:"block",
-                  borderRadius:12, background:"#fff", padding:8 }} />
-            : <div style={{ fontSize:13, color:T.tenue, margin:"14px 0 8px" }}>
-                No se pudo dibujar el QR. Pase el código escrito.</div>}
+          {tarjeta
+            ? <img src={tarjeta} alt="Invitación con el código QR"
+                style={{ width:"100%", maxWidth:300, margin:"14px auto 4px",
+                  display:"block", borderRadius:12 }} />
+            : qr
+              ? <img src={qr} alt="Código QR de la invitación"
+                  style={{ width:220, height:220, margin:"14px auto 8px", display:"block",
+                    borderRadius:12, background:"#fff", padding:8 }} />
+              : <div style={{ fontSize:13, color:T.tenue, margin:"14px 0 8px" }}>
+                  Armando la imagen… Si no aparece, pase el código escrito.</div>}
           <div className="mono" style={{ fontSize:19, fontWeight:700, letterSpacing:".06em",
-            wordBreak:"break-all" }}>{nueva.codigo}</div>
+            wordBreak:"break-all", marginTop:10 }}>{nueva.codigo}</div>
           <div style={{ fontSize:12.5, color:T.tenue, marginTop:8, lineHeight:1.5 }}>
             Muéstrelo en la garita. Vence solo y se gasta al usarse.
           </div>
           <div className="flex g2 wrap" style={{ justifyContent:"center", marginTop:14 }}>
-            <Boton onClick={() => compartir(nueva.codigo, nueva.nombre)}>Enviar la invitación</Boton>
-            <Boton tono="suave" onClick={() => { setNueva(null); setQr(""); }}>Listo</Boton>
+            <Boton onClick={() => porWhatsApp(nueva)}>Enviar por WhatsApp</Boton>
+            <Boton tono="suave" onClick={() => descargar(nueva)}>Descargar</Boton>
+            <Boton tono="suave" onClick={() => copiarImagen(nueva)}>Copiar imagen</Boton>
+          </div>
+          <div style={{ marginTop:10 }}>
+            <Boton tono="fantasma" style={{ fontSize:13 }}
+              onClick={() => { setNueva(null); setQr(""); setTarjeta(""); }}>Listo</Boton>
           </div>
         </Tarjeta>
         </div>
@@ -749,7 +989,7 @@ function Visitas({ sb, u, notificar, fallo }) {
                     </div>
                   </div>
                   <div className="flex g2">
-                    <Boton tono="suave" onClick={() => { setNueva(i); dibujarQR(i.codigo); }}
+                    <Boton tono="suave" onClick={() => { setNueva(i); armarTarjeta(i); }}
                       style={{ padding:"8px 12px", fontSize:13 }}>Ver el código</Boton>
                     <Boton tono="fantasma" onClick={() => anular(i.id)}
                       style={{ padding:"8px 12px", fontSize:13, color:T.rojo }}>Anular</Boton>

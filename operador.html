@@ -170,6 +170,34 @@ const Campo = ({ label, children, ayuda }) => (
     {ayuda && <span style={{ fontSize: 11, color: C.tenue, display: "block", marginTop: 4 }}>{ayuda}</span>}
   </label>
 );
+/* El ojo para ver la clave mientras se escribe. */
+const Ojo = ({ abierto }) => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+    strokeLinejoin="round" aria-hidden="true">
+    <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z" />
+    <circle cx="12" cy="12" r="3.2" />
+    {!abierto && <line x1="3" y1="3" x2="21" y2="21" />}
+  </svg>
+);
+const ClaveEntrada = ({ value, onChange, onKeyDown, autoComplete, autoFocus }) => {
+  const [ver, setVer] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <input type={ver ? "text" : "password"} value={value} onChange={onChange}
+        onKeyDown={onKeyDown} autoComplete={autoComplete} autoFocus={autoFocus}
+        style={{ paddingRight: 46, width: "100%" }} />
+      <button type="button" onClick={() => setVer(!ver)}
+        aria-label={ver ? "Ocultar la clave" : "Ver la clave"}
+        title={ver ? "Ocultar la clave" : "Ver la clave"}
+        style={{ position: "absolute", right: 3, top: "50%", transform: "translateY(-50%)",
+          background: "none", border: "none", cursor: "pointer", padding: "8px 10px",
+          color: ver ? C.acento : C.tenue, display: "flex", alignItems: "center" }}>
+        <Ojo abierto={ver} />
+      </button>
+    </div>
+  );
+};
 const Kpi = ({ label, valor, pie, destaque }) => (
   <div style={{ padding: "16px 18px", background: destaque ? C.acentoBg : C.panel,
     border: `1px solid ${destaque ? "rgba(249,133,19,.35)" : C.borde}`, borderRadius: 10 }}>
@@ -230,11 +258,16 @@ function App() {
     setTimeout(() => setAviso(null), 3600); };
   const fallo = (e) => notificar(e?.message || String(e), "error");
 
+  const [recuperando, setRecuperando] = useState(() => {
+    try { return /type=recovery/.test(window.location.hash || ""); } catch (e) { return false; }
+  });
   useEffect(() => {
     if (!sb) return;
     sb.auth.getSession().then(({ data }) => setSesion(data.session || null));
-    const { data: s } = sb.auth.onAuthStateChange((_e, ses) => {
-      setSesion(ses || null); if (!ses) { setEsOperador(null); setCartera(null); } });
+    const { data: s } = sb.auth.onAuthStateChange((evento, ses) => {
+      if (evento === "PASSWORD_RECOVERY") setRecuperando(true);
+      setSesion(ses || null);
+      if (!ses) { setEsOperador(null); setCartera(null); setRecuperando(false); } });
     return () => s?.subscription?.unsubscribe();
   }, [sb]);
 
@@ -293,6 +326,9 @@ function App() {
 
   if (!cfg) return <Conexion onListo={(url, key) => setCfg({ url, key })} />;
   if (sesion === undefined) return <Centro>Comprobando la sesión…</Centro>;
+  if (recuperando && sesion)
+    return <ClaveNueva sb={sb} sesion={sesion} notificar={notificar} aviso={aviso}
+      onListo={() => setRecuperando(false)} />;
   if (!sesion) return <Entrar sb={sb} notificar={notificar} aviso={aviso} />;
   if (esOperador === null) return <Centro>Cargando…</Centro>;
   if (!esOperador) return (
@@ -573,22 +609,93 @@ function Conexion({ onListo }) {
 function Entrar({ sb, notificar, aviso }) {
   const [correo, setCorreo] = useState("");
   const [clave, setClave] = useState("");
+  const [olvide, setOlvide] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
   const entrar = async () => {
     const { error } = await sb.auth.signInWithPassword({ email: correo.trim(), password: clave });
     if (error) notificar(error.message, "error");
   };
+  const recuperar = async () => {
+    const c = correo.trim().toLowerCase();
+    if (!/.+@.+\..+/.test(c)) return notificar("Escriba primero su correo.", "error");
+    setOcupado(true);
+    const { error } = await sb.auth.resetPasswordForEmail(c,
+      { redirectTo: window.location.href.split("#")[0].split("?")[0] });
+    setOcupado(false);
+    if (error) return notificar(error.message, "error");
+    notificar("Enlace enviado a " + c + ". Revise también la carpeta de spam.");
+    setOlvide(false);
+  };
   return (
     <Centro>
       <Panel style={{ maxWidth: 400, width: "100%" }}>
-        <h2 style={{ margin: "0 0 14px", fontSize: 17 }}>Consola del operador</h2>
+        <h2 style={{ margin: "0 0 14px", fontSize: 17 }}>
+          {olvide ? "Recuperar la clave" : "Consola del operador"}</h2>
         {aviso && <div className="mb-3" style={{ color: C.rojo, fontSize: 13 }}>{aviso.t}</div>}
         <div className="grid gap-3">
           <Campo label="Correo"><input type="email" value={correo}
-            onChange={(e) => setCorreo(e.target.value)} /></Campo>
-          <Campo label="Contraseña"><input type="password" value={clave}
-            onChange={(e) => setClave(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && entrar()} /></Campo>
-          <div><Boton onClick={entrar}>Entrar</Boton></div>
+            onChange={(e) => setCorreo(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && olvide && recuperar()} /></Campo>
+          {!olvide && (
+            <Campo label="Contraseña">
+              <ClaveEntrada value={clave} autoComplete="current-password"
+                onChange={(e) => setClave(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && entrar()} /></Campo>
+          )}
+          {olvide ? (
+            <div className="flex gap-2">
+              <Boton disabled={ocupado} onClick={recuperar}>Mandarme el enlace</Boton>
+              <Boton tono="suave" onClick={() => setOlvide(false)}>Volver</Boton>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Boton onClick={entrar}>Entrar</Boton>
+              <Boton tono="suave" onClick={() => setOlvide(true)}>Olvidé mi clave</Boton>
+            </div>
+          )}
+        </div>
+      </Panel>
+    </Centro>
+  );
+}
+
+/* ── Volvió del correo de recuperación ── */
+function ClaveNueva({ sb, sesion, notificar, aviso, onListo }) {
+  const [clave, setClave] = useState("");
+  const [otra, setOtra] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const guardar = async () => {
+    if (clave.length < 6) return notificar("La clave necesita al menos 6 caracteres.", "error");
+    if (clave !== otra) return notificar("Las dos claves no son iguales.", "error");
+    setOcupado(true);
+    const { error } = await sb.auth.updateUser({ password: clave });
+    setOcupado(false);
+    if (error) return notificar(error.message, "error");
+    notificar("Clave cambiada.");
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    onListo();
+  };
+  return (
+    <Centro>
+      <Panel style={{ maxWidth: 400, width: "100%" }}>
+        <h2 style={{ margin: "0 0 4px", fontSize: 17 }}>Poner una clave nueva</h2>
+        <p style={{ fontSize: 12.5, color: C.tenue, lineHeight: 1.6, marginTop: 0 }}>
+          Para <b>{sesion?.user?.email}</b>. El enlace que usó no sirve otra vez.
+        </p>
+        {aviso && <div className="mb-3" style={{ fontSize: 13,
+          color: aviso.tipo === "error" ? C.rojo : C.verde }}>{aviso.t}</div>}
+        <div className="grid gap-3">
+          <Campo label="Clave nueva" ayuda="Mínimo 6 caracteres.">
+            <ClaveEntrada value={clave} autoComplete="new-password" autoFocus
+              onChange={(e) => setClave(e.target.value)} /></Campo>
+          <Campo label="Repítala">
+            <ClaveEntrada value={otra} autoComplete="new-password"
+              onChange={(e) => setOtra(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && guardar()} /></Campo>
+          <div className="flex gap-2">
+            <Boton disabled={ocupado} onClick={guardar}>Guardar la clave</Boton>
+            <Boton tono="suave" onClick={() => sb.auth.signOut()}>Cancelar y salir</Boton>
+          </div>
         </div>
       </Panel>
     </Centro>

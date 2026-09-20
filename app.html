@@ -523,6 +523,38 @@ const Selector = ({ children, ...p }) => (
   <select {...p} style={{ ...estiloEntrada(false), cursor: "pointer", ...p.style }}>{children}</select>
 );
 
+/* El ojo para ver la clave mientras se escribe. Sin esto, escribir una
+   clave larga a ciegas en un teléfono es la razón número uno por la que
+   la gente termina poniendo claves cortas. */
+const Ojo = ({ abierto }) => (
+  <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+    strokeLinejoin="round" aria-hidden="true">
+    <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z" />
+    <circle cx="12" cy="12" r="3.2" />
+    {!abierto && <line x1="3" y1="3" x2="21" y2="21" />}
+  </svg>
+);
+
+const ClaveEntrada = ({ value, onChange, onKeyDown, autoComplete, autoFocus }) => {
+  const [ver, setVer] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <Entrada type={ver ? "text" : "password"} value={value} onChange={onChange}
+        onKeyDown={onKeyDown} autoComplete={autoComplete} autoFocus={autoFocus}
+        style={{ paddingRight: 48 }} />
+      <button type="button" onClick={() => setVer(!ver)}
+        aria-label={ver ? "Ocultar la clave" : "Ver la clave"}
+        title={ver ? "Ocultar la clave" : "Ver la clave"}
+        style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
+          background: "none", border: "none", cursor: "pointer", padding: "8px 10px",
+          color: ver ? A.base : T.tenue, display: "flex", alignItems: "center" }}>
+        <Ojo abierto={ver} />
+      </button>
+    </div>
+  );
+};
+
 const Pastilla = ({ tono = "neutro", children, size = "m" }) => {
   const c = { verde: [T.verdeBg, T.verde], ambar: [T.ambarBg, T.ambar],
               rojo: [T.rojoBg, T.rojo], azul: [T.azulBg, T.azul],
@@ -734,10 +766,23 @@ function Conexion({ onListo }) {
 }
 
 /* ── Entrar ── */
-function Entrar({ sb, notificar }) {
+/* El aviso de estas dos pantallas se dibuja acá dentro.
+   El aviso general vive dentro del armazón de la aplicación, y estas
+   pantallas se muestran ANTES de ese armazón: hasta ahora, un "correo o
+   clave incorrectos" se guardaba en memoria y no aparecía en ningún
+   lado. El usuario tocaba Entrar y no pasaba nada. */
+const AvisoSuelto = ({ aviso }) => aviso ? (
+  <div style={{ marginBottom: 14, padding: "11px 13px", borderRadius: T.rs,
+    fontSize: 13.5, lineHeight: 1.5,
+    background: aviso.tipo === "error" ? T.rojoBg : T.verdeBg,
+    color: aviso.tipo === "error" ? T.rojo : T.verde }}>{aviso.texto}</div>
+) : null;
+
+function Entrar({ sb, notificar, aviso }) {
   const [correo, setCorreo] = useState("");
   const [clave, setClave] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  const [olvide, setOlvide] = useState(false);
 
   const accion = async (crear) => {
     if (!correoValido(correo)) return notificar("El correo no parece válido.", "error");
@@ -751,6 +796,20 @@ function Entrar({ sb, notificar }) {
     if (crear) notificar("Cuenta creada. Si le pide confirmar por correo, confírmelo y vuelva a entrar.");
   };
 
+  /* El enlace vuelve a ESTA página, no a otra. Si el administrador
+     terminara en el panel del residente con una sesión a medio hacer,
+     no entendería nada. */
+  const recuperar = async () => {
+    if (!correoValido(correo)) return notificar("Escriba primero su correo.", "error");
+    setOcupado(true);
+    const { error } = await sb.auth.resetPasswordForEmail(correo.trim().toLowerCase(),
+      { redirectTo: window.location.href.split("#")[0].split("?")[0] });
+    setOcupado(false);
+    if (error) return notificar(error.message, "error");
+    notificar("Le mandamos un enlace a " + correo.trim() + ". Revise también la carpeta de spam.");
+    setOlvide(false);
+  };
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
       justifyContent: "center", padding: 20, background: T.fondo }}>
@@ -758,19 +817,94 @@ function Entrar({ sb, notificar }) {
         <div className="mb-5">
           <LogoVecitap alto={34} tema={leerTema()} />
         </div>
+        <AvisoSuelto aviso={aviso} />
+        {olvide && (
+          <p style={{ fontSize: 13.5, color: T.tinta2, lineHeight: 1.6, margin: "0 0 14px" }}>
+            Le mandamos un enlace para poner una clave nueva. Va al correo con el
+            que entra, y solo sirve una vez.
+          </p>
+        )}
         <div className="grid gap-3">
           <Campo label="Correo">
             <Entrada type="email" value={correo} autoComplete="username"
-              onChange={(e) => setCorreo(e.target.value)} />
+              onChange={(e) => setCorreo(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && olvide && recuperar()} />
           </Campo>
-          <Campo label="Contraseña">
-            <Entrada type="password" value={clave} autoComplete="current-password"
-              onChange={(e) => setClave(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && accion(false)} />
+          {!olvide && (
+            <Campo label="Contraseña">
+              <ClaveEntrada value={clave} autoComplete="current-password"
+                onChange={(e) => setClave(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && accion(false)} />
+            </Campo>
+          )}
+          {olvide ? (
+            <div className="flex gap-2 flex-wrap">
+              <Boton disabled={ocupado} onClick={recuperar}>Mandarme el enlace</Boton>
+              <Boton tipo="fantasma" disabled={ocupado}
+                onClick={() => setOlvide(false)}>Volver</Boton>
+            </div>
+          ) : (
+            <React.Fragment>
+              <div className="flex gap-2 flex-wrap">
+                <Boton disabled={ocupado} onClick={() => accion(false)}>Entrar</Boton>
+                <Boton tipo="suave" disabled={ocupado} onClick={() => accion(true)}>Crear cuenta</Boton>
+              </div>
+              <div>
+                <Boton tipo="fantasma" size="s"
+                  onClick={() => setOlvide(true)}>Olvidé mi contraseña</Boton>
+              </div>
+            </React.Fragment>
+          )}
+        </div>
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ── Volvió del correo de recuperación ──
+   Supabase deja abierta una sesión especial al entrar por ese enlace.
+   Mientras está viva hay que cambiar la clave: si el usuario se va sin
+   hacerlo, queda dentro sin saberlo. Por eso esta pantalla no tiene más
+   salida que poner la clave o cerrar sesión. */
+function ClaveNueva({ sb, sesion, notificar, aviso, onListo }) {
+  const [clave, setClave] = useState("");
+  const [otra, setOtra] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+
+  const guardar = async () => {
+    if (clave.length < 6) return notificar("La clave necesita al menos 6 caracteres.", "error");
+    if (clave !== otra) return notificar("Las dos claves no son iguales.", "error");
+    setOcupado(true);
+    const { error } = await sb.auth.updateUser({ password: clave });
+    setOcupado(false);
+    if (error) return notificar(error.message, "error");
+    notificar("Clave cambiada.");
+    onListo();
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
+      justifyContent: "center", padding: 20, background: T.fondo }}>
+      <Tarjeta style={{ maxWidth: 440, width: "100%", padding: 28 }}>
+        <div className="mb-4"><LogoVecitap alto={30} tema={leerTema()} /></div>
+        <h2 style={{ margin: "0 0 4px", fontSize: 19 }}>Poner una clave nueva</h2>
+        <p style={{ fontSize: 13.5, color: T.tinta2, lineHeight: 1.6, marginTop: 0 }}>
+          Para <b>{sesion?.user?.email}</b>. El enlace que usó no sirve otra vez.
+        </p>
+        <AvisoSuelto aviso={aviso} />
+        <div className="grid gap-3">
+          <Campo label="Clave nueva" ayuda="Mínimo 6 caracteres.">
+            <ClaveEntrada value={clave} autoComplete="new-password" autoFocus
+              onChange={(e) => setClave(e.target.value)} />
+          </Campo>
+          <Campo label="Repítala">
+            <ClaveEntrada value={otra} autoComplete="new-password"
+              onChange={(e) => setOtra(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && guardar()} />
           </Campo>
           <div className="flex gap-2 flex-wrap">
-            <Boton disabled={ocupado} onClick={() => accion(false)}>Entrar</Boton>
-            <Boton tipo="suave" disabled={ocupado} onClick={() => accion(true)}>Crear cuenta</Boton>
+            <Boton disabled={ocupado} onClick={guardar}>Guardar la clave</Boton>
+            <Boton tipo="fantasma" onClick={() => sb.auth.signOut()}>Cancelar y salir</Boton>
           </div>
         </div>
       </Tarjeta>
@@ -910,13 +1044,22 @@ function App() {
   };
   const fallo = (e) => notificar(e?.message || String(e), "error");
 
-  /* ── Sesión ── */
+  /* ── Sesión ──
+     Al volver del correo de recuperación, Supabase abre una sesión
+     especial y avisa con PASSWORD_RECOVERY. También se mira el # de la
+     dirección, porque ese aviso llega antes de que este efecto se
+     suscriba si la página estaba recién cargada. */
+  const [recuperando, setRecuperando] = useState(() => {
+    try { return /type=recovery/.test(window.location.hash || ""); } catch (e) { return false; }
+  });
   useEffect(() => {
     if (!sb) return;
     sb.auth.getSession().then(({ data }) => setSesion(data.session || null));
-    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => {
+    const { data: sub } = sb.auth.onAuthStateChange((evento, s) => {
+      if (evento === "PASSWORD_RECOVERY") setRecuperando(true);
       setSesion(s || null);
-      if (!s) { setOrg(null); setOrgs(null); setEdificio(null); setEdificios([]); }
+      if (!s) { setOrg(null); setOrgs(null); setEdificio(null); setEdificios([]);
+                setRecuperando(false); }
     });
     return () => sub?.subscription?.unsubscribe();
   }, [sb]);
@@ -1022,7 +1165,10 @@ function App() {
   /* ── Pantallas previas a la aplicación ── */
   if (!cfg) return <Conexion onListo={(url, key) => setCfg({ url, key })} />;
   if (sesion === undefined) return <Cargando texto="Comprobando la sesión…" />;
-  if (!sesion) return <Entrar sb={sb} notificar={notificar} />;
+  if (recuperando && sesion)
+    return <ClaveNueva sb={sb} sesion={sesion} notificar={notificar} aviso={aviso}
+      onListo={() => setRecuperando(false)} />;
+  if (!sesion) return <Entrar sb={sb} notificar={notificar} aviso={aviso} />;
   if (orgs === null) return <Cargando texto="Cargando su administradora…" />;
   if (!org) return <Organizaciones sb={sb} orgs={orgs} notificar={notificar}
     onElegir={setOrg} onRecargar={cargarOrgs} />;
