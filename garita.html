@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0B0B2E">
+<meta name="theme-color" content="#070C1C">
 <title>Garita · Vecitap</title>
 <link rel="icon" href="favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="favicon-180.png">
@@ -34,18 +34,18 @@
 -->
 <style>
   :root{
-    --fondo:#0B0B2E; --lienzo:#141440; --alto:#1C1C52;
-    --tinta:#F4F1EC; --tinta2:#C3C6DE; --tenue:#9494B8;
-    --linea:#2C2C63; --lineaFuerte:#3C3C7E;
-    --acento:#F98513; --sobreAcento:#111144;
-    --verde:#1F8F63; --rojo:#C1392B;
+    --fondo:#070C1C; --lienzo:#0E1730; --alto:#13203F;
+    --tinta:#F8FAFC; --tinta2:#C3CBDC; --tenue:#94A3B8;
+    --linea:#1E2A4E; --lineaFuerte:#263862;
+    --acento:#F98513; --sobreAcento:#0A1128;
+    --verde:#0E9C86; --rojo:#B03A2A;
     --r:14px; --rs:10px;
   }
   :root[data-tema="claro"]{
-    --fondo:#F4F1EC; --lienzo:#FFFFFF; --alto:#EDE9E1;
-    --tinta:#111144; --tinta2:#3D3D6B; --tenue:#66668A;
-    --linea:#E6E3EC; --lineaFuerte:#D3D0DE;
-    --verde:#1F6B4A; --rojo:#A32A1E;
+    --fondo:#F8FAFC; --lienzo:#FFFFFF; --alto:#EEF2F7;
+    --tinta:#0A1128; --tinta2:#2A3654; --tenue:#64748B;
+    --linea:#E4E9F0; --lineaFuerte:#D0D7E2;
+    --verde:#0E7C6B; --rojo:#9B2C1F;
   }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent }
   html,body{ margin:0; height:100% }
@@ -142,7 +142,7 @@
     border-radius:var(--rs); cursor:pointer; font-family:inherit; border:2px solid #fff;
     background:transparent; color:#fff;
   }
-  #veredicto button.fuerte{ background:#fff; color:#111144; border-color:#fff }
+  #veredicto button.fuerte{ background:#fff; color:#0A1128; border-color:#fff }
 
   /* ── Listas ── */
   .lista{ display:grid; gap:2px }
@@ -155,7 +155,7 @@
   .vacio{ padding:26px 14px; text-align:center; color:var(--tenue); font-size:16px }
 
   .aviso{ padding:13px 15px; border-radius:var(--rs); font-size:16px; margin-bottom:12px }
-  .aviso.ok{ background:rgba(31,143,99,.16); color:var(--tinta) }
+  .aviso.ok{ background:rgba(14,156,134,.16); color:var(--tinta) }
   .aviso.mal{ background:rgba(193,57,43,.16); color:var(--tinta) }
 
   #camara{ width:100%; max-height:44vh; border-radius:var(--rs); background:#000;
