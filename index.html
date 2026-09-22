@@ -606,6 +606,18 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
       .eq("periodos.estado", "cerrado")
       .limit(36);
 
+    /* La tasa de HOY, no la del día en que se emitió el recibo.
+       La deuda está en dólares: lo que el propietario va a pagar en
+       bolívares se calcula con la tasa del día en que pague, y esa es
+       la que hay que enseñarle. Mostrar la congelada le dice que debe
+       menos de lo que debe, transfiere de menos y queda debiendo un
+       resto que nadie entiende de dónde salió. */
+    const { data: tv } = await sb.rpc("tasa_atrasada");
+    const filaTasa = Array.isArray(tv) ? tv[0] : tv;
+    const tasaHoy = filaTasa && Number(filaTasa.tasa) > 0
+      ? { valor: Number(filaTasa.tasa), fecha: filaTasa.fecha, dias: filaTasa.dias }
+      : null;
+
     if (er) { setFalloRecibo(er.message || String(er)); setRecibo(null); }
     else {
       const filas = (r || []).slice().sort((a, b) =>
@@ -613,7 +625,8 @@ function Unidad({ sb, u, sesion, notificar, fallo, recargar }) {
       const ult = filas[0];
       setFalloRecibo(null);
       setRecibo(ult ? { ...ult, anio: ult.periodos.anio, mes: ult.periodos.mes,
-                        etiqueta: ult.periodos.etiqueta, edificio: u.edificio } : null);
+                        etiqueta: ult.periodos.etiqueta, edificio: u.edificio,
+                        tasaHoy } : null);
     }
   };
   useEffect(() => { cargar(); }, [u.unidad_id]);
@@ -1266,7 +1279,7 @@ function papelRecibo(d) {
     ${Number(r.tasa_bcv) > 0 ? `<div>
       <span class="et">Referencial en bolívares</span>
       <div class="cifra-s">Bs ${nf(2).format(Number(r.total) * Number(r.tasa_bcv))}</div>
-      <div class="nota-t">tasa ${nf(2).format(r.tasa_bcv)} · se convierte con la del día en que pague</div>
+      <div class="nota-t">al emitir, tasa ${nf(2).format(r.tasa_bcv)} · hoy es otra</div>
     </div>` : ""}
     ${d.vence ? `<div>
       <span class="et">Vence</span>
@@ -1283,8 +1296,9 @@ function papelRecibo(d) {
   <div class="cols${anchoCompleto ? " uno" : ""}">${desglose}</div>` : ""}
 
   <div class="pie">
-    <p>El monto en bolívares es referencial: se convierte a la tasa del Banco Central del día
-       en que usted pague, no a la de hoy.${d.organizacion
+    <p>El monto que se paga es el que está en dólares. La cifra en bolívares es de
+       referencia, calculada con la tasa del día en que se emitió este recibo: al pagar
+       se convierte con la tasa del Banco Central de ese día, que será distinta.${d.organizacion
        ? " Emitido por " + esc(d.organizacion) + "." : ""}</p>
     <div class="marca">
       <span>powered by</span>
@@ -1337,15 +1351,23 @@ function Recibo({ u, recibo, falla }) {
           <div style={{ fontSize:12, color:T.tenue }}>Recibo</div>
           <div className="mono" style={{ fontSize:16, fontWeight:600 }}>{recibo.numero}</div>
         </div>
-        {recibo.tasa_bcv > 0 && (
-          <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:12, color:T.tenue }}>Equivale a</div>
-            <div className="mono" style={{ fontSize:15, fontWeight:600 }}>
-              {bs(Number(recibo.total) * Number(recibo.tasa_bcv))}</div>
-            <div style={{ fontSize:11, color:T.tenue }}>
-              tasa {nf(2).format(recibo.tasa_bcv)}</div>
-          </div>
-        )}
+        {(() => {
+          /* Se usa la tasa viva. Solo si la base no la dio se cae a la
+             del recibo, y entonces se dice de cuándo es. */
+          const viva = recibo.tasaHoy && recibo.tasaHoy.valor > 0;
+          const tasa = viva ? recibo.tasaHoy.valor : Number(recibo.tasa_bcv);
+          if (!(tasa > 0)) return null;
+          return (
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:12, color:T.tenue }}>Si paga hoy</div>
+              <div className="mono" style={{ fontSize:15, fontWeight:600 }}>
+                {bs(Number(recibo.total) * tasa)}</div>
+              <div style={{ fontSize:11, color:T.tenue }}>
+                tasa {nf(2).format(tasa)}{viva ? " de hoy" : " del recibo"}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {lineas.map((l, i) => fila(l.nombre, l.monto))}
@@ -1429,8 +1451,9 @@ function Recibo({ u, recibo, falla }) {
       </div>
 
       <p style={{ fontSize:12.5, color:T.tenue, lineHeight:1.6, marginBottom:0, marginTop:14 }}>
-        El monto en bolívares es referencial: se convierte a la tasa del Banco Central del
-        día en que usted pague, no a la de hoy.
+        El monto en bolívares es referencial y cambia todos los días: su cuota está en
+        dólares y se convierte con la tasa del Banco Central del día en que usted pague.
+        Si paga mañana, el monto en bolívares será otro.
       </p>
     </Tarjeta>
   );
