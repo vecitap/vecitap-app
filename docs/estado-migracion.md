@@ -40,7 +40,7 @@ retira, no es parte del producto.
 2. Sistema de diseño compartido — ✅ Completa
 3. Autenticación y capa de datos — ✅ Completa
 4. Migración vertical por módulo (Residente → Operador → Admin) — ⏳ En
-   curso: Residente construido, NO validado; Operador y Admin sin empezar
+   curso: Residente VALIDADO; Operador y Admin sin empezar
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -151,24 +151,66 @@ su migración, no antes.
 
 Orden: **Residente → Operador → Admin** (del módulo más chico al más
 grande). La fase sigue abierta hasta que los tres estén migrados y
-probados — Residente es el primero, Operador (918 líneas) y Admin (5.318
-líneas, el de mayor riesgo de cronograma) todavía no empezaron.
+probados — Residente ya está migrado y validado; Operador (918 líneas) y
+Admin (5.318 líneas, el de mayor riesgo de cronograma) todavía no
+empezaron.
 
-### Residente — CONSTRUIDO, NO VALIDADO
+### Residente — VALIDADO
 
-Verificado por lectura de código, `npm run build` y `npm run lint`
-(ambos limpios). **Las pruebas manuales con una sesión real están
-pendientes — no dar este módulo por probado en una sesión nueva.**
+Verificado por lectura de código, `npm run build`, `npm run lint`, y
+pruebas manuales con sesión real (2026-09-23). Todos los casos probados
+pasaron, salvo un detalle de formato (ver abajo).
 
-Qué falta probar a mano:
-- El recibo renderizado, contrastado contra `residente.html`.
-- Envío de un pago (formulario completo, con y sin comprobante).
-- Cambio de unidad (cuenta con más de una unidad).
-- El gate de `/mi/[unidadId]`: con una unidad ajena y con un id malformado.
-- Recarga en tema oscuro en cada una de las 3 pestañas (recibo/reportar/pagos).
-- La rama de saldo `null`: requiere una membresía con `relacion='inquilino'`
-  en una unidad con `inquilino_ve='mes'` — la cuenta de prueba actual es
-  propietario, así que esta rama todavía no se ejercitó ni una vez.
+Casos probados con sesión real, todos OK:
+- Sin sesión → `/mi` redirige a `/entrar?volver=/mi`; el login vuelve a `/mi`.
+- `/entrar` sin botón de crear cuenta (confirmado el cierre del Bloque 3).
+- Cuenta sin membresías: pantalla "sin unidades asociadas", sin link a registro.
+- `/mi` redirige a `/mi/<uuid>/recibo`.
+- Recibo contrastado contra `residente.html`: mismos campos, orden y formato.
+- Navegación entre pestañas cambia la URL; botón atrás vuelve a la pestaña
+  anterior; recargar en una pestaña interna se queda ahí.
+- Gate de `/mi/[unidadId]`: id malformado → 404; UUID real de una unidad
+  ajena → 404. Ningún caso mostró datos ni detalle técnico de Postgres.
+- Recarga en tema oscuro en `/recibo`, `/reportar` y `/entrar`: sin avisos
+  de hidratación en consola.
+- Selector de unidad: cambian URL y datos.
+- Inquilino en unidad con `inquilino_ve='mes'`: muestra el mensaje de
+  saldo no visible, no cero ni NaN.
+- Formulario: envío vacío hace scroll al primer error; obligatorios con
+  `*`; cédula solo aparece con Pago móvil; el input rechaza no-dígitos;
+  el texto de ayuda está presente.
+- Comprobante: un archivo de texto renombrado a `.jpg` fue rechazado
+  (validación por firma de bytes, confirmada en runtime). JPG/PDF real
+  aceptado.
+- Tras enviar: va a Mis pagos con badge "Esperando revisión", la tarjeta
+  de saldo no cambia, y aparece la línea explicativa.
+- Fila en `pagos`: `estado='reportado'`, `org_id` y `unidad_id`
+  correctos, `periodo_cierre_id` null.
+
+**Detalle de formato encontrado durante la prueba:** una fila de `pagos`
+quedó con `documento_origen = "V12345678"`, sin el guion esperado
+(`V-12345678`). Al revisar el código, `FormularioReportarPago.tsx:209`
+ya arma el valor con guion (`` `${documentoTipo}-${documentoNumero}` ``)
+en el único commit de Residente (`bf68ba8`) — no se encontró una versión
+sin guion en el código commiteado, así que no hizo falta ningún cambio
+de código. La fila sin guion es casi con certeza un registro de una
+iteración anterior del formulario durante el desarrollo (el módulo se
+commiteó de una sola vez, sin commits intermedios), no un bug vigente.
+Si en una prueba futura vuelve a aparecer una fila nueva sin guion, sí es
+un bug real y hay que revisar con más cuidado.
+
+### Entorno de pruebas
+
+- La cuenta `residente.prueba@vecitap.com` quedó con dos membresías de
+  propietario: Edificio Administradora Unión 01A y Torre Ida 01A.
+  Pendiente de limpieza en la Fase 9.
+- Para probar la rama del saldo `null` hubo que cambiar temporalmente
+  `unidades.inquilino_ve` a `'mes'` en Torre Ida 01A y la `relacion` de
+  la membresía a `'inquilino'`. Ambos cambios **ya fueron revertidos** —
+  ninguna unidad de la base tiene `inquilino_ve='mes'` de forma
+  permanente.
+- Queda un pago de prueba en estado `'reportado'` (123 USD, Pago móvil,
+  Torre Ida 01A). Sumado a la lista de limpieza de la Fase 9.
 
 Implementado:
 - Rutas reales `app/(residente)/mi/[unidadId]/{recibo,reportar,pagos}`
@@ -220,6 +262,17 @@ puedan desalinearse.
 
 ## Pendientes para fases futuras
 
+### Fase 4 — al migrar Operador y Admin
+
+- Unificar el formato de `pagos.documento_origen` (`V-12345678`) en los
+  tres módulos. Si Operador o Admin muestran o filtran por esa columna,
+  tienen que contemplar los formatos legacy que ya conviven en la tabla
+  (`"V12345MIJO"`, `"24223950"`, sin prefijo, etc.) — no migrar esos datos
+  previos, solo normalizar lo que escriban los formularios nuevos.
+- La alícuota se muestra como "100,0000%" (cuatro decimales) en
+  `TarjetaSaldo`. Confirmar contra `residente.html` si el original
+  redondeaba, y unificar el formato en `lib/formato.ts` si corresponde.
+
 ### Fase 5 — Endurecimiento multi-tenant y de escala
 
 Auditoría completa de RLS ya realizada (antes de iniciar el desarrollo):
@@ -252,6 +305,15 @@ Pendiente puntual:
   está en `saldo_visible()`, que es la que el frontend usa indirectamente
   vía `mis_unidades()`. El frontend no necesita (ni debería poder) llamar
   a `saldo_unidad` directamente.
+
+### Fase 5 — migración de esquema (decisión de negocio pendiente)
+
+`membresias` tiene un índice único sobre `(org_id, usuario_id)`: un
+usuario solo puede tener UNA membresía por organización. Consecuencia: un
+propietario con dos unidades en el mismo condominio no se puede
+representar. Puede ser intencional o una restricción que nadie revisó —
+decisión de negocio pendiente con el socio; si hay que cambiarla es
+migración de esquema.
 
 ### Fase 5 — Registro de residentes (alcance, no de esta fase 5 todavía)
 
