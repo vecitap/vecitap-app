@@ -59,6 +59,10 @@ export function FichaCliente({
   const [edificios, setEdificios] = useState<EdificioOperador[] | null>(null);
   const [cobros, setCobros] = useState<CobroSuscripcion[]>([]);
   const [servicio, setServicio] = useState<ConceptoServicio | null>(null);
+  // Desvío deliberado de operador.html:823-826 — ver docs/estado-migracion.md
+  // (sección "Operador"): el campo de abajo necesita ser controlado para
+  // reflejar el monto real una vez que `servicio` carga de forma asíncrona.
+  const [montoServicio, setMontoServicio] = useState("0");
   const [ocupado, setOcupado] = useState(false);
 
   useEffect(() => {
@@ -82,7 +86,10 @@ export function FichaCliente({
       .eq("org_id", c.org_id)
       .eq("bolsillo", "servicio")
       .maybeSingle()
-      .then(({ data }) => setServicio(data));
+      .then(({ data }) => {
+        setServicio(data);
+        setMontoServicio(String(data?.monto ?? 0));
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c.org_id]);
 
@@ -144,25 +151,49 @@ export function FichaCliente({
   }
 
   async function guardarServicio(monto: number) {
+    // Desvío deliberado de operador.html:662-674 — ver docs/estado-migracion.md
+    // (sección "Operador"): entrar y salir del campo sin editarlo dispara
+    // onBlur igual, y antes de este cambio eso alcanzaba para pisar el monto
+    // real (o insertar una fila en cero) sin que nadie tocara nada.
+    if (monto === (servicio?.monto ?? 0)) return;
+
     const supabase = crearClienteNavegador();
     if (servicio) {
-      const { error } = await supabase
+      // Sin este refresco, cambiar 1→2 y volver a 1 sin reabrir la ficha
+      // comparaba contra el `servicio` viejo (1), la guarda de arriba
+      // cancelaba el segundo guardado por "no cambió" y la base se quedaba
+      // en 2 mientras la pantalla mostraba 1.
+      const { data, error } = await supabase
         .from("conceptos_cobro")
         .update({ monto, activo: monto > 0 })
-        .eq("id", servicio.id);
+        .eq("id", servicio.id)
+        .select("id,nombre,modo,monto,activo")
+        .single();
       if (error) return fallo(error);
+      setServicio(data);
     } else {
-      const { error } = await supabase.from("conceptos_cobro").insert({
-        org_id: c.org_id,
-        edificio_id: null,
-        nombre: "Servicio Vecitap",
-        bolsillo: "servicio",
-        modo: "monto_por_unidad",
-        monto,
-        iva: 0,
-        orden: 9,
-      });
+      // Desvío deliberado de operador.html:667-671: el original nunca vuelve
+      // a leer la fila recién creada, así que un segundo guardado sin
+      // reabrir la ficha insertaba una fila duplicada (bug heredado #7 del
+      // inventario de escritura). Acá se pide la fila creada y se guarda en
+      // el estado para que el siguiente guardado ya encuentre `servicio` y
+      // haga update.
+      const { data, error } = await supabase
+        .from("conceptos_cobro")
+        .insert({
+          org_id: c.org_id,
+          edificio_id: null,
+          nombre: "Servicio Vecitap",
+          bolsillo: "servicio",
+          modo: "monto_por_unidad",
+          monto,
+          iva: 0,
+          orden: 9,
+        })
+        .select("id,nombre,modo,monto,activo")
+        .single();
       if (error) return fallo(error);
+      setServicio(data);
     }
     notificar("Cobro en el recibo actualizado.");
   }
@@ -412,7 +443,8 @@ export function FichaCliente({
                 <Campo etiqueta="USD por unidad al mes">
                   <Input
                     className="mono"
-                    defaultValue={String(servicio?.monto ?? 0)}
+                    value={montoServicio}
+                    onChange={(e) => setMontoServicio(e.target.value)}
                     onBlur={(e) => guardarServicio(num0(e.target.value))}
                   />
                 </Campo>

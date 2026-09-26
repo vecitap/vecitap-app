@@ -40,8 +40,7 @@ retira, no es parte del producto.
 2. Sistema de diseño compartido — ✅ Completa
 3. Autenticación y capa de datos — ✅ Completa
 4. Migración vertical por módulo (Residente → Operador → Admin) — ⏳ En
-   curso: Residente VALIDADO; Operador construido, NO validado; Admin sin
-   empezar
+   curso: Residente VALIDADO; Operador VALIDADO; Admin sin empezar
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -152,9 +151,9 @@ su migración, no antes.
 
 Orden: **Residente → Operador → Admin** (del módulo más chico al más
 grande). La fase sigue abierta hasta que los tres estén migrados y
-probados — Residente ya está migrado y validado; Operador (918 líneas)
-está construido, pendiente de validación manual; Admin (5.318 líneas, el
-de mayor riesgo de cronograma) todavía no empezó.
+probados — Residente y Operador (918 líneas) ya están migrados y
+validados; falta Admin (5.318 líneas, el de mayor riesgo de cronograma),
+que todavía no empezó.
 
 ### Residente — VALIDADO
 
@@ -259,34 +258,67 @@ puedan desalinearse.
   para mostrarla desglosada — sumarla de nuevo sobre el total sería
   contarla dos veces.
 
-### Operador — CONSTRUIDO, NO VALIDADO
+### Operador — VALIDADO
 
-Verificado por lectura de código, `npm run build` y `npm run lint` (ambos
-limpios). **Las pruebas manuales con una cuenta de operador real están
-pendientes — no dar este módulo por probado en una sesión nueva.**
+Verificado por lectura de código, `npm run build`, `npm run lint` y
+pruebas manuales con una cuenta de operador real
+(`operador.prueba@vecitap.com`, 2026-09-26): lectura, navegación y
+escritura, con las salvedades de abajo.
 
-Qué falta probar a mano:
-- Gate: una cuenta que no está en la tabla `operadores` no debe poder
-  entrar a `/operador` (proxy.ts ya lo bloquea; falta confirmarlo con una
-  cuenta real).
-- KPIs y la tabla de cartera con datos reales — contrastar contra
-  `operador.html` en la misma cuenta.
-- Buscar y filtrar clientes; abrir la ficha de un cliente.
-- Dentro de la ficha: guardar cambios de suscripción (estado, plan,
-  precio, descuento, próximo cobro, días de gracia) y confirmar que
-  `organizaciones.plan` se actualiza cuando corresponde (`activa` →
-  `activo`; `suspendida`/`cancelada` → `suspendido`).
-- Generar el cobro del período; marcar un cobro como pagado y anular otro.
-- Guardar el monto del "cobro dentro del recibo" (upsert en
-  `conceptos_cobro`) y confirmar que aparece/desaparece del recibo del
-  residente según el monto.
-- Tasa del BCV: cargar una tasa a mano y probar "Traer ahora" (puede
-  fallar si DolarAPI no responde en el momento de la prueba — no es señal
-  de bug).
-- "Correr ahora" de cobros automáticos.
-- Exportar la cartera a CSV y abrir el archivo.
-- Recarga en tema oscuro.
-- Salir.
+Casos probados con cuenta real, todos OK:
+- Carga de cartera, KPIs, morosidad, tasa BCV y cobros automáticos con
+  datos reales, sin errores en consola.
+- Cifras, columnas y etiquetas comparadas contra `operador.html`:
+  coinciden.
+- Ficha de cliente (las 5 secciones) comparada contra el original,
+  incluido un cliente con casi ningún dato cargado.
+- Búsqueda por nombre y por RIF, cada filtro por separado, y filtro +
+  búsqueda combinados. Administradora Baja (`cancelada`) solo aparece en
+  "Todos", igual que en el original.
+- Exportar CSV: columnas, eñes, cero inicial del teléfono y montos
+  correctos al abrir en Excel.
+- Recarga en tema oscuro: sin parpadeo ni errores de hidratación.
+- Gate: sin sesión → `/entrar?volver=%2Foperador`; una cuenta de
+  residente (sin fila en `operadores`) rebota a `/`.
+
+Escritura probada y aprobada:
+- "Correr ahora" (cobros automáticos): 0 cobros / $0, igual que lo que
+  hace el cron — seguro de correr antes del 1 de octubre porque todavía
+  no hay ningún `proximo_cobro` vencido en la cartera de prueba.
+- Guardar suscripción (acción #4 del inventario de escritura) en Cliente
+  55 Casas, con ida y vuelta (cambiar y volver a dejar como estaba).
+- Generar cobro (#5) en Casas: desde `2026-09-26` hasta `2026-10-25`,
+  `proximo_cobro` pasó a `2026-10-26`. Paridad `null`/`undefined`
+  confirmada: `p_desde` tiene `DEFAULT NULL` en la función, así que
+  omitir la clave (lo que hace `undefined` acá) y mandar `null` explícito
+  (como hacía `operador.html:649`) llegan al mismo resultado — no era una
+  divergencia real, quedaba pendiente de confirmar y ya se confirmó.
+- Anular (#6) ese mismo cobro.
+- Cobro dentro del recibo (#7), incluido el desvío aprobado más arriba:
+  carga el valor real al abrir la ficha, escenario 1→2→1 sin reabrir, y
+  bajar a 0 muestra "apagado" al instante. Verificado directo en la base:
+  una sola fila (sin duplicados).
+
+No ejecutadas, por decisión (no por limitación técnica) — la paridad con
+el original quedó verificada por lectura de código en ambos casos:
+- "Guardar la de hoy" (#1): una tasa cargada a mano queda fija todo el
+  día — `traer_tasa_bcv` (el cron) la respeta porque filtra
+  `where fuente = 'dolarapi'`, así que no la pisa. No se ejecutó porque
+  hubiera dejado una tasa manual falsa activa en la única instancia
+  compartida por el resto de las pruebas (Residente incluido) hasta la
+  próxima corrida real.
+- "Pagado" (#6): mismo `update` que "Anular", con el literal `'pagado'`
+  en vez de `'anulado'` — no se ejecutó por ser la contraparte exacta de
+  una acción ya probada, sin lógica adicional que valga la pena verificar
+  a mano.
+
+No bloqueante, para tener en cuenta:
+- El cliente "55 Torres" figura activo con 3 edificios y 0 unidades —
+  parece un dato de prueba incompleto en `vecitap-pruebas`, no un error
+  de la migración.
+- En Excel, `proximo_cobro` se muestra según la configuración regional
+  (`2026-10-01` aparece como `10/1/2026`) — es formato de Excel al abrir
+  un CSV, no algo que dependa del código migrado.
 
 Implementado:
 - Ruta real `app/(interno)/operador/page.tsx` (Server Component): gate de
@@ -314,6 +346,53 @@ Implementado:
   no diferidos. La URL/clave de Supabase vienen de variables de entorno
   (Fase 1) y el login es el mismo `/entrar` compartido por los tres roles
   (Fase 3) — no hace falta una pantalla propia por módulo.
+
+**Desvío deliberado del original, aprobado (2026-09-26)** — encontrado
+durante la validación manual, en `FichaCliente.tsx`, sección "Cobro
+dentro del recibo":
+
+- **Bug heredado:** `operador.html:823-826` usa un `<input
+  defaultValue={String(servicio?.monto ?? 0)}>` — no controlado. Como
+  `servicio` carga de forma asíncrona (llega después del primer render),
+  React nunca vuelve a sincronizar ese campo con el valor real: el input
+  se queda mostrando "0" aunque la base tenga otro monto guardado.
+  Confirmado que `operador.html` reproduce el mismo síntoma con el mismo
+  cliente de prueba.
+- **Por qué se corrige y no se deja igual que el original:** el campo
+  guarda `onBlur`, que dispara con solo entrar y salir del campo — sin
+  el fix, eso alcanzaba para pisar en silencio un monto real por 0 (y
+  desactivar el cobro) sin que nadie editara nada a propósito. Es un
+  riesgo de pérdida de datos, no solo un problema visual.
+- **Corrección aplicada (solo en el archivo migrado, `operador.html` NO
+  se tocó — sigue intacto como línea base de la Fase 4, decisión de la
+  Fase 1):**
+  1. El campo pasa a ser un input controlado, sincronizado con `servicio`
+     apenas llega del fetch — mismo patrón que ya usan todos los demás
+     campos de esta ficha.
+  2. `guardarServicio` no escribe nada si el monto no cambió respecto al
+     valor ya guardado — entrar y salir del campo sin editarlo deja de
+     escribir en la base.
+  3. La rama de `insert` ahora pide la fila recién creada
+     (`.select().single()`) y la guarda en el estado, para que un
+     segundo guardado sin reabrir la ficha haga `update` y no inserte
+     una fila duplicada — cierra el bug heredado de doble-insert que ya
+     estaba anotado en el inventario de escritura de Operador.
+  4. La rama de `update` también pide la fila guardada
+     (`.select().single()`) y refresca el estado, por el mismo motivo que
+     el punto 3 — no era solo "una escritura de más": sin esto, cambiar
+     1→2 y volver a 1 sin reabrir la ficha comparaba el segundo guardado
+     contra el `servicio` viejo (1), la guarda del punto 2 lo cancelaba
+     por "no cambió", y la base quedaba en 2 mientras la pantalla seguía
+     mostrando 1 — un desfase silencioso entre lo mostrado y lo guardado,
+     detectado y corregido antes de validar la escritura de este módulo.
+
+### Entorno de pruebas (Operador)
+
+- Cliente 55 Casas quedó con un cobro anulado (`2026-09-26`) y una fila
+  de `conceptos_cobro` en monto 0 e inactiva, ambos de las pruebas de
+  escritura de esta sesión. Sumar a la limpieza de Fase 9.
+- La cuenta `operador.prueba@vecitap.com` también debe eliminarse o
+  desactivarse en Fase 9.
 
 ---
 
@@ -363,6 +442,21 @@ Pendiente puntual:
   está en `saldo_visible()`, que es la que el frontend usa indirectamente
   vía `mis_unidades()`. El frontend no necesita (ni debería poder) llamar
   a `saldo_unidad` directamente.
+- **Bug encontrado validando la escritura de Operador:**
+  `traer_tasa_bcv()` hace `delete from tasa_pendiente` sin `WHERE`.
+  Supabase lo rechaza cuando la función se invoca vía API ("DELETE
+  requires a WHERE clause"), así que el botón "Traer ahora" del operador
+  falla — el cron sí funciona porque corre con otro camino de ejecución
+  que no pasa por ese mismo rechazo. Corrección: `where request_id =
+  v_req`. Es una función `SECURITY DEFINER` — la misma categoría que
+  `puede_operar`/`tiene_rol`/`es_operador` de más arriba — así que
+  cualquier edición acá merece la misma revisión cuidadosa, no un cambio
+  de una línea sin más.
+- El aviso "La API respondió: …" que muestra "Traer ahora" cuando falla
+  es confuso: ese mensaje sale del `error` que devuelve la propia base
+  (el bug de arriba), no de una respuesta real de DolarAPI — vale la pena
+  revisar el texto para que no le eche la culpa a un tercero que no tuvo
+  nada que ver.
 
 ### Fase 5 — migración de esquema (decisión de negocio pendiente)
 
@@ -394,6 +488,20 @@ a la espera de esa definición:
 - `app/(residente)/mi/page.tsx` — el caso de "cuenta sin unidades" ya no
   renderiza `Invitacion`; muestra un mensaje estático ("contacte a su
   administración") en su lugar.
+
+### Decisión de producto pendiente — Generar cobro (Operador)
+
+Encontrado validando la escritura de Operador, no es un bug de la
+migración sino un riesgo de diseño que ya tenía `operador.html`: "Generar
+el cobro del período" avanza `proximo_cobro` un período por cada clic, y
+"Anular" un cobro **no revierte** ese avance. Un doble clic accidental, o
+generar y después anular un cobro por error, deja al cliente sin cobrar
+un mes entero — la única forma de arreglarlo hoy es corregir
+`proximo_cobro` a mano en la ficha. Evaluar agregar una confirmación
+("¿generar el cobro de este período?") antes de ejecutar la acción.
+Como es una decisión de producto (cambia el flujo, no corrige un error
+de paridad con el original), queda para revisar con Nicolás antes de
+tocar el botón — no forma parte de ninguna fase todavía.
 
 ---
 
