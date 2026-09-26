@@ -394,6 +394,34 @@ dentro del recibo":
 - La cuenta `operador.prueba@vecitap.com` también debe eliminarse o
   desactivarse en Fase 9.
 
+### Entorno de pruebas (Admin) — preparado, desarrollo sin empezar
+
+- Organización de pruebas: **Administradora Baja**
+  (`a91054da-5afa-47e1-98b7-028fb26b9f7a`). Ficticia. Suscripción
+  `cancelada` a propósito: no bloquea módulos (`modulo_activo` no consulta
+  suscripciones) y la tarea de cobros automáticos la ignora, así que queda
+  aislada de la facturación real. **No reactivar la suscripción.**
+- Períodos en el edificio Torre Ida (`f51676d7-80ff-4812-8830-6307267baecf`):
+  agosto 2026 cerrado, septiembre 2026 abierto. El otro edificio de Baja no
+  tiene períodos cargados.
+- Cuenta `admin.prueba@vecitap.com`, rol `administrador` en Baja (membresía
+  `3320f4e4-a6de-4ead-89b7-0923c11eb41c`). Probada: entra a `app.html` y ve
+  Baja.
+- `residente.prueba@vecitap.com` (la misma cuenta de las pruebas de
+  Residente, ver arriba): residente propietario en Baja (Torre Ida 01A) y en
+  Administradora Unión. El pago de prueba de 123 USD en estado `reportado`
+  (de la validación de Residente) está en Baja, no en Unión.
+- **Administradora Unión** la está usando el socio comercial desde el lunes
+  (2026-09-28) para cargar datos de prueba con los HTML de `main`. Ninguna
+  prueba de escritura de Admin se hace en Unión — queda reservada para el
+  socio.
+- **Regla mientras haya una sola base de datos compartida:** nada de
+  migraciones de esquema ni acciones de alcance global (cargar la tasa BCV a
+  mano, correr cobros automáticos) sin coordinarlo antes con el socio — las
+  pruebas de Admin y las suyas conviven en la misma instancia.
+- Pendiente de Fase 9: eliminar o desactivar `admin.prueba@vecitap.com` y su
+  membresía en Baja (`3320f4e4-a6de-4ead-89b7-0923c11eb41c`).
+
 ---
 
 ## Pendientes para fases futuras
@@ -409,6 +437,17 @@ dentro del recibo":
 - La alícuota se muestra como "100,0000%" (cuatro decimales) en
   `TarjetaSaldo`. Confirmar contra `residente.html` si el original
   redondeaba, y unificar el formato en `lib/formato.ts` si corresponde.
+  Dato nuevo (2026-09-26): `app.html` (el original de Admin) también
+  muestra la alícuota con cuatro decimales — la consistencia entre los dos
+  HTML originales sugiere que no es un redondeo que la migración de
+  Residente haya introducido por error, aunque sigue pendiente unificarlo
+  en `lib/formato.ts` si se decide cambiarlo.
+- Cómo se acepta una invitación en los HTML originales (`app.html`/
+  `residente.html`): revisar y documentar como parte del inventario de
+  Admin, para tener la base de comparación de la prueba funcional de la
+  migración de membresías (casos 8, 9 y 10 de
+  `docs/casos-de-uso-mejorados.md` — construida y aplicada estructuralmente,
+  falta esa prueba funcional).
 
 ### Fase 5 — Endurecimiento multi-tenant y de escala
 
