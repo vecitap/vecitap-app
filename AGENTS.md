@@ -57,6 +57,10 @@ otra.**
   capas complementarias
 - Fase 4 (Admin, ~5.318 líneas) es el módulo de mayor riesgo de cronograma —
   tratarlo con buffer extra de planificación
+- Todo desvío de comportamiento frente al HTML original (bug corregido, mejora
+  aprobada, capacidad nueva) se registra en
+  [`docs/casos-de-uso-mejorados.md`](docs/casos-de-uso-mejorados.md) — es lo que se
+  revisa con el socio comercial al cerrar la migración, no solo el mensaje del commit
 
 ## Sistema de diseño
 - Tokens de tema en `app/globals.css` (`:root` y `:root[data-theme="oscuro"]`) —

@@ -458,14 +458,62 @@ Pendiente puntual:
   revisar el texto para que no le eche la culpa a un tercero que no tuvo
   nada que ver.
 
-### Fase 5 — migración de esquema (decisión de negocio pendiente)
+### Migración de esquema de `membresias` — adelantada de Fase 5 a Fase 4 (desvío deliberado)
 
-`membresias` tiene un índice único sobre `(org_id, usuario_id)`: un
-usuario solo puede tener UNA membresía por organización. Consecuencia: un
-propietario con dos unidades en el mismo condominio no se puede
-representar. Puede ser intencional o una restricción que nadie revisó —
-decisión de negocio pendiente con el socio; si hay que cambiarla es
-migración de esquema.
+**Desvío deliberado del plan, sujeto a revisión con el socio al terminar la
+migración.** `membresias` tenía un índice único sobre `(org_id, usuario_id)`:
+un usuario solo podía tener UNA membresía por organización — un propietario
+con dos unidades en el mismo condominio, o alguien que además de vivir en su
+unidad participa en la junta de condominio, no se podían representar. Esto
+estaba anotado como "decisión de negocio pendiente" para la Fase 5, pero
+bloqueaba una decisión necesaria antes de migrar Admin, así que se investigó
+y se decidió ahora, adelantando a la Fase 4 lo que iba a ser una migración de
+esquema de Fase 5.
+
+Decisión tomada (2026-09-26): sí, una persona puede tener varias membresías
+en la misma organización (dos unidades, o junta + residente, o administrador
++ residente). Investigación completa (auditoría de la restricción, de las 16
+funciones que leen `membresias`, de `app.html` y del código migrado) y los 3
+casos de comportamiento resultantes en `docs/casos-de-uso-mejorados.md`
+(casos 8, 9 y 10):
+- Caso 8 — nueva restricción única por persona + rol + alcance, en vez de
+  por persona + organización.
+- Caso 9 — `aceptar_invitacion` deja de sobrescribir una membresía existente
+  en silencio; se elimina también la protección basada en una sola fila
+  "actual" por organización (juicio de producto marcado explícitamente para
+  que el socio lo confirme: un administrador que acepta ser residente de su
+  misma organización ya no se bloquea).
+- Caso 10 — `crear_invitacion`/`aceptar_invitacion` normalizan
+  `unidad_id`/`edificio_id` según el rol antes de guardar (bug de datos
+  encontrado en el camino: 2 membresías de residente tenían un edificio
+  guardado de más).
+
+**Estado: aplicada y verificada estructuralmente; prueba funcional del flujo
+de invitaciones pendiente.** Aplicada en el SQL Editor de Supabase el
+2026-09-26 (PostgreSQL 17.6). Verificado tras aplicar:
+- Única restricción `UNIQUE` en `membresias`:
+  `membresias_persona_rol_alcance_key`,
+  `UNIQUE NULLS NOT DISTINCT (org_id, usuario_id, rol, unidad_id, edificio_id)`.
+- Las 2 filas del PASO 1 (limpieza) quedaron con `edificio_id` en `NULL` y
+  `unidad_id` intacto.
+- `crear_invitacion` y `aceptar_invitacion` quedaron con la versión nueva.
+
+Falta la prueba funcional del flujo real de invitaciones (invitar, aceptar,
+reactivar una membresía dada de baja, rechazar un conflicto de relación) —
+se hará al preparar la cuenta de administrador y la organización de prueba
+de Admin.
+
+Archivos:
+- `supabase/migrations/20260926120000_membresias_multiples_por_organizacion.sql`
+- `supabase/rollbacks/20260926120000_membresias_multiples_por_organizacion_rollback.sql`
+
+**Pendiente de Fase 7 (CI/CD):** esta migración se aplicó a mano en el SQL
+Editor, no vía `supabase db push`, así que no quedó registrada en el
+historial de migraciones de Supabase (`supabase_migrations.schema_migrations`).
+Si al llegar a la Fase 7 se adopta `supabase db push`/CLI como flujo de
+migraciones, marcarla antes como aplicada con
+`supabase migration repair --status applied 20260926120000` — si no, la CLI
+va a intentar reaplicarla y va a chocar contra objetos que ya existen.
 
 ### Fase 5 — Registro de residentes (alcance, no de esta fase 5 todavía)
 
