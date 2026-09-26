@@ -40,7 +40,8 @@ retira, no es parte del producto.
 2. Sistema de diseño compartido — ✅ Completa
 3. Autenticación y capa de datos — ✅ Completa
 4. Migración vertical por módulo (Residente → Operador → Admin) — ⏳ En
-   curso: Residente VALIDADO; Operador y Admin sin empezar
+   curso: Residente VALIDADO; Operador construido, NO validado; Admin sin
+   empezar
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -151,9 +152,9 @@ su migración, no antes.
 
 Orden: **Residente → Operador → Admin** (del módulo más chico al más
 grande). La fase sigue abierta hasta que los tres estén migrados y
-probados — Residente ya está migrado y validado; Operador (918 líneas) y
-Admin (5.318 líneas, el de mayor riesgo de cronograma) todavía no
-empezaron.
+probados — Residente ya está migrado y validado; Operador (918 líneas)
+está construido, pendiente de validación manual; Admin (5.318 líneas, el
+de mayor riesgo de cronograma) todavía no empezó.
 
 ### Residente — VALIDADO
 
@@ -258,15 +259,72 @@ puedan desalinearse.
   para mostrarla desglosada — sumarla de nuevo sobre el total sería
   contarla dos veces.
 
+### Operador — CONSTRUIDO, NO VALIDADO
+
+Verificado por lectura de código, `npm run build` y `npm run lint` (ambos
+limpios). **Las pruebas manuales con una cuenta de operador real están
+pendientes — no dar este módulo por probado en una sesión nueva.**
+
+Qué falta probar a mano:
+- Gate: una cuenta que no está en la tabla `operadores` no debe poder
+  entrar a `/operador` (proxy.ts ya lo bloquea; falta confirmarlo con una
+  cuenta real).
+- KPIs y la tabla de cartera con datos reales — contrastar contra
+  `operador.html` en la misma cuenta.
+- Buscar y filtrar clientes; abrir la ficha de un cliente.
+- Dentro de la ficha: guardar cambios de suscripción (estado, plan,
+  precio, descuento, próximo cobro, días de gracia) y confirmar que
+  `organizaciones.plan` se actualiza cuando corresponde (`activa` →
+  `activo`; `suspendida`/`cancelada` → `suspendido`).
+- Generar el cobro del período; marcar un cobro como pagado y anular otro.
+- Guardar el monto del "cobro dentro del recibo" (upsert en
+  `conceptos_cobro`) y confirmar que aparece/desaparece del recibo del
+  residente según el monto.
+- Tasa del BCV: cargar una tasa a mano y probar "Traer ahora" (puede
+  fallar si DolarAPI no responde en el momento de la prueba — no es señal
+  de bug).
+- "Correr ahora" de cobros automáticos.
+- Exportar la cartera a CSV y abrir el archivo.
+- Recarga en tema oscuro.
+- Salir.
+
+Implementado:
+- Ruta real `app/(interno)/operador/page.tsx` (Server Component): gate de
+  sesión + `es_operador()` (defensa en profundidad — proxy.ts ya bloquea
+  `/operador/*` a quien no es operador, ver proxy.ts), carga la cartera y
+  el estado de las tareas automáticas, y se lo pasa a un Client Component.
+- `components/operador/ConsolaOperador.tsx`: KPIs, panel de morosidad,
+  panel de tasa BCV (cargar a mano / traer ahora), panel de cobros
+  automáticos (correr ahora), búsqueda/filtro, tabla de cartera,
+  exportar CSV. "Actualizar" y las acciones ahora usan
+  `router.refresh()` en vez del `cargar()` manual del original.
+- `components/operador/FichaCliente.tsx`: panel lateral con Suscripción,
+  Contacto, Cobros, "cobro dentro del recibo" y Sus edificios — mismas
+  mutaciones que el original (upsert de `suscripciones`, `generar_cobro`,
+  marcar cobros, upsert de `conceptos_cobro`).
+- `lib/operador/`: `tipos.ts`, `planes.ts` (PLANES/DESCUENTO + cálculo de
+  la cuota prevista), `metricas-cartera.ts` (KPIs agregados) y
+  `exportar-cartera.ts` (construcción del CSV) — lógica de negocio movida
+  fuera de los componentes, mismo patrón que Residente.
+- `lib/formato.ts`: agregadas `usd0` y `num0` (antes solo en
+  `operador.html`, ahora compartidas).
+- **No se portó** la pantalla de conexión manual a Supabase (`Conexion`,
+  `CONFIG` editable en pantalla) ni el login propio del operador
+  (`Entrar` en `operador.html`): quedaron obsoletos por el nuevo diseño,
+  no diferidos. La URL/clave de Supabase vienen de variables de entorno
+  (Fase 1) y el login es el mismo `/entrar` compartido por los tres roles
+  (Fase 3) — no hace falta una pantalla propia por módulo.
+
 ---
 
 ## Pendientes para fases futuras
 
-### Fase 4 — al migrar Operador y Admin
+### Fase 4 — al migrar Admin
 
-- Unificar el formato de `pagos.documento_origen` (`V-12345678`) en los
-  tres módulos. Si Operador o Admin muestran o filtran por esa columna,
-  tienen que contemplar los formatos legacy que ya conviven en la tabla
+- Unificar el formato de `pagos.documento_origen` (`V-12345678`). Admin es
+  el único módulo que falta y que muestra/concilia pagos individuales
+  (Operador no llega a ese detalle — ver nota en su sección de arriba);
+  tiene que contemplar los formatos legacy que ya conviven en la tabla
   (`"V12345MIJO"`, `"24223950"`, sin prefijo, etc.) — no migrar esos datos
   previos, solo normalizar lo que escriban los formularios nuevos.
 - La alícuota se muestra como "100,0000%" (cuatro decimales) en

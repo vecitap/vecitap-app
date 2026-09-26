@@ -17,6 +17,8 @@ export const nf = (decimales = 2) =>
 
 export const usd = (valor: number | string | null | undefined) => "$ " + nf(2).format(Number(valor) || 0);
 
+export const usd0 = (valor: number | string | null | undefined) => "$ " + nf(0).format(Number(valor) || 0);
+
 export const bs = (valor: number | string | null | undefined) => "Bs " + nf(2).format(Number(valor) || 0);
 
 export const hoyISO = () => new Date().toISOString().slice(0, 10);
@@ -31,6 +33,10 @@ export function num(valor: string | number | null | undefined): number | null {
   if (texto === "") return null;
   const n = Number(texto.replace(/\.(?=\d{3}\b)/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : null;
+}
+
+export function num0(valor: string | number | null | undefined): number {
+  return num(valor) ?? 0;
 }
 
 export function fechaCorta(iso: string | null | undefined): string {
