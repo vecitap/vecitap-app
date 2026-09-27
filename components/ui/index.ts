@@ -9,3 +9,8 @@ export { Table } from "./Table";
 export { Dialog } from "./Dialog";
 export { ThemeToggle } from "./ThemeToggle";
 export { Logo } from "./Logo";
+export { Aviso, type TonoAviso } from "./Aviso";
+export { Vacio } from "./Vacio";
+export { Cargando } from "./Cargando";
+export { Flechas } from "./Flechas";
+export { Confirmar } from "./Confirmar";

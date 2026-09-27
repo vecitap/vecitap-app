@@ -40,7 +40,8 @@ retira, no es parte del producto.
 2. Sistema de diseño compartido — ✅ Completa
 3. Autenticación y capa de datos — ✅ Completa
 4. Migración vertical por módulo (Residente → Operador → Admin) — ⏳ En
-   curso: Residente VALIDADO; Operador VALIDADO; Admin sin empezar
+   curso: Residente VALIDADO; Operador VALIDADO; Admin Sesión 1
+   construida, sin validar (Sesión 2 sin empezar)
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -152,8 +153,12 @@ su migración, no antes.
 Orden: **Residente → Operador → Admin** (del módulo más chico al más
 grande). La fase sigue abierta hasta que los tres estén migrados y
 probados — Residente y Operador (918 líneas) ya están migrados y
-validados; falta Admin (5.318 líneas, el de mayor riesgo de cronograma),
-que todavía no empezó.
+validados. Admin (5.318 líneas, el de mayor riesgo de cronograma) se
+migra en dos sesiones según el plan de corte de
+`docs/inventario-admin.md`: la Sesión 1 (Inicio, Propietarios, Cobros,
+Cierre del mes, más ruteo/gate/componentes compartidos) está **construida,
+sin validar**; la Sesión 2 (Pagos, Accesos, Cortes de cuenta, Ajustes)
+todavía no empieza.
 
 ### Residente — VALIDADO
 
@@ -394,7 +399,87 @@ dentro del recibo":
 - La cuenta `operador.prueba@vecitap.com` también debe eliminarse o
   desactivarse en Fase 9.
 
-### Entorno de pruebas (Admin) — preparado, desarrollo sin empezar
+### Admin — Sesión 1: construida, sin validar
+
+Inventario completo en `docs/inventario-admin.md` (no se toca durante la
+construcción — es la referencia fija de las dos sesiones). Alcance de la
+Sesión 1: componentes compartidos, ruteo, gate de rol, Inicio,
+Propietarios (con Ficha, Datos, Alta, Importar unidades, Cargar saldos),
+Cobros y Cierre del mes. **Nadie ejecutó ninguna acción de escritura
+contra la base durante la construcción** — la validación manual con
+`admin.prueba@vecitap.com` sobre Administradora Baja queda pendiente
+(la hace Nicolás).
+
+Decisiones tomadas al revisar el inventario (registradas también en
+`docs/casos-de-uso-mejorados.md`):
+- **Roles:** paridad con `app.html` — sin distinción por sección todavía.
+  `proxy.ts` gatea `/admin/[orgId]/*` con
+  `tiene_rol(orgId, ['propietario_cuenta','administrador','contador','junta'])`,
+  fail-closed como `/operador`. El layout de `[edificioId]` verifica además
+  que el edificio esté en `edificios_visibles()` y, si no, `notFound()`
+  (mismo patrón que `/mi/[unidadId]/layout.tsx`).
+- **Umbral de saldo:** unificado contra `estado` de `saldos_actuales` y
+  `UMBRAL_SALDO`/`contarPorEstadoUnidad()` de `lib/estados-unidad.ts` — se
+  eliminaron los literales `0.01`/`0.009` que tenía `app.html` en Inicio,
+  Propietarios y Ficha (ver inventario, sección 5f).
+- **Alícuota:** se mantienen 4 decimales (`pct()`, nuevo en `lib/formato.ts`)
+  en todos lados, incluida la lista de Propietarios — el original mostraba
+  ahí 5 decimales sin el signo `%` (`app.html:1532`), inconsistente con el
+  resto de sus propias pantallas; se unificó a 4, como el resto.
+- **Ruteo:** `/admin/[orgId]/[edificioId]/<sección>`, edificio como
+  segmento de URL (no query param, no estado). Ficha de unidad como
+  subruta simple `/propietarios/[unidadId]` — página completa, no un
+  drawer superpuesto ni parallel/intercepting routes.
+
+Construido:
+- `proxy.ts`: gate por rol para `/admin/[orgId]/*` (ver arriba).
+- `components/ui/`: `Aviso`, `Vacio`, `Cargando`, `Flechas`, `Confirmar`
+  (nuevos) + tonos `neutro`/`marca` agregados a `Badge` (aditivo, solo
+  variables CSS). `lib/formato.ts`: `pct()` agregado.
+- `lib/admin/`: `constantes.ts` (MESES/BOLSILLOS/MODOS_COBRO),
+  `personas.ts` (vigente/nombreDe/normaliza/normalizarTel/correoValido),
+  `tipos.ts`, `metricas.ts` (cálculo de Inicio, usa `contarPorEstadoUnidad`),
+  `imprimir-estado.ts` (ventana de estado de cuenta imprimible).
+- Ruteo: `app/(admin)/admin/{page,[orgId]/{layout,page},[orgId]/[edificioId]/{layout,page,inicio,propietarios,propietarios/[unidadId],cobros,mes}}`.
+  Inicio no tiene componente propio en `components/admin/` — su JSX vive
+  directo en `inicio/page.tsx` (no necesitaba estado de cliente).
+  `components/admin/`: `EncabezadoAdmin`, `SelectorEdificio`, `NavAdmin`,
+  `PrimerEdificio`, `Edificio` (widget de cuadrícula de unidades),
+  `Propietarios` (+ `AltaUnidad`, `ImportarUnidades`, `ImportarSaldos`,
+  `Ficha`, `DatosUnidad`), `Cobros`, `CierreMes`.
+- Nav de la Sesión 1 muestra solo Inicio/Propietarios/Cobros/Cierre del
+  mes a propósito — Pagos/Cortes/Accesos/Ajustes se agregan en la Sesión 2,
+  no hay enlaces a rutas que todavía no existen.
+- `npm run build` y `npm run lint` limpios después de cada bloque.
+
+**Patrón para filas editables con inputs controlados (para reusar en la
+Sesión 2):** el lint de este proyecto (`eslint-plugin-react-hooks`) rechaza
+tanto sincronizar estado local desde una prop dentro de un `useEffect`
+como leer/escribir un `ref` durante el render — los dos atajos típicos
+para "resetear un input cuando cambia el valor guardado". La solución que
+quedó funcionando en `Cobros.tsx`/`CierreMes.tsx`: cada campo editable es
+un subcomponente con su propio `useState(valorInicial)`, y quien lo llama
+le pasa `key={`${id}:${valor}`}` — cuando el valor guardado cambia (por
+esta misma sesión u otra), React lo remonta con el valor fresco en vez de
+dejar un buffer local desactualizado. Nada de `useEffect` ni `ref` para
+esto. Pagos/Accesos/Cortes/Ajustes van a necesitar el mismo patrón.
+
+Pendiente, no bloqueante para validar la Sesión 1:
+- `ImportarSaldos` (carga de saldos desde Excel/CSV/PDF, app.html:1788-1976)
+  necesita `xlsx`/`papaparse` (Excel/CSV) y una lectura de PDF
+  (`pdf.js`/`pdfjs-dist`) — ninguno es dependencia del proyecto hoy y no se
+  instaló ninguno (instrucción explícita de esta sesión). El componente
+  quedó construido con el flujo completo, pero la lectura de archivo real
+  está sin implementar — deja un aviso claro en vez de fingir que funciona.
+  Decisión pendiente: qué paquete(s) instalar.
+- Los íconos de `app.html` (librería `lucide`, vía CDN) no se portaron —
+  mismo criterio que ya usaron Residente y Operador (ninguno de los dos
+  instaló `lucide-react`). Donde el ícono era decorativo se omitió; donde
+  era la única pista visual (Flechas) se usó texto/Unicode.
+- Prueba funcional pendiente (fuera de alcance de código): validar con
+  `admin.prueba@vecitap.com` contra Administradora Baja.
+
+### Entorno de pruebas (Admin) — preparado, todavía sin usar (la Sesión 1 no ejecutó ninguna escritura)
 
 - Organización de pruebas: **Administradora Baja**
   (`a91054da-5afa-47e1-98b7-028fb26b9f7a`). Ficticia. Suscripción
@@ -435,13 +520,14 @@ dentro del recibo":
   (`"V12345MIJO"`, `"24223950"`, sin prefijo, etc.) — no migrar esos datos
   previos, solo normalizar lo que escriban los formularios nuevos.
 - La alícuota se muestra como "100,0000%" (cuatro decimales) en
-  `TarjetaSaldo`. Confirmar contra `residente.html` si el original
-  redondeaba, y unificar el formato en `lib/formato.ts` si corresponde.
-  Dato nuevo (2026-09-26): `app.html` (el original de Admin) también
-  muestra la alícuota con cuatro decimales — la consistencia entre los dos
-  HTML originales sugiere que no es un redondeo que la migración de
-  Residente haya introducido por error, aunque sigue pendiente unificarlo
-  en `lib/formato.ts` si se decide cambiarlo.
+  `TarjetaSaldo`. Confirmado (2026-09-26, inventario de Admin) que los dos
+  HTML originales usan el mismo formato de cuatro decimales sin redondeo:
+  `app.html` (líneas donde se muestra la alícuota de la unidad) y
+  `residente.html:472,586,803` (`nf(4).format(...)`, el mismo `nf` que ya
+  existe en `lib/formato.ts`). No es un redondeo que la migración de
+  Residente introdujera por error — es fiel al original. Queda pendiente
+  solo si se decide *cambiar* el formato (sigue sin ser una decisión
+  tomada, ver `docs/inventario-admin.md`).
 - Cómo se acepta una invitación en los HTML originales (`app.html`/
   `residente.html`): revisar y documentar como parte del inventario de
   Admin, para tener la base de comparación de la prueba funcional de la

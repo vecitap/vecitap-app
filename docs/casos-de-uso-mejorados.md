@@ -271,3 +271,86 @@ tabla o rompan una restricción que sí depende de esos campos.
   No se recomienda revertir solo esto sin revertir también el caso 8: sin la
   normalización, la restricción del caso 8 vuelve a admitir los datos sucios que la
   motivaron.
+
+## Admin — Sesión 1 (construida, sin validar)
+
+Decisiones tomadas por Nicolás al revisar `docs/inventario-admin.md`, antes de
+construir la Sesión 1 (2026-09-26). Provisionales — sujetas a la misma revisión
+con el socio comercial que el resto de esta lista.
+
+### 11. Umbral de saldo unificado contra `estado`/`UMBRAL_SALDO`, no contra literales
+
+**Caso de uso:** qué unidades cuentan como "con deuda" (en el KPI de Inicio, en el
+filtro de Propietarios, en la Ficha) ahora es siempre la misma clasificación que ya
+calcula la base, sin un margen distinto según la pantalla.
+
+- **Antes:** `app.html` usaba tres criterios distintos convivendo en el mismo
+  archivo — la columna `estado` de `saldos_actuales` (correcta, usada solo en el
+  widget `Edificio`), el literal `0.01` (Inicio, Propietarios, Ficha) y el literal
+  `0.009` (`imprimirEstado`). Documentado en `docs/inventario-admin.md`, sección 5f.
+- **Ahora:** todo el código migrado de Admin usa `estado` de `saldos_actuales`
+  cuando está disponible (`lib/estados-unidad.ts`, `tonoEstadoUnidad()`/
+  `contarPorEstadoUnidad()`) — cero literales `0.01`/`0.009` nuevos.
+- **Motivo:** decisión de Nicolás, no un bug encontrado durante la construcción —
+  ya estaba anotado como pregunta abierta en el inventario.
+- **Estado:** aplicado en Inicio, Propietarios y Ficha (`app/(admin)/admin/[orgId]/[edificioId]/{inicio,propietarios,propietarios/[unidadId]}` y sus componentes).
+  Cambia, en el margen 0,009–0,01, qué unidades cuentan exactamente como "con deuda"
+  frente al `app.html` original — diferencia mínima, pero real.
+- **Cómo se revierte:** volver a comparar `total` contra los literales originales en
+  cada pantalla en vez de usar `estado`/`UMBRAL_SALDO`.
+
+### 12. Alícuota siempre a 4 decimales, también en la lista de Propietarios
+
+**Caso de uso:** la alícuota se ve con el mismo formato en todas las pantallas de
+Admin — antes la lista de Propietarios la mostraba distinto que el resto.
+
+- **Antes:** `app.html:1532` mostraba la alícuota de la lista de Propietarios con
+  `nf(5).format(u.alicuota)` — 5 decimales, sin el signo `%` — mientras que Ficha,
+  el estado de cuenta impreso y `residente.html` usan 4 decimales con `%`
+  (`pct()`/`nf(4)`). Ver `docs/inventario-admin.md`, sección 5e.
+- **Ahora:** `components/admin/Propietarios.tsx` usa `pct()` (`lib/formato.ts`,
+  nuevo) — 4 decimales con `%`, igual que el resto de Admin y que `residente.html`.
+- **Motivo:** consistencia interna del propio `app.html` — no hay razón de negocio
+  para que la lista muestre un decimal más que el resto de las pantallas.
+- **Estado:** aplicado.
+- **Cómo se revierte:** volver a `nf(5).format(...)` sin `%` en esa lista.
+
+### 13. Íconos de `lucide` no portados
+
+**Caso de uso:** ninguno visible para quien usa la aplicación salvo estético — los
+botones que en `app.html` llevan un ícono (Plus, Trash2, ChevronRight, Search,
+etc.) ahora son solo texto o, donde el ícono era la única pista (Flechas de
+reordenar), un carácter Unicode (▲▼).
+
+- **Antes:** `app.html` carga `lucide` desde un CDN (`Ic`, `icono()`) y lo usa en
+  decenas de botones y estados vacíos.
+- **Ahora:** sin íconos — mismo criterio que ya aplicaron Residente y Operador
+  (ninguno de los dos instaló `lucide-react`). No se instaló ningún paquete nuevo
+  en esta sesión (instrucción explícita de Nicolás).
+- **Motivo:** consistencia con el resto de la migración, no una limitación técnica
+  — `lucide-react` existe y se puede instalar cuando se decida.
+- **Estado:** aplicado (ausencia deliberada). Pendiente: decidir si se instala
+  `lucide-react` para las tres pantallas migradas y esta, de una sola vez.
+- **Cómo se revierte:** instalar `lucide-react` y agregar los íconos donde
+  corresponda — no hay nada que deshacer, es agregar lo que falta.
+
+### 14. `ImportarSaldos`: solo lee CSV por ahora, no Excel ni PDF
+
+**Caso de uso:** cargar saldos iniciales desde un archivo `.csv` funciona igual que
+en el original; desde `.xlsx`/`.xls`/`.pdf` todavía no — se muestra un aviso
+explicando por qué en vez de fallar en silencio o fingir que se leyó.
+
+- **Antes:** `app.html:1788-1976` lee Excel con `xlsx` (SheetJS), CSV con
+  `PapaParse` y PDF con `pdf.js`, las tres cargadas por CDN sin paso de build.
+- **Ahora:** `components/admin/ImportarSaldos.tsx` implementa la lectura de CSV a
+  mano (sin librería) y el resto del flujo completo (previa, cruce por código,
+  aplicar) — Excel/PDF muestran un aviso pidiendo ese paquete en vez de intentar
+  leerlos. Ningún paquete nuevo instalado (instrucción explícita de Nicolás para
+  esta sesión).
+- **Motivo:** limitación temporal, no una decisión de producto — `xlsx` y un lector
+  de PDF (`pdfjs-dist` u otro) no son dependencias de este proyecto todavía.
+- **Estado:** aplicado (limitación deliberada, documentada en pantalla).
+  **Pendiente de decisión:** qué paquete(s) instalar para Excel/PDF — Nicolás debe
+  decidirlo antes de dar por cerrada esta pantalla; no bloquea validar el resto de
+  la Sesión 1.
+- **Cómo se revierte:** no aplica — es un paso pendiente, no un cambio a deshacer.

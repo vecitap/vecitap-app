@@ -21,6 +21,14 @@ export const usd0 = (valor: number | string | null | undefined) => "$ " + nf(0).
 
 export const bs = (valor: number | string | null | undefined) => "Bs " + nf(2).format(Number(valor) || 0);
 
+/**
+ * Formato de alícuota (4 decimales), igual en app.html y residente.html
+ * (`pct()`, y `nf(4).format(...)` en los tres puntos donde residente.html
+ * la muestra) — decisión tomada al auditar Admin: se mantiene, no se
+ * redondea (ver docs/inventario-admin.md, sección 5e).
+ */
+export const pct = (valor: number | string | null | undefined) => nf(4).format(Number(valor) || 0) + " %";
+
 export const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 /**

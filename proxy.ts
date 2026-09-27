@@ -4,27 +4,31 @@ import type { Database } from "@/types/supabase";
 
 const RUTAS_PROTEGIDAS = ["/admin", "/mi", "/operador"];
 const RUTA_OPERADOR = "/operador";
+const RUTA_ADMIN_ORG = /^\/admin\/([^/]+)/;
+const ROLES_ADMIN = ["propietario_cuenta", "administrador", "contador", "junta"];
 
 /**
  * Se llamaba middleware.ts hasta Next.js 15; en Next 16 el archivo pasó a
  * llamarse proxy.ts (export `proxy`, no `middleware` — mismo mecanismo).
  *
- * Dos trabajos, nada más:
+ * Tres trabajos:
  * 1. Refrescar la sesión de Supabase en cada request (si el access token
  *    venció, lo renueva y reescribe las cookies) para que Server
  *    Components y Route Handlers siempre vean una sesión válida.
  * 2. Mandar a /entrar a quien no tiene sesión y pide una ruta protegida.
+ * 3. Autorización por rol para /operador/* (es_operador(), global) y para
+ *    /admin/[orgId]/* (tiene_rol(orgId, roles), por organización — ahora
+ *    que la Fase 4 ya definió la estructura de URL con orgId, ver
+ *    docs/inventario-admin.md sección 3). /mi/* se queda sin gate de rol
+ *    acá: no es un rol, es tener al menos una unidad asociada, y eso lo
+ *    resuelve cada Server Component con mis_unidades().
  *
- * Autorización por rol: SOLO para /operador/*, porque es_operador() no
- * lleva argumentos (es global: pertenece o no a la tabla operadores del
- * staff interno de Vecitap). /admin/* y /mi/* se quedan sin gate de rol
- * acá — el rol ahí es por organización (tabla membresias vía tiene_rol/
- * puede_operar, que piden un p_org) y todavía no hay una estructura de
- * URL que le diga al proxy a qué organización se está entrando; eso se
- * resuelve en la Fase 4 cuando se defina esa estructura. Mientras tanto,
- * cada Server Component/Route Handler de /admin y /mi tiene que verificar
- * el rol correspondiente por su cuenta — la propia documentación de
- * Next.js advierte no depender solo del proxy para autorización.
+ * Sin distinción por sección todavía (Session 1 del inventario de Admin):
+ * cualquiera de los 4 roles entra a /admin/[orgId]/* completo, igual que
+ * hoy app.html no distingue nada en el cliente. Si más adelante se decide
+ * que contador/junta ven menos, ese gate más fino va en cada Server
+ * Component de la sección, no acá (mismo patrón de defensa en profundidad
+ * que ya usa /operador).
  */
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -73,6 +77,28 @@ export async function proxy(request: NextRequest) {
     }
 
     if (!esOperador) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  const enAdmin = user ? request.nextUrl.pathname.match(RUTA_ADMIN_ORG) : null;
+  if (enAdmin) {
+    const orgId = enAdmin[1];
+    // Mismo fail-closed que /operador: un orgId inválido o ajeno también
+    // cae acá, porque tiene_rol() devuelve false (no error) cuando el
+    // usuario no tiene ninguna membresía visible en esa organización.
+    let tieneAcceso = false;
+    try {
+      const { data, error } = await supabase.rpc("tiene_rol", { p_org: orgId, p_roles: ROLES_ADMIN });
+      tieneAcceso = !error && data === true;
+    } catch {
+      tieneAcceso = false;
+    }
+
+    if (!tieneAcceso) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       url.search = "";

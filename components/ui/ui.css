@@ -83,6 +83,8 @@
 .badge-rojo   { color: var(--rojo);  background: var(--rojo-bg); }
 .badge-azul   { color: var(--azul);  background: var(--azul-bg); }
 .badge-tenue  { color: var(--tenue); background: var(--lienzo-alt); }
+.badge-neutro { color: var(--tinta-2); background: var(--fondo); }
+.badge-marca  { color: var(--acento-texto); background: var(--acento-suave); }
 
 .tabla-scroll { overflow-x: auto; }
 .tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
