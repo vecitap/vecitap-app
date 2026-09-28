@@ -1,3 +1,12 @@
+/**
+ * Roles con acceso a `/admin/[orgId]/*` — antes duplicado en `proxy.ts` y
+ * en `[orgId]/layout.tsx` (defensa en profundidad, cada uno revalida por su
+ * cuenta), unificado acá para que un cambio de roles no dependa de tocar
+ * los dos a la vez. Se usa también en `/admin/page.tsx` (AdminHome) para
+ * filtrar qué organizaciones se listan — ver docs/casos-de-uso-mejorados.md.
+ */
+export const ROLES_ADMIN = ["propietario_cuenta", "administrador", "contador", "junta"] as const;
+
 /** Portado de MESES/BOLSILLOS/MODOS_COBRO en app.html:131-154. */
 export const MESES = [
   "Enero",

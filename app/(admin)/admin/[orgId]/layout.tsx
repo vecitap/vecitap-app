@@ -1,10 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { EncabezadoAdmin } from "@/components/admin/EncabezadoAdmin";
+import { ROLES_ADMIN } from "@/lib/admin/constantes";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { esUuid } from "@/lib/validacion";
-
-const ROLES_ADMIN = ["propietario_cuenta", "administrador", "contador", "junta"] as const;
 
 /**
  * Defensa en profundidad, igual que /operador (ver proxy.ts): proxy.ts ya

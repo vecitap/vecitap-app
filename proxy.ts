@@ -2,11 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/supabase";
 import { esUuid } from "@/lib/validacion";
+import { ROLES_ADMIN } from "@/lib/admin/constantes";
 
 const RUTAS_PROTEGIDAS = ["/admin", "/mi", "/operador"];
 const RUTA_OPERADOR = "/operador";
 const RUTA_ADMIN_ORG = /^\/admin\/([^/]+)/;
-const ROLES_ADMIN = ["propietario_cuenta", "administrador", "contador", "junta"];
 
 /**
  * Se llamaba middleware.ts hasta Next.js 15; en Next 16 el archivo pasó a
@@ -96,7 +96,7 @@ export async function proxy(request: NextRequest) {
       // porque tiene_rol() devuelve false (no error) cuando el usuario no
       // tiene ninguna membresía visible en esa organización.
       try {
-        const { data, error } = await supabase.rpc("tiene_rol", { p_org: orgId, p_roles: ROLES_ADMIN });
+        const { data, error } = await supabase.rpc("tiene_rol", { p_org: orgId, p_roles: [...ROLES_ADMIN] });
         tieneAcceso = !error && data === true;
       } catch {
         tieneAcceso = false;

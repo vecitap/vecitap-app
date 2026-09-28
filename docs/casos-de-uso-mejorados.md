@@ -536,3 +536,39 @@ vive junto al selector de edificio, arriba de cada sección.
   módulos, etc.) sigue sin portar.
 - **Cómo se revierte:** quitar `<NuevoEdificio>` del layout — el componente en sí
   no tiene otro punto de entrada.
+
+### 22. `/destino` y `/admin` decidían "es administrador" por visibilidad de tabla, no por rol
+
+**Caso de uso:** un residente que entra sin decir a dónde va (o que escribe `/admin`
+a mano) ahora cae siempre en su recibo, no en el panel de administración de su
+propio edificio.
+
+- **Antes (bug, no una decisión de `main` — `main` nunca comparte sesión entre
+  roles):** `app/destino/page.tsx` decidía si alguien "administra algo" con
+  `organizaciones.select().limit(1)`. Esa tabla es visible por RLS a cualquiera
+  con una membresía ahí, **sin importar el rol** — un residente ve el nombre y el
+  RIF de su propio edificio (lo necesita para su recibo). Con esa consulta,
+  `residente.prueba@vecitap.com` entrando sin `volver` terminaba en `/admin` en
+  vez de `/mi`. `app/(admin)/admin/page.tsx` (AdminHome) tenía el mismo problema:
+  listaba como "administrables" organizaciones donde el usuario solo es
+  residente — no era una falla de seguridad (`/admin/[orgId]/*` sigue gateado por
+  `tiene_rol()`, así que hacer clic ahí no entraba a ningún lado), pero sí una
+  lista incorrecta.
+- **Ahora:** `/destino` usa `administra_algo()` (RPC que sí distingue por rol,
+  ya existía en la base). `AdminHome` filtra la lista de organizaciones
+  candidatas con `tiene_rol(org.id, ROLES_ADMIN)` — la misma función que gatea
+  el acceso real, para que la lista y el acceso sean siempre la misma cosa.
+  `ROLES_ADMIN` se unificó en `lib/admin/constantes.ts` (antes duplicado en
+  `proxy.ts` y en `[orgId]/layout.tsx`).
+- **Motivo:** bug de esta migración, no algo heredado de `main` — es consecuencia
+  de compartir una sola sesión/un solo `/entrar` entre los tres roles (decisión
+  de Fase 3), algo que `main` nunca necesitó resolver porque cada rol tiene su
+  propio archivo HTML y su propia clave de `localStorage`.
+- **Cómo se encontró:** Nicolás lo confirmó a mano (residente.prueba entrando
+  sin `volver` caía en `/admin`); se reprodujo y se verificó la corrección con
+  el script de validación automatizada del Bloque 0
+  (`scripts/validacion-bloque0.mjs`, ver docs/estado-migracion.md).
+- **Estado:** corregido y validado (dos corridas del script, 21/21 casos, dos
+  veces seguidas).
+- **Cómo se revierte:** no aplica — es la corrección de un bug real, no una
+  decisión de producto a reconsiderar.

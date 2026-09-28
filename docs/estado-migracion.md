@@ -783,35 +783,64 @@ sepa de antemano dónde no hay vuelta atrás.
 
 ### Bloque 0 — Revalidación de lo que ya estaba validado y se tocó hoy
 
-Ninguno de estos cambios buscaba cambiar comportamiento, pero todos tocaron
-archivos ya validados.
+**Automatizado el 27-sep con Playwright** (instalado temporal, `npm install
+--no-save playwright`, desinstalado al terminar — script en
+`scripts/validacion-bloque0.mjs`, capturas en `scripts/capturas-bloque0/`,
+carpeta ignorada por Git). Solo lectura: ningún formulario que escriba en la
+base. **21/21 casos pasan**, dos corridas seguidas, sin errores de Postgres en
+el log de `npm run dev` (se buscó `22P02`/`PGRST`/"invalid input syntax", nada
+apareció). El detalle completo del run queda en
+`scripts/capturas-bloque0/reporte.md` (no versionado — se regenera corriendo
+el script de nuevo).
 
-- [ ] **`/mi/[unidadId]` sigue entrando** (se le agregó `esUuid()`): con
-  `residente.prueba@vecitap.com`, abrir su unidad de Baja y recorrer recibo,
-  reportar pago y mis pagos. Debe verse igual que antes. Probar además un id
-  inventado en la URL (`/mi/no-es-uuid`) — debe dar 404 limpio, no un error de
-  Postgres.
-- [ ] **`/admin/[orgId]/[edificioId]/*` sigue entrando** (mismo cambio, más los
-  logs `[DIAG-ADMIN]` quitados): recorrer Inicio, Propietarios, Cobros y Cierre
-  del mes con `admin.prueba@vecitap.com`. Probar también `/admin/no-es-uuid` y
-  `/admin/<orgId>/no-es-uuid`.
-- [ ] **Paleta nueva en los tres módulos.** Residente, Admin y Operador cambiaron
-  de colores sin que se tocara ningún componente. Revisar que no quedó texto
-  ilegible, sobre todo badges y montos en rojo / verde / ámbar.
-- [ ] **Paleta en tema oscuro, recargando con la preferencia ya guardada** — no
-  solo cambiando el tema en vivo. Es la lección de hidratación que ya dejó un bug
-  real (ver `AGENTS.md`, Sistema de diseño).
-- [ ] **Estado de cuenta imprimible** (Propietarios → una unidad → imprimir): los
-  colores de ese papel se cambiaron a mano en `lib/admin/imprimir-estado.ts`.
-  Comparar contra el mismo papel generado desde `admin.html` de `main`.
-  *(El recibo imprimible del residente, `lib/residente/papel-recibo.ts`, quedó a
-  propósito con la paleta vieja — ver caso 16 de `casos-de-uso-mejorados.md`. Se
-  va a ver distinto del de Admin; no es un error, es un pendiente conocido.)*
-- [ ] **Entrar sigue funcionando para los tres roles** (`FormularioEntrar.tsx`
-  cambió): entrar como admin, como residente y como operador.
-- [ ] **Entrar sin `volver`** (ir a `/entrar` a mano, sin parámetros): cada rol
-  debe terminar en su panel — operador en `/operador`, admin en `/admin`,
-  residente en `/mi`. Antes caían todos en `/`, la página en construcción.
+- [x] **`/mi/[unidadId]` sigue entrando** — recibo, reportar y pagos con
+  `residente.prueba@vecitap.com`, todo 200. `/mi/no-es-uuid` → 404 limpio.
+- [x] **`/admin/[orgId]/[edificioId]/*` sigue entrando** — Inicio, Propietarios,
+  Cobros, Cierre del mes y Accesos con `admin.prueba@vecitap.com`, todo 200.
+  `/admin/no-es-uuid` lo intercepta `proxy.ts` (rebota a `/`, nunca llega al
+  layout); `/admin/<orgId>/no-es-uuid` sí llega al layout y da 404 limpio vía
+  `esUuid()`.
+- [x] **Paleta nueva en los tres módulos** — confirmado visualmente en las
+  capturas (Inicio de Admin, Accesos, estado de cuenta imprimible), colores y
+  contraste legibles.
+- [x] **Paleta en tema oscuro, recargando con la preferencia ya guardada** —
+  `localStorage["vecitap-tema"]` queda en `"oscuro"` tras recargar y el fondo
+  del `<body>` es `rgb(7, 12, 28)` (`#070C1C`, el token nuevo), sin flash del
+  tema claro.
+- [x] **Estado de cuenta imprimible** — el HTML de la ventana emergente
+  contiene `#0A1128` (tinta nueva) y no contiene `#111144` (la vieja).
+- [x] **Entrar funciona para los tres roles** y **Entrar sin `volver`** — ver
+  el hallazgo y la corrección más abajo.
+- [x] **Clave incorrecta**: aviso visible "Correo o contraseña incorrectos."
+  (agregado a la validación, no estaba en la lista original).
+- [x] **Logos nuevos servidos por Next**: `/logo-claro.png` y
+  `/logo-oscuro.png` responden con el mismo hash sha256 que los archivos de la
+  raíz del repo (agregado a la validación).
+
+**Hallazgo real (confirmado a mano por Nicolás antes de automatizar, y
+reproducido en la corrida): `residente.prueba` entrando sin `volver` caía en
+`/admin` en vez de `/mi`.** `/destino` decidía "es administrador" con
+`organizaciones.select().limit(1)` — esa tabla es visible por RLS a
+**cualquiera con una membresía ahí, sea cual sea el rol** (un residente ve el
+nombre/RIF de su propio edificio, lo necesita para su recibo), así que la
+consulta nunca distinguía residente de administrador. El mismo problema
+existía en `/admin/page.tsx` (AdminHome): listaba como "administrables" las
+organizaciones donde el usuario solo es residente, y recién se frenaba al
+hacer clic (por `tiene_rol()` en `/admin/[orgId]/layout.tsx`) — no era un
+agujero de seguridad, pero sí una lista incorrecta.
+
+**Corrección aplicada:**
+- `/destino` ahora usa `administra_algo()` (RPC que sí distingue por rol) en
+  vez de la visibilidad de la tabla `organizaciones`.
+- `/admin/page.tsx` filtra la lista de organizaciones candidatas con
+  `tiene_rol(org.id, ROLES_ADMIN)` — la misma función que ya gatea
+  `/admin/[orgId]/*` — así que la lista y el acceso real son siempre la misma
+  cosa.
+- `ROLES_ADMIN` se unificó en `lib/admin/constantes.ts` (antes duplicado en
+  `proxy.ts` y en `[orgId]/layout.tsx`).
+- Validado en la corrida automatizada: `residente.prueba` sin `volver` termina
+  en `/mi/...`; escribiendo `/admin` a mano ve "Nueva administradora" sola,
+  sin ninguna organización real listada ni enlaces a `/admin/<org>`.
 
 ### Bloque 1 — Crear organización · cuenta nueva, no Baja
 

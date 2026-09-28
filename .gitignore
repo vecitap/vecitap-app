@@ -40,6 +40,10 @@ yarn-error.log*
 # supabase (estado local del CLI, no del proyecto)
 supabase/.temp/
 
+# capturas de scripts de validación temporales (Playwright) — no es
+# artefacto del producto, ver scripts/validacion-bloque0.mjs
+scripts/capturas-bloque0/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

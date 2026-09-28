@@ -13,17 +13,28 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  * sin salida para cualquiera de los tres.
  *
  * El orden importa: `es_operador()` es global (staff de Vecitap) y manda
- * sobre lo demás; después, tener alguna organización visible es lo que
- * distingue a un administrador. Quien no es ninguna de las dos cosas va a
- * `/mi`, que ya sabe resolver los dos casos que quedan: con unidades, su
- * recibo; sin unidades, la pantalla de aceptar la invitación.
+ * sobre lo demás; después, `administra_algo()` decide por ROL (tener una
+ * membresía de tipo administrador/propietario_cuenta/contador/junta en
+ * alguna organización), no por qué organizaciones alcanza a ver la sesión.
+ * Quien no es ninguna de las dos cosas va a `/mi`, que ya sabe resolver los
+ * dos casos que quedan: con unidades, su recibo; sin unidades, la pantalla
+ * de aceptar la invitación.
+ *
+ * **Corrección 27-sep** (hallazgo de la validación automatizada — ver
+ * docs/casos-de-uso-mejorados.md): la primera versión usaba
+ * `organizaciones.select().limit(1)` para decidir "es administrador". Esa
+ * tabla es visible por RLS a cualquiera con una membresía ahí, sea cual sea
+ * el rol — un residente ve la organización de su propio edificio (la
+ * necesita para su recibo). Con esa consulta, `residente.prueba` caía en
+ * `/admin` en vez de `/mi`. `administra_algo()` sí distingue por rol.
  *
  * Límite conocido: una cuenta recién creada que en realidad viene a crear
- * una administradora (alta de organización, /admin) tampoco tiene
- * organizaciones todavía, así que cae en `/mi` y ve la pantalla de
- * invitación. Para el piloto es lo correcto — el caso que importa es el
- * residente invitado — pero es la razón por la que el enlace que genera
- * Accesos lleva `volver` explícito en vez de depender de esta resolución.
+ * una administradora (alta de organización, /admin) tampoco administra
+ * nada todavía, así que cae en `/mi` y ve la pantalla de invitación. Para
+ * el piloto es lo correcto — el caso que importa es el residente invitado
+ * — pero es la razón por la que el enlace que genera Accesos lleva
+ * `volver` explícito en vez de depender de esta resolución, y por la que
+ * `Invitacion.tsx` ofrece un enlace directo a `/admin`.
  */
 export default async function Destino() {
   const supabase = await crearClienteServidor();
@@ -35,8 +46,8 @@ export default async function Destino() {
   const { data: esOperador } = await supabase.rpc("es_operador");
   if (esOperador === true) redirect("/operador");
 
-  const { data: orgs } = await supabase.from("organizaciones").select("id").limit(1);
-  if (orgs && orgs.length > 0) redirect("/admin");
+  const { data: administraAlgo } = await supabase.rpc("administra_algo");
+  if (administraAlgo === true) redirect("/admin");
 
   redirect("/mi");
 }
