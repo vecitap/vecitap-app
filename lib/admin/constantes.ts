@@ -39,3 +39,35 @@ export const MODOS_COBRO: Record<string, string> = {
   monto_fijo_repartido: "Un monto total ÷ nº de unidades",
   porcentaje_condominio: "% de lo que paga de condominio",
 };
+
+/** admin.html:148-149. */
+export const METODOS = ["Pago móvil", "Transferencia", "Zelle", "Punto de venta", "Efectivo", "Otro"] as const;
+
+/**
+ * Qué datos de origen pide cada método de pago. admin.html:3282-3287 —
+ * un método que no está en esta tabla no pide ninguno.
+ */
+export const PIDE: Record<string, { banco?: boolean; telefono?: boolean; documento?: boolean; correo?: boolean }> = {
+  "Pago móvil": { banco: true, telefono: true, documento: true },
+  Transferencia: { banco: true },
+  Zelle: { correo: true },
+  "Punto de venta": { banco: true },
+};
+
+/** Los tres destinos de un pago o ajuste (admin.html:3603-3607, 3651-3655). */
+export const DESTINOS_PAGO: [string, string][] = [
+  ["condominio", "Condominio"],
+  ["honorarios", "Administración"],
+  ["servicio", "Servicio"],
+];
+
+/**
+ * Plantilla del mensaje de WhatsApp de Cortes de cuenta. admin.html:4254-4258.
+ * Se guarda editada en localStorage bajo `vecitap_plantilla`, igual que el original.
+ */
+export const PLANTILLA_WHATSAPP =
+  "Hola {nombre}. Le enviamos el estado de cuenta de la unidad {unidad} " +
+  "correspondiente a {periodo}.\n\nRecibo N° {recibo}\nCuota del mes: {cuota}\n" +
+  "Saldo anterior: {anterior}\nInterés de mora: {mora}\nTOTAL A PAGAR: {total}\n" +
+  "Equivalente: {totalBs} (tasa BCV {tasa})\n\n" +
+  "Al transferir, por favor responda con el número de referencia.";

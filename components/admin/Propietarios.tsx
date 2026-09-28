@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Button, Input } from "@/components/ui";
-import { pct, usd } from "@/lib/formato";
+import { nf, pct, usd } from "@/lib/formato";
 import { nombreDe, vigente } from "@/lib/admin/personas";
 import type { SaldoActual, Unidad } from "@/lib/admin/tipos";
 import { AltaUnidad } from "./AltaUnidad";
@@ -18,8 +18,14 @@ const FILTROS: [string, string][] = [
   ["sinduenio", "Sin propietario"],
 ];
 
-const COLOR_TOTAL = (estado: string | null | undefined) =>
-  estado === "debe" ? "var(--rojo)" : estado === "a_favor" ? "var(--azul)" : "var(--verde)";
+/**
+ * Mismo umbral literal que `main` (admin.html:1740-1741). La Sesión 1 lo
+ * había unificado contra la columna `estado` de `saldos_actuales`
+ * (docs/casos-de-uso-mejorados.md, caso 11); el criterio del 28-sep es
+ * paridad con `main`, así que vuelve el literal.
+ */
+const COLOR_TOTAL = (total: number) =>
+  total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--azul)" : "var(--verde)";
 
 /**
  * Portado de Propietarios() en app.html:1449-1566. La ficha (antes un
@@ -64,9 +70,10 @@ export function Propietarios({
 
   const visibles = unidades.filter((u) => {
     const s = mapaSaldo[u.id];
-    if (filtro === "deuda" && s?.estado !== "debe") return false;
-    if (filtro === "aldia" && s?.estado !== "al_dia") return false;
-    if (filtro === "favor" && s?.estado !== "a_favor") return false;
+    const total = Number(s?.total) || 0;
+    if (filtro === "deuda" && !(total > 0.01)) return false;
+    if (filtro === "aldia" && !(Math.abs(total) <= 0.01)) return false;
+    if (filtro === "favor" && !(total < -0.01)) return false;
     if (filtro === "sinduenio" && vigente(u.vinculos, "propietario")) return false;
     if (!busca) return true;
     const t = [u.codigo, nombreDe(vigente(u.vinculos, "propietario")), nombreDe(vigente(u.vinculos, "inquilino"))]
@@ -115,7 +122,7 @@ export function Propietarios({
         </div>
 
         <div className="tabla-scroll">
-          <table className="tabla">
+          <table className="tabla apila">
             <thead>
               <tr>
                 <th>Unidad</th>
@@ -133,14 +140,16 @@ export function Propietarios({
                 const i = vigente(u.vinculos, "inquilino");
                 return (
                   <tr key={u.id}>
-                    <td className="mono" style={{ fontWeight: 600 }}>
+                    <td className="mono cabeza" style={{ fontWeight: 600 }}>
                       <Link href={`${base}/${u.id}`} style={{ color: "inherit", textDecoration: "none" }}>
                         {u.codigo}
                         {!u.activa && <span style={{ color: "var(--tenue)" }}> · inactiva</span>}
                       </Link>
                     </td>
-                    <td className="mono">{pct(u.alicuota)}</td>
-                    <td>
+                    <td className="mono" data-t="Alícuota">
+                      {nf(5).format(Number(u.alicuota) || 0)}
+                    </td>
+                    <td data-t="Propietario">
                       {nombreDe(p) || <span style={{ color: "var(--tenue)" }}>sin registrar</span>}
                       {p?.personas?.telefono && (
                         <div className="mono" style={{ fontSize: 11.5, color: "var(--tenue)" }}>
@@ -148,8 +157,8 @@ export function Propietarios({
                         </div>
                       )}
                     </td>
-                    <td>{nombreDe(i) || <span style={{ color: "var(--tenue)" }}>—</span>}</td>
-                    <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: COLOR_TOTAL(s?.estado) }}>
+                    <td data-t="Inquilino">{nombreDe(i) || <span style={{ color: "var(--tenue)" }}>—</span>}</td>
+                    <td className="mono" data-t="Saldo" style={{ textAlign: "right", fontWeight: 600, color: COLOR_TOTAL(total) }}>
                       {usd(total)}
                     </td>
                   </tr>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, Card } from "@/components/ui";
 import { bs, fechaCorta, fechaLarga, nf, usd } from "@/lib/formato";
-import { papelRecibo } from "@/lib/residente/papel-recibo";
+import { imprimirDocumento, reciboEnPapel } from "@/lib/recibo-papel";
 import type { RegistroRecibo } from "@/lib/residente/tipos";
 import type { Database } from "@/types/supabase";
 
@@ -60,6 +60,10 @@ export function Recibo({
     );
   }
 
+  const tasaViva = Number(recibo.tasaHoy?.valor) > 0;
+  const tasaCandidata = tasaViva ? Number(recibo.tasaHoy!.valor) : Number(recibo.tasa_bcv);
+  const tasaMostrada = tasaCandidata > 0 ? tasaCandidata : null;
+
   const fila = (etiqueta: string, valor: number, fuerte = false) => (
     <div
       key={etiqueta}
@@ -88,13 +92,18 @@ export function Recibo({
             {recibo.numero}
           </div>
         </div>
-        {recibo.tasa_bcv > 0 && (
+        {/* Se usa la tasa viva. Solo si la base no la dio se cae a la del
+            recibo, y entonces se dice de cuándo es (index.html:1368-1384). */}
+        {tasaMostrada !== null && (
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, color: "var(--tenue)" }}>Equivale a</div>
+            <div style={{ fontSize: 12, color: "var(--tenue)" }}>Si paga hoy</div>
             <div className="mono" style={{ fontSize: 15, fontWeight: 600 }}>
-              {bs(recibo.total * recibo.tasa_bcv)}
+              {bs(Number(recibo.total) * tasaMostrada)}
             </div>
-            <div style={{ fontSize: 11, color: "var(--tenue)" }}>tasa {nf(2).format(recibo.tasa_bcv)}</div>
+            <div style={{ fontSize: 11, color: "var(--tenue)" }}>
+              tasa {nf(2).format(tasaMostrada)}
+              {tasaViva ? " de hoy" : " del recibo"}
+            </div>
           </div>
         )}
       </div>
@@ -166,32 +175,21 @@ export function Recibo({
           type="button"
           variante="secundario"
           style={{ width: "100%" }}
-          onClick={() => {
-            const w = window.open("", "_blank");
-            if (!w) return;
-            w.document.write(
-              papelRecibo({
+          onClick={() =>
+            imprimirDocumento(
+              reciboEnPapel({
                 edificio: recibo.edificio || unidad.edificio,
                 organizacion: unidad.organizacion,
                 unidad: unidad.codigo,
                 vence: fechaCorta(recibo.vence_el),
+                // La tasa viva viaja al papel: el PDF se genera ahora, no el
+                // día en que se emitió el recibo (index.html:1453-1455).
+                tasaHoy: recibo.tasaHoy,
                 recibo,
-              })
-            );
-            w.document.close();
-            w.onload = () => {
-              w.focus();
-              w.print();
-            };
-            setTimeout(() => {
-              try {
-                w.focus();
-                w.print();
-              } catch {
-                /* la ventana se pudo haber cerrado ya */
-              }
-            }, 700);
-          }}
+              }),
+              () => {}
+            )
+          }
         >
           Descargar o imprimir mi recibo
         </Button>
@@ -201,8 +199,9 @@ export function Recibo({
       </div>
 
       <p style={{ fontSize: 12.5, color: "var(--tenue)", lineHeight: 1.6, marginBottom: 0, marginTop: 14 }}>
-        El monto en bolívares es referencial: se convierte a la tasa del Banco Central del día en que usted
-        pague, no a la de hoy.
+        El monto en bolívares es referencial y cambia todos los días: su cuota está en dólares y se
+        convierte con la tasa del Banco Central del día en que usted pague. Si paga mañana, el monto
+        en bolívares será otro.
       </p>
     </Card>
   );

@@ -23,9 +23,9 @@ export default async function PaginaOrg({ params }: { params: Promise<{ orgId: s
 
   if (!edificios || edificios.length === 0) {
     return (
-      <main style={{ display: "flex", justifyContent: "center", paddingTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "center" }}>
         <PrimerEdificio orgId={orgId} />
-      </main>
+      </div>
     );
   }
 

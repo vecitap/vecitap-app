@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Recibo } from "@/components/residente/Recibo";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { tasaDelDia } from "@/lib/tasa";
 import type { CategoriaRecibo, ConceptoRecibo, RegistroRecibo } from "@/lib/residente/tipos";
 
 /**
@@ -37,6 +38,12 @@ export default async function PaginaRecibo({
     return <Recibo unidad={unidad} recibo={null} falla={error.message} />;
   }
 
+  // La tasa de HOY, no la del día en que se emitió el recibo
+  // (index.html:609-621). Si la base no tiene ninguna, el recibo cae a la
+  // congelada del período y lo dice.
+  const viva = await tasaDelDia(supabase);
+  const tasaHoy = viva ? { valor: viva.valor, fecha: viva.actualizada, dias: viva.dias } : null;
+
   // El orden lo pone el calendario del período, nunca la hora en que se
   // escribió la fila: varios meses cerrados en una misma transacción
   // comparten esa marca y el orden saldría al azar.
@@ -54,6 +61,7 @@ export default async function PaginaRecibo({
         mes: ultimo.periodos.mes,
         etiqueta: ultimo.periodos.etiqueta,
         edificio: unidad.edificio,
+        tasaHoy,
       }
     : null;
 

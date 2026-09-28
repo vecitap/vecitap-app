@@ -1,6 +1,7 @@
 export { Button } from "./Button";
 export { Badge, type TonoBadge } from "./Badge";
 export { Campo } from "./Campo";
+export { CampoClave } from "./CampoClave";
 export { Input } from "./Input";
 export { Select } from "./Select";
 export { Textarea } from "./Textarea";

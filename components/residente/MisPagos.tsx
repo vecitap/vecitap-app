@@ -44,14 +44,11 @@ export function MisPagos({ pagos }: { pagos: Pago[] }) {
                   </div>
                 )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                <Badge tono={tono}>{etiqueta}</Badge>
-                {p.estado === "reportado" && (
-                  <span style={{ fontSize: 11, color: "var(--tenue)", textAlign: "right", maxWidth: 140, lineHeight: 1.4 }}>
-                    Su saldo no cambia hasta que se confirme.
-                  </span>
-                )}
-              </div>
+              {/* Solo el badge, como index.html:1719+ — la línea "Su saldo no
+                  cambia hasta que se confirme" era un agregado nuestro y se
+                  quitó por el criterio de paridad con main del 28-sep (ver
+                  docs/casos-de-uso-mejorados.md, caso 2). */}
+              <Badge tono={tono}>{etiqueta}</Badge>
             </div>
             {p.nota && (
               <div

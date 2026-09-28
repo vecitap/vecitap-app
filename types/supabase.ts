@@ -183,6 +183,61 @@ export type Database = {
         }
         Relationships: []
       }
+      bitacora: {
+        Row: {
+          creado_en: string
+          edificio_id: string
+          id: string
+          org_id: string
+          texto: string
+          tipo: string
+          vigilante_id: string | null
+          visita_id: string | null
+        }
+        Insert: {
+          creado_en?: string
+          edificio_id: string
+          id?: string
+          org_id: string
+          texto: string
+          tipo?: string
+          vigilante_id?: string | null
+          visita_id?: string | null
+        }
+        Update: {
+          creado_en?: string
+          edificio_id?: string
+          id?: string
+          org_id?: string
+          texto?: string
+          tipo?: string
+          vigilante_id?: string | null
+          visita_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bitacora_edificio_id_fkey"
+            columns: ["edificio_id"]
+            isOneToOne: false
+            referencedRelation: "edificios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bitacora_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bitacora_visita_id_fkey"
+            columns: ["visita_id"]
+            isOneToOne: false
+            referencedRelation: "visitas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categorias: {
         Row: {
           edificio_id: string
@@ -599,6 +654,8 @@ export type Database = {
       }
       edificios: {
         Row: {
+          acta_servicio_fecha: string | null
+          acta_servicio_ref: string | null
           activo: boolean
           creado_en: string
           dia_vencimiento: number
@@ -617,6 +674,8 @@ export type Database = {
           tolerancia_redondeo: number
         }
         Insert: {
+          acta_servicio_fecha?: string | null
+          acta_servicio_ref?: string | null
           activo?: boolean
           creado_en?: string
           dia_vencimiento?: number
@@ -635,6 +694,8 @@ export type Database = {
           tolerancia_redondeo?: number
         }
         Update: {
+          acta_servicio_fecha?: string | null
+          acta_servicio_ref?: string | null
           activo?: boolean
           creado_en?: string
           dia_vencimiento?: number
@@ -810,6 +871,92 @@ export type Database = {
           },
           {
             foreignKeyName: "invitaciones_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invitaciones_visita: {
+        Row: {
+          codigo: string
+          creada_en: string
+          creada_por: string | null
+          desde: string
+          documento: string | null
+          edificio_id: string
+          estado: string
+          hasta: string
+          id: string
+          nombre: string
+          nota: string | null
+          org_id: string
+          placa: string | null
+          unidad_id: string
+          usos: number
+          usos_max: number
+        }
+        Insert: {
+          codigo: string
+          creada_en?: string
+          creada_por?: string | null
+          desde?: string
+          documento?: string | null
+          edificio_id: string
+          estado?: string
+          hasta: string
+          id?: string
+          nombre: string
+          nota?: string | null
+          org_id: string
+          placa?: string | null
+          unidad_id: string
+          usos?: number
+          usos_max?: number
+        }
+        Update: {
+          codigo?: string
+          creada_en?: string
+          creada_por?: string | null
+          desde?: string
+          documento?: string | null
+          edificio_id?: string
+          estado?: string
+          hasta?: string
+          id?: string
+          nombre?: string
+          nota?: string | null
+          org_id?: string
+          placa?: string | null
+          unidad_id?: string
+          usos?: number
+          usos_max?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitaciones_visita_edificio_id_fkey"
+            columns: ["edificio_id"]
+            isOneToOne: false
+            referencedRelation: "edificios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitaciones_visita_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitaciones_visita_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_actuales"
+            referencedColumns: ["unidad_id"]
+          },
+          {
+            foreignKeyName: "invitaciones_visita_unidad_id_fkey"
             columns: ["unidad_id"]
             isOneToOne: false
             referencedRelation: "unidades"
@@ -1049,30 +1196,45 @@ export type Database = {
       organizaciones: {
         Row: {
           acento: string | null
+          correo: string | null
           creada_en: string
+          direccion: string | null
           id: string
           logo_url: string | null
+          max_edificios: number | null
           nombre: string
           plan: string
           rif: string | null
+          telefono: string | null
+          tipo: string
         }
         Insert: {
           acento?: string | null
+          correo?: string | null
           creada_en?: string
+          direccion?: string | null
           id?: string
           logo_url?: string | null
+          max_edificios?: number | null
           nombre: string
           plan?: string
           rif?: string | null
+          telefono?: string | null
+          tipo?: string
         }
         Update: {
           acento?: string | null
+          correo?: string | null
           creada_en?: string
+          direccion?: string | null
           id?: string
           logo_url?: string | null
+          max_edificios?: number | null
           nombre?: string
           plan?: string
           rif?: string | null
+          telefono?: string | null
+          tipo?: string
         }
         Relationships: []
       }
@@ -1646,6 +1808,77 @@ export type Database = {
           },
         ]
       }
+      vehiculos: {
+        Row: {
+          activo: boolean
+          color: string | null
+          creado_en: string
+          edificio_id: string
+          id: string
+          marca: string | null
+          modelo: string | null
+          org_id: string
+          placa: string
+          puesto: string | null
+          unidad_id: string
+        }
+        Insert: {
+          activo?: boolean
+          color?: string | null
+          creado_en?: string
+          edificio_id: string
+          id?: string
+          marca?: string | null
+          modelo?: string | null
+          org_id: string
+          placa: string
+          puesto?: string | null
+          unidad_id: string
+        }
+        Update: {
+          activo?: boolean
+          color?: string | null
+          creado_en?: string
+          edificio_id?: string
+          id?: string
+          marca?: string | null
+          modelo?: string | null
+          org_id?: string
+          placa?: string
+          puesto?: string | null
+          unidad_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehiculos_edificio_id_fkey"
+            columns: ["edificio_id"]
+            isOneToOne: false
+            referencedRelation: "edificios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehiculos_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehiculos_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_actuales"
+            referencedColumns: ["unidad_id"]
+          },
+          {
+            foreignKeyName: "vehiculos_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vinculos: {
         Row: {
           desde: string
@@ -1708,6 +1941,135 @@ export type Database = {
           },
         ]
       }
+      visitantes: {
+        Row: {
+          creado_en: string
+          documento: string
+          id: string
+          nombre: string
+          org_id: string
+        }
+        Insert: {
+          creado_en?: string
+          documento: string
+          id?: string
+          nombre: string
+          org_id: string
+        }
+        Update: {
+          creado_en?: string
+          documento?: string
+          id?: string
+          nombre?: string
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visitantes_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      visitas: {
+        Row: {
+          documento: string | null
+          edificio_id: string
+          entrada_en: string
+          estado: string
+          id: string
+          invitacion_id: string | null
+          nombre: string
+          nota: string | null
+          org_id: string
+          placa: string | null
+          salida_en: string | null
+          tipo: string
+          unidad_id: string | null
+          vigilante_id: string | null
+          visitante_id: string | null
+        }
+        Insert: {
+          documento?: string | null
+          edificio_id: string
+          entrada_en?: string
+          estado?: string
+          id?: string
+          invitacion_id?: string | null
+          nombre: string
+          nota?: string | null
+          org_id: string
+          placa?: string | null
+          salida_en?: string | null
+          tipo?: string
+          unidad_id?: string | null
+          vigilante_id?: string | null
+          visitante_id?: string | null
+        }
+        Update: {
+          documento?: string | null
+          edificio_id?: string
+          entrada_en?: string
+          estado?: string
+          id?: string
+          invitacion_id?: string | null
+          nombre?: string
+          nota?: string | null
+          org_id?: string
+          placa?: string | null
+          salida_en?: string | null
+          tipo?: string
+          unidad_id?: string | null
+          vigilante_id?: string | null
+          visitante_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visitas_edificio_id_fkey"
+            columns: ["edificio_id"]
+            isOneToOne: false
+            referencedRelation: "edificios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitas_invitacion_id_fkey"
+            columns: ["invitacion_id"]
+            isOneToOne: false
+            referencedRelation: "invitaciones_visita"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitas_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitas_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_actuales"
+            referencedColumns: ["unidad_id"]
+          },
+          {
+            foreignKeyName: "visitas_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitas_visitante_id_fkey"
+            columns: ["visitante_id"]
+            isOneToOne: false
+            referencedRelation: "visitantes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       saldos_actuales: {
@@ -1743,6 +2105,8 @@ export type Database = {
       }
     }
     Functions: {
+      _entrar: { Args: { p_correo: string }; Returns: undefined }
+      _usr: { Args: { p_correo: string }; Returns: string }
       abrir_periodo: {
         Args: {
           p_anio: number
@@ -1756,6 +2120,10 @@ export type Database = {
       }
       aceptar_invitacion: { Args: { p_token: string }; Returns: string }
       administra_algo: { Args: never; Returns: boolean }
+      anular_invitacion_visita: {
+        Args: { p_invitacion: string }
+        Returns: undefined
+      }
       cargar_tasa: {
         Args: { p_fecha: string; p_tasa: number }
         Returns: undefined
@@ -1826,6 +2194,21 @@ export type Database = {
       }
       correr_cobros_ahora: { Args: never; Returns: Json }
       correr_tasa_ahora: { Args: never; Returns: Json }
+      crear_cliente: {
+        Args: {
+          p_contacto?: string
+          p_correo_dueno: string
+          p_max_edificios?: number
+          p_nombre: string
+          p_rif?: string
+          p_telefono?: string
+          p_tipo?: string
+        }
+        Returns: {
+          org_id: string
+          token: string
+        }[]
+      }
       crear_invitacion: {
         Args: {
           p_correo: string
@@ -1836,6 +2219,22 @@ export type Database = {
           p_unidad?: string
         }
         Returns: string
+      }
+      crear_invitacion_visita: {
+        Args: {
+          p_desde?: string
+          p_documento?: string
+          p_hasta: string
+          p_nombre: string
+          p_nota?: string
+          p_placa?: string
+          p_unidad: string
+          p_usos?: number
+        }
+        Returns: {
+          codigo: string
+          id: string
+        }[]
       }
       crear_organizacion: {
         Args: { p_nombre: string; p_rif?: string }
@@ -1855,6 +2254,19 @@ export type Database = {
           telefono: string
         }[]
       }
+      edificio_activo: { Args: { p_edificio: string }; Returns: boolean }
+      edificios_de: {
+        Args: { p_org: string }
+        Returns: {
+          activo: boolean
+          id: string
+          nombre: string
+          periodo_abierto: string
+          ultimo_cerrado: string
+          unidades: number
+        }[]
+      }
+      edificios_del_vigilante: { Args: never; Returns: string[] }
       edificios_operador: {
         Args: { p_org: string }
         Returns: {
@@ -1914,6 +2326,21 @@ export type Database = {
         Args: { p_clave: string; p_edificio?: string; p_org: string }
         Returns: undefined
       }
+      exigir_org_al_dia: { Args: { p_org: string }; Returns: undefined }
+      fijar_cliente: {
+        Args: {
+          p_estado?: string
+          p_max_edificios?: number
+          p_org: string
+          p_quitar_tope?: boolean
+          p_tipo?: string
+        }
+        Returns: undefined
+      }
+      fijar_edificio: {
+        Args: { p_activo: boolean; p_edificio: string }
+        Returns: undefined
+      }
       fijar_modulo: {
         Args: {
           p_activo: boolean
@@ -1924,7 +2351,102 @@ export type Database = {
         }
         Returns: undefined
       }
+      fijar_vigilante: {
+        Args: { p_activo: boolean; p_edificio?: string; p_membresia: string }
+        Returns: undefined
+      }
       fmt_monto: { Args: { v: number }; Returns: string }
+      garita_avisar: { Args: { p_visita: string }; Returns: number }
+      garita_bitacora: {
+        Args: { p_edificio: string; p_fecha?: string; p_limite?: number }
+        Returns: {
+          creado_en: string
+          id: string
+          texto: string
+          tipo: string
+          vigilante: string
+        }[]
+      }
+      garita_dentro: {
+        Args: { p_edificio: string }
+        Returns: {
+          documento: string
+          entrada_en: string
+          nombre: string
+          placa: string
+          tipo: string
+          unidad: string
+          visita_id: string
+        }[]
+      }
+      garita_directorio: {
+        Args: { p_edificio: string }
+        Returns: {
+          codigo: string
+          residente: string
+          unidad_id: string
+        }[]
+      }
+      garita_edificios: {
+        Args: never
+        Returns: {
+          edificio_id: string
+          nombre: string
+          org: string
+        }[]
+      }
+      garita_entrada: {
+        Args: {
+          p_documento?: string
+          p_edificio: string
+          p_invitacion?: string
+          p_nombre: string
+          p_nota?: string
+          p_placa?: string
+          p_unidad: string
+        }
+        Returns: string
+      }
+      garita_nota: {
+        Args: { p_edificio: string; p_texto: string; p_tipo?: string }
+        Returns: string
+      }
+      garita_salida: { Args: { p_visita: string }; Returns: undefined }
+      garita_validar: {
+        Args: { p_codigo: string; p_edificio: string }
+        Returns: {
+          documento: string
+          hasta: string
+          invitacion_id: string
+          motivo: string
+          nombre: string
+          placa: string
+          unidad: string
+          usos: number
+          usos_max: number
+          valido: boolean
+        }[]
+      }
+      garita_vehiculos: {
+        Args: { p_edificio: string; p_texto: string }
+        Returns: {
+          color: string
+          marca: string
+          modelo: string
+          placa: string
+          puesto: string
+          residente: string
+          unidad: string
+        }[]
+      }
+      garita_visitante: {
+        Args: { p_documento: string; p_edificio: string }
+        Returns: {
+          nombre: string
+          ultima_unidad: string
+          veces: number
+        }[]
+      }
       gastos_por_categoria: {
         Args: { p_periodo: string }
         Returns: {
@@ -2007,6 +2529,20 @@ export type Database = {
         Args: { p_enviado?: boolean; p_periodo: string }
         Returns: undefined
       }
+      mi_organizacion: {
+        Args: { p_org: string }
+        Returns: {
+          al_dia: boolean
+          edificios: number
+          estado: string
+          id: string
+          max_edificios: number
+          nombre: string
+          puede_crear: boolean
+          rif: string
+          tipo: string
+        }[]
+      }
       mi_recibo: {
         Args: { p_unidad: string }
         Returns: {
@@ -2056,6 +2592,18 @@ export type Database = {
           relacion: string
           saldo: number
           unidad_id: string
+        }[]
+      }
+      mis_visitas: {
+        Args: { p_limite?: number; p_unidad: string }
+        Returns: {
+          entrada_en: string
+          estado: string
+          nombre: string
+          placa: string
+          salida_en: string
+          tipo: string
+          unidad: string
         }[]
       }
       modulo_activo: {
@@ -2109,6 +2657,7 @@ export type Database = {
         Args: { p_arriba: boolean; p_id: string }
         Returns: undefined
       }
+      org_al_dia: { Args: { p_org: string }; Returns: boolean }
       orgs_del_usuario: { Args: never; Returns: string[] }
       pagos_por_origen: {
         Args: { p_org: string; p_telefono: string }
@@ -2144,6 +2693,8 @@ export type Database = {
         }[]
       }
       permitir_estadisticas: { Args: { p_edificio: string }; Returns: string }
+      permitir_garita: { Args: { p_edificio: string }; Returns: string }
+      puede_garita: { Args: { p_edificio: string }; Returns: boolean }
       puede_operar: { Args: { p_org: string }; Returns: boolean }
       reabrir_periodo: {
         Args: { p_confirmar?: boolean; p_periodo: string }
@@ -2259,6 +2810,19 @@ export type Database = {
           guardado: number
           recalculado: number
           unidad: string
+        }[]
+      }
+      vigilantes_de: {
+        Args: { p_org: string }
+        Returns: {
+          activo: boolean
+          anotaciones: number
+          correo: string
+          desde: string
+          edificio: string
+          edificio_id: string
+          membresia_id: string
+          ultima_anotacion: string
         }[]
       }
     }

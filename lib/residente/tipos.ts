@@ -37,4 +37,15 @@ export type RegistroRecibo = {
   mes: number;
   etiqueta: string;
   edificio: string;
+  tasaHoy: TasaHoy | null;
 };
+
+/**
+ * La tasa del BCV de HOY, no la del día en que se emitió el recibo
+ * (index.html:609-621). La deuda está en dólares: lo que el propietario
+ * va a pagar en bolívares se calcula con la tasa del día en que pague, y
+ * esa es la que hay que enseñarle. Mostrar la congelada le dice que debe
+ * menos de lo que debe, transfiere de menos y queda debiendo un resto que
+ * nadie entiende de dónde salió.
+ */
+export type TasaHoy = { valor: number; fecha: string | null; dias: number | null };

@@ -1,15 +1,21 @@
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { EncabezadoAdmin } from "@/components/admin/EncabezadoAdmin";
+import { MarcoAdmin } from "@/components/admin/MarcoAdmin";
 import { ROLES_ADMIN } from "@/lib/admin/constantes";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { tasaDelDia } from "@/lib/tasa";
 import { esUuid } from "@/lib/validacion";
 
 /**
  * Defensa en profundidad, igual que /operador (ver proxy.ts): proxy.ts ya
  * gatea /admin/[orgId]/* con tiene_rol(), pero un Server Component no
- * debería depender solo del proxy para autorizar (misma nota que ya
- * dejó Fase 3 en proxy.ts sobre /admin y /mi).
+ * debería depender solo del proxy para autorizar (misma nota que ya dejó
+ * Fase 3 en proxy.ts sobre /admin y /mi).
+ *
+ * Acá también se monta el armazón (columna lateral + encabezado con la
+ * tasa), portado de App() en admin.html:1310-1470. El armazón en sí es un
+ * Client Component porque necesita `usePathname` para saber en qué
+ * edificio y en qué sección está; este layout le pasa los datos.
  */
 export default async function LayoutOrg({
   children,
@@ -42,10 +48,17 @@ export default async function LayoutOrg({
     .single();
   if (error || !org) notFound();
 
+  const { data: edificios } = await supabase
+    .from("edificios")
+    .select("id,nombre,direccion")
+    .eq("org_id", orgId)
+    .order("nombre");
+
+  const tasa = await tasaDelDia(supabase);
+
   return (
-    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 18px" }}>
-      <EncabezadoAdmin organizacion={org} correo={user.email ?? ""} />
+    <MarcoAdmin organizacion={org} edificios={edificios ?? []} tasaInicial={tasa}>
       {children}
-    </div>
+    </MarcoAdmin>
   );
 }

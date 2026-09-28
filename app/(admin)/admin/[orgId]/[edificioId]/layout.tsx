@@ -1,8 +1,5 @@
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { NavAdmin } from "@/components/admin/NavAdmin";
-import { NuevoEdificio } from "@/components/admin/NuevoEdificio";
-import { SelectorEdificio } from "@/components/admin/SelectorEdificio";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { esUuid } from "@/lib/validacion";
 
@@ -13,11 +10,11 @@ import { esUuid } from "@/lib/validacion";
  * docs/inventario-admin.md sección 3, rol `junta` solo ve su edificio)
  * cae en notFound(), mismo patrón que /mi/[unidadId]/layout.tsx.
  *
- * Solo carga lo necesario para el "chrome" (selector de edificio + nav de
- * secciones) — cada página de sección hace su propio fetch de
- * unidades/saldos/conceptos/periodos, igual que /mi/[unidadId]/*
- * (mis_unidades() se repite en cada página en vez de pasar props desde el
- * layout, porque Next.js no tiene esa vía).
+ * Solo gate: el "chrome" (columna lateral, selector de edificio, nav de
+ * secciones, tasa) vive en el layout de `[orgId]` desde el bloque 5, que
+ * es donde está en `main` (una sola columna para toda la organización, no
+ * una por edificio). Cada página de sección hace su propio fetch de
+ * unidades/saldos/conceptos/periodos, igual que /mi/[unidadId]/*.
  */
 export default async function LayoutEdificio({
   children,
@@ -37,28 +34,14 @@ export default async function LayoutEdificio({
   if (errorVisibles) notFound();
   if (!visibles?.includes(edificioId)) notFound();
 
-  const { data: edificios, error } = await supabase
+  const { data: edificioActual, error } = await supabase
     .from("edificios")
-    .select("id,nombre")
+    .select("id")
     .eq("org_id", orgId)
-    .order("nombre");
+    .eq("id", edificioId)
+    .maybeSingle();
   if (error) throw error;
-
-  const edificioActual = edificios?.find((e) => e.id === edificioId);
   if (!edificioActual) notFound();
 
-  const hayVarios = !!edificios && edificios.length > 1;
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap", marginBottom: hayVarios ? 0 : 16 }}>
-        {hayVarios && <SelectorEdificio orgId={orgId} edificios={edificios!} edificioIdActual={edificioId} />}
-        <div style={{ marginLeft: "auto", marginBottom: hayVarios ? 16 : 0 }}>
-          <NuevoEdificio orgId={orgId} />
-        </div>
-      </div>
-      <NavAdmin orgId={orgId} edificioId={edificioId} />
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 }

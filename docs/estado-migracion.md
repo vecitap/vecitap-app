@@ -47,8 +47,11 @@ retira, no es parte del producto.
 2. Sistema de diseño compartido — ✅ Completa
 3. Autenticación y capa de datos — ✅ Completa
 4. Migración vertical por módulo (Residente → Operador → Admin) — ⏳ En
-   curso: Residente VALIDADO; Operador VALIDADO; Admin Sesión 1
-   construida, sin validar (Sesión 2 sin empezar)
+   curso. **Desde el 28-sep se reescribe contra los HTML actuales de `main`**
+   (ver la sección "Reescritura contra `main`" más abajo): Admin completo y
+   las reversiones de criterio construidos (bloques 0 a 6); faltan las
+   diferencias de Residente, Mis visitas, `PanelModulos` de Operador y
+   Garita. Nada validado todavía.
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -483,6 +486,8 @@ Pendiente, no bloqueante para validar la Sesión 1:
   mismo criterio que ya usaron Residente y Operador (ninguno de los dos
   instaló `lucide-react`). Donde el ícono era decorativo se omitió; donde
   era la única pista visual (Flechas) se usó texto/Unicode.
+  **Superado el 28-sep:** con el criterio de paridad visual esto pasó a ser una
+  brecha, no una decisión; `lucide-react` está aprobado y entra en el bloque 7.
 - Prueba funcional pendiente (fuera de alcance de código): validar con
   `admin.prueba@vecitap.com` contra Administradora Baja.
 
@@ -549,6 +554,166 @@ la misma situación — no bloquea nada hoy porque ninguno se usa todavía.
   pruebas de Admin y las suyas conviven en la misma instancia.
 - Pendiente de Fase 9: eliminar o desactivar `admin.prueba@vecitap.com` y su
   membresía en Baja (`3320f4e4-a6de-4ead-89b7-0923c11eb41c`).
+
+---
+
+### Reescritura contra `main` — 28-sep (bloques 0 a 6 construidos)
+
+**Cambio de criterio de Nicolás (28-sep).** La referencia funcional y visual de la
+Fase 4 pasa a ser **la versión actual de los HTML de `main`**, que Gustavo ya probó
+a fondo. La app Next tiene que hacer y parecer exactamente lo mismo; lo único que
+cambia es la estructura (rutas por rol, Server/Client Components, lógica en
+`lib/`, tipado estricto, tokens de `app/globals.css`).
+
+Consecuencias:
+
+1. **Los desvíos de `docs/casos-de-uso-mejorados.md` se revierten**, salvo los que
+   corrigen un riesgo de pérdida o corrupción de datos, o de seguridad. Cada uno
+   de los 22 casos quedó marcado ahí (REVERTIDO / MANTENIDO / PORTADO / RESUELTO /
+   PENDIENTE) con su motivo en una línea, más una tabla resumen al principio.
+2. **Un bug de `main` se copia tal cual**, salvo que arriesgue datos.
+3. **Lo obsoleto por arquitectura no se porta** (conexión manual a Supabase, logins
+   propios por módulo): lo reemplazan las variables de entorno y `/entrar`.
+
+**Por qué había tanto sin portar en módulos ya validados:** los HTML crecieron
+después de que se migraran. Residente se migró de `residente.html` de 1.159 líneas
+(09-sep) y hoy `index.html` tiene 1.774; Operador se migró de 918 líneas (07-sep) y
+hoy tiene 1.174; y `docs/inventario-admin.md` se hizo sobre `app.html` de 5.318
+líneas, mientras que `admin.html` tiene 6.093. "Residente VALIDADO" y "Operador
+VALIDADO" siguen siendo ciertos **contra el HTML que se migró**, no contra `main`
+de hoy.
+
+El inventario nuevo, pantalla por pantalla y acción por acción, está en
+[`docs/inventario-main.md`](inventario-main.md) — reemplaza a
+`docs/inventario-admin.md` como referencia viva.
+
+#### Construido (build y lint verdes en cada bloque)
+
+| Bloque | Alcance |
+|---|---|
+| 0 | El inventario de `main` |
+| 1 | Admin · **Pagos**: registrar, conciliar con el banco, exoneraciones, visor de comprobante, purga de vencidos |
+| 2 | Admin · **Cortes de cuenta** + el recibo en papel unificado con Residente |
+| 3 | Admin · **Estadísticas** (pantalla nueva del socio) |
+| 4 | Admin · **Ajustes** + logo de la administradora + `NuevoEdificio` de vuelta a Ajustes |
+| 5 | Admin · armazón: columna lateral oscura, `mis_modulos`, tasa del BCV en el encabezado, pestaña Vigilantes en Accesos, recuperación de clave |
+| 6 | Reversión de desvíos (umbrales, alícuota, 2 tonos, cédula, obligatorios) + lectura real de Excel y PDF |
+
+**Quedan 6 bloques:**
+
+| Bloque | Alcance |
+|---|---|
+| 7 | **Siguiente.** `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas |
+| 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) |
+| 9 | Operador · `PanelModulos` + campo de clave con ojo en su login |
+| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón, login y "falta un paso" |
+| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar |
+| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** |
+
+Garita ocupa tres bloques porque es un módulo propio, del tamaño de Residente, no
+un archivo suelto — ver "Ruta de la garita" más abajo.
+
+#### Decisiones tomadas en estos bloques
+
+- **El recibo en papel vive una sola vez.** En `main` el mismo código está dos
+  veces, byte a byte (`admin.html:htmlRecibo` e `index.html:papelRecibo` —
+  comprobado con `diff`, solo cambia el nombre de la función). Acá es
+  `lib/recibo-papel.ts` y lo usan Admin y Residente.
+- **La columna lateral reemplaza a `NavAdmin`/`SelectorEdificio`/`EncabezadoAdmin`**,
+  que se borraron. El armazón (`components/admin/MarcoAdmin.tsx`) vive en el layout
+  de `[orgId]`, que es donde está en `main`: una sola columna para toda la
+  organización, no una por edificio. El layout de `[edificioId]` queda solo como
+  gate.
+- **El caso 1 se revierte pese a la decisión anterior.** `docs/estado-migracion.md`
+  decía explícitamente que los 3 tonos de `TarjetaSaldo.tsx` eran una decisión
+  aprobada y que no se revirtiera "por parecer distinto al original". El criterio
+  del 28-sep la reemplaza. Queda anotado en los dos documentos.
+- **Excel y PDF se leen de verdad** (revierte la decisión del 27-sep de quedarse en
+  CSV): `xlsx` 0.20.3 desde `cdn.sheetjs.com` —**no** el 0.18.5 congelado del
+  registro de npm— y `pdfjs-dist`. Los dos entran por `await import(...)`, así que
+  sus chunks (480 KB y 433 KB) solo se bajan cuando alguien elige un archivo.
+  Verificado contra los manifiestos del build: los referencian únicamente
+  `/admin/.../pagos` y `/admin/.../propietarios`, y ninguna ruta de `/mi/*`.
+- **`pdfjs-dist` va en 6.3.289, no en la 3.11.174 de `main`** — desvío de seguridad
+  registrado como caso 23, **aprobado por Nicolás el 28-sep**. CVE-2024-4367 (alta,
+  8,8) afecta a `≤ 4.1.392`: un PDF preparado a propósito puede ejecutar
+  JavaScript en el origen que lo abre, y acá el PDF del banco se lee en el
+  navegador, en el mismo origen que la sesión de Supabase.
+
+#### Lo único que falta para igualar a `main` en aspecto
+
+Los **íconos** (caso 13). `main` usa `lucide` 0.469.0 por CDN en decenas de
+botones y estados vacíos; la app no tiene ninguno. **Nicolás aprobó
+`lucide-react` el 28-sep**: se instala y se aplica en el **bloque 7**, junto con
+las diferencias de Residente. Es lo primero de ese bloque.
+
+#### `types/supabase.ts` — regenerado el 28-sep
+
+Nicolás lo regeneró contra `vecitap-pruebas` y quedó **completo**: las 16
+funciones y las 2 tablas que faltaban están todas (verificado cruzando el archivo
+contra la lista completa de `rpc("…")`/`from("…")` de los cuatro HTML, en las dos
+direcciones). Llegaron 564 líneas: las tablas `bitacora`, `invitaciones_visita`,
+`vehiculos`, `visitantes` y `visitas`, y 29 funciones, entre ellas las 11
+`garita_*`. `npx tsc --noEmit` queda limpio, así que nada de lo ya escrito se
+rompió. Dos detalles para el bloque 10 están anotados en
+`docs/inventario-main.md` sección 5.
+
+**Nada de esto está validado.** Ningún bloque ejecutó una escritura contra la base;
+la validación manual la hace Nicolás.
+
+#### Pendientes concretos que dejan estos bloques
+
+Lo que queda abierto y hay que retomar, además del alcance de los bloques 7 a 10:
+
+- **Instalar `lucide-react` y poner los íconos** (caso 13, aprobado). Es lo
+  primero del bloque 7. Las citas de `main` están en `docs/inventario-main.md`;
+  los puntos donde hoy no hay ícono son los botones de acción de todas las
+  pantallas de Admin, los estados vacíos (`Vacio`) y las flechas de reordenar
+  (`components/ui/Flechas.tsx`, que hoy usa ▲▼ Unicode).
+- **El enlace `/garita` de Accesos apunta a una ruta que todavía no existe.**
+  `components/admin/Accesos.tsx` arma el mensaje que se le copia al vigilante con
+  `${location.origin}/garita` (caso 25); esa ruta se construye recién en el
+  bloque 10. Hasta entonces el enlace copiado lleva a un 404 — no romper nada,
+  pero no probarlo con un vigilante real antes de ese bloque.
+- **Los cuatro módulos comparten la recuperación de clave de `/entrar`.** El
+  bloque 5 la construyó ahí (modo `clave-nueva`, detecta `type=recovery` en el
+  hash y el evento `PASSWORD_RECOVERY`). Operador y Garita no necesitan una
+  pantalla propia; lo que sí falta es el campo de clave con ojo en el login del
+  Operador (bloque 9), que hoy usa un `<input type="password">` pelado.
+- **Al validar Pagos, probar la conciliación con un archivo real de cada tipo**
+  (`.csv`, `.xlsx`, `.pdf`). El lector de PDF es interpretado, no exacto: la
+  previa hay que mirarla con más cuidado, y eso vale igual para "Cargar saldos".
+- **Accesos ya no filtra las unidades por `activa`** al armar el selector de
+  invitar, porque `main` tampoco lo hace (la lista que recibe `Accesos` en
+  `admin.html` es la de `App()`, sin filtro). Si aparece una unidad inactiva en
+  ese selector, es fiel al original, no un bug.
+
+#### Patrones nuevos, para reusar en los bloques que faltan
+
+Se suman a la nota sobre filas editables con `key={`${id}:${valor}`}` que ya
+estaba más arriba. Los dos salieron de pelear con
+`eslint-plugin-react-hooks` en este proyecto:
+
+- **"Cargando" se deriva, no se pone con un `setState` sincrónico.** El lint
+  rechaza `setCargando(true)` dentro de un `useEffect`. La solución que quedó en
+  `Cortes.tsx` y `Estadisticas.tsx`: guardar lo cargado **junto a la clave que
+  lo identifica** (`{ periodoId, filas }`) y derivar `cargando` comparando esa
+  clave con la elegida. De paso arregla un problema real: al cambiar de mes ya no
+  se ven un instante los datos del mes anterior.
+- **Preferencias de `localStorage` con `useSyncExternalStore`.**
+  `lib/preferencia-local.ts` (hoy solo `vecitap_plantilla`, el texto de WhatsApp
+  de Cortes). Leerlo en el inicializador de `useState` rompe la hidratación
+  (en el servidor no hay `localStorage`) y sincronizarlo desde un efecto lo
+  rechaza el lint; `useSyncExternalStore` resuelve las dos cosas. Guarda además
+  una copia en memoria para que siga funcionando en navegación privada.
+
+#### Tropezón de entorno, para no volver a perder tiempo
+
+`npm run build` puede fallar con `EPERM: operation not permitted, unlink
+'.next\server\app\design-system.segments'`. Es OneDrive sosteniendo un archivo
+del build anterior, no un error del código: `rm -rf .next` y volver a construir.
+Va en la misma familia que los avisos de borrado masivo que ya menciona
+`AGENTS.md`.
 
 ---
 
@@ -1001,3 +1166,150 @@ Ida y las cuentas de residente creadas para el bloque 5.
 - No contradecir decisiones ya tomadas y documentadas acá en una fase
   posterior — si algo necesita cambiar, señalarlo explícitamente en vez
   de cambiarlo en silencio.
+
+---
+
+## Ruta de la garita (decidida el 28-sep)
+
+`garita.html` se porta como módulo nuevo en
+**`/garita/[orgId]/[edificioId]/{entrada,adentro,consultar,bitacora}`**, en el
+grupo `app/(garita)/`, con gate de rol `vigilante` sobre `orgId` en `proxy.ts`
+(mismo patrón fail-closed que ya usan `/operador` y `/admin/[orgId]`).
+
+Dos detalles de los tipos, verificados el 28-sep contra `types/supabase.ts` ya
+regenerado (están también en `docs/inventario-main.md`, sección 5):
+
+- **`garita_edificios()` devuelve `{ edificio_id, nombre, org }`, y `org` es el
+  NOMBRE de la organización, no su id.** Para armar `/garita/[orgId]/[edificioId]`
+  hay que resolver el `org_id` por otro lado: la tabla `edificios`, o
+  `edificios_del_vigilante()` cruzado con `organizaciones`. Conviene confirmar
+  primero que un vigilante ve esas tablas por RLS.
+- **A `garita_entrada` hay que pasarle `undefined`, no `null`, en `p_unidad`.**
+  El tipo generado dice `p_unidad: string` (el generador nunca marca nullable),
+  pero `garita.html:721` manda `null` cuando la visita no dice a qué unidad va.
+  `undefined` es como PostgREST omite el parámetro y deja que tome su valor por
+  omisión; `null` explícito no compila.
+
+### Garita es un módulo propio, como los otros tres
+
+**Decisión de Nicolás (28-sep), no negociable:** Garita se construye igual que
+Residente, Operador y Admin — su route group en `app/`, sus componentes en
+`components/garita/`, su lógica en `lib/garita/`, React/Next como el resto y los
+tokens de `app/globals.css`. Dividido en rutas y componentes. **Nunca un solo
+archivo que replique `garita.html`.**
+
+#### Qué significa "no es React" (y qué NO significa)
+
+Es una observación sobre el **archivo original**, no una instrucción para el port.
+`garita.html` está escrito en JavaScript pelado con manipulación de DOM, a
+propósito: el comentario de cabecera dice que en la tableta barata de una garita,
+bajar y compilar React son varios segundos de pantalla en blanco cada vez que la
+reinician — y la reinician.
+
+Lo único que hay que hacer con ese dato: **decírselo al socio.** Al portarlo a
+Next, la garita deja de arrancar en el primer segundo en un equipo viejo. Es una
+consecuencia real de unificar el sistema, y es mejor que la sepa por nosotros y no
+porque el vigilante se queje. Si llegara a doler de verdad, se ataca con las
+herramientas de Next (esa ruta con poco JavaScript de cliente, Server Components
+donde se pueda), no volviendo a un archivo suelto.
+
+#### Tema propio — DECIDIDO (28-sep, aprobado por Nicolás)
+
+`garita.html` guarda el tema en `localStorage` bajo **`vecitap-tema-garita`**, no
+bajo `vecitap-tema`, y arranca en **oscuro** (los otros tres arrancan en claro).
+Es deliberado: la usa otra persona, en otro equipo, parado en una puerta de noche.
+
+**Decisión:** la garita lleva **su propio proveedor de tema, acotado a su route
+group**, con la clave `vecitap-tema-garita` y arranque en oscuro, igual que
+`main`. Nada de compartir `vecitap-tema` con los otros módulos: un vigilante y
+un administrador no se pisan la preferencia. Es además el mismo principio por el
+que `AGENTS.md` protege `vecitap-tema` — no descartar una preferencia ya
+guardada.
+
+Cómo encaja con lo que ya existe, para el bloque 10:
+
+- `lib/theme/ThemeProvider.tsx` hoy tiene la clave y el valor por omisión fijos.
+  Hay que **parametrizarlos** (`clave` y `porOmision`), sin cambiar los valores
+  que usa el resto de la app.
+- El layout del route group de la garita envuelve sus hijos en ese proveedor con
+  `vecitap-tema-garita` / `oscuro`. Queda **anidado** dentro del proveedor raíz, lo
+  cual está bien: `useTema()` en los componentes de la garita resuelve al más
+  cercano, así que escribe en la clave correcta. Los dos escriben `data-theme` en
+  `<html>`, que sigue siendo la única fuente de verdad visual.
+- El script anti-flash (`THEME_INIT_SCRIPT`) corre en el layout raíz para todas
+  las rutas, así que tiene que volverse **consciente de la ruta**: si
+  `location.pathname` empieza con `/garita`, lee `vecitap-tema-garita` con
+  omisión `oscuro`; si no, `vecitap-tema` con omisión `claro`. Un solo script que
+  fija `data-theme` una sola vez antes de pintar. **No** poner un segundo script
+  en el layout de la garita: correría después del primero y produciría justo el
+  parpadeo que ese patrón existe para evitar.
+- Al probarlo, acordarse de la lección de la Fase 2: recargar **con la
+  preferencia ya guardada**, no solo con carga limpia. Es el caso que de verdad
+  ejercita la hidratación, y acá hay dos claves en juego.
+
+#### La paleta — DECIDIDO: tokens compartidos + dos de superficie
+
+Comparado token por token contra `app/globals.css`: en tema claro la paleta de
+`garita.html` **coincide exactamente** (fondo, lienzo, tinta, tinta2, tenue,
+linea, lineaFuerte, verde, rojo). En oscuro coincide todo salvo `--verde` y
+`--rojo`, y esa diferencia **no es drift**: son otro rol.
+
+- En la app, `--verde`/`--rojo` oscuros (`#00D1B2`, `#F08A78`) son colores de
+  **texto** sobre fondo oscuro.
+- En la garita (`garita.html:135`) se usan como **fondo a pantalla completa** del
+  veredicto, con letra blanca encima (`#0E9C86`, `#B03A2A`). El `#00D1B2` de la
+  app detrás de texto blanco sería ilegible.
+
+**Decidido (28-sep, aprobado por Nicolás):** se usan los tokens de
+`app/globals.css` para todo, y el veredicto lleva **tokens de superficie nuevos**,
+`--veredicto-si` / `--veredicto-no`, definidos en los dos temas. **No se pisan
+`--verde`/`--rojo`**, que siguen siendo colores de texto para toda la app.
+
+Valores, tomados de `garita.html:35-49`:
+
+| Token | Claro | Oscuro |
+|---|---|---|
+| `--veredicto-si` | `#0E7C6B` | `#0E9C86` |
+| `--veredicto-no` | `#9B2C1F` | `#B03A2A` |
+
+Los dos llevan texto blanco encima (`#veredicto{ color:#fff }`), a pantalla
+completa. Van en `app/globals.css` junto al resto de los tokens, que es la única
+fuente de verdad de la paleta.
+
+Lo otro que sí es propio de la garita es el **tamaño**: base de 17 px, campos y
+botones de nav de 56 px de alto, botones de acción de 60 px, botones del veredicto
+de 64 px. Eso es para tocar de pie, con guantes o con lluvia — va como clases
+propias del módulo, no tocando los componentes de `components/ui/`.
+
+#### Cómo gatea `proxy.ts` si `garita_edificios()` no devuelve el `org_id`
+
+No hay contradicción: **el gate no usa `garita_edificios()`.** Igual que
+`/admin/[orgId]/*`, `proxy.ts` toma el `orgId` **del segmento de la URL** y llama
+`tiene_rol(orgId, ['vigilante'])`, fail-closed (cualquier error o `!== true`
+redirige). `garita_edificios()` se usa **dentro de la página**, para listar las
+garitas asignadas y llenar el selector — nunca para autorizar.
+
+Donde el `org_id` faltante sí molesta es en **la entrada sin segmentos**: alguien
+que abre `/garita` a secas hay que mandarlo a `/garita/<orgId>/<edificioId>`, y
+para eso hace falta resolver a qué organización pertenece su edificio.
+`garita_edificios()` devuelve `{ edificio_id, nombre, org }` con `org` = **nombre**,
+no id. Dos caminos:
+
+1. Cruzar `edificios_del_vigilante()` (devuelve `uuid[]`) contra la tabla
+   `edificios` para sacar el `org_id`.
+2. Leer `edificios` directo filtrando por los ids de `garita_edificios()`.
+
+**Los dos dependen de algo sin verificar: si un vigilante ve `edificios` por
+RLS.** Un residente sí ve `organizaciones` (lo necesita para su recibo, ver caso
+22), pero de `vigilante` no sabemos nada. Hay que confirmarlo antes de construir
+la ruta — es la primera consulta del bloque de fundaciones:
+
+```sql
+-- Con la sesión de un vigilante real:
+select id, org_id, nombre from edificios;
+```
+
+Si devuelve vacío, el `orgId` no se puede resolver desde el cliente y la ruta
+tiene que cambiar de forma: `/garita/[edificioId]` gateado con
+`edificios_del_vigilante()`, que alcanza y es más simple. Queda como decisión
+abierta, dependiente de esa verificación.

@@ -4,40 +4,23 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Card } from "@/components/ui";
 import { nf } from "@/lib/formato";
+import { leerPDF, leerTabla, parseMonto } from "@/lib/admin/archivos-tabla";
 import { normaliza } from "@/lib/admin/personas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Unidad } from "@/lib/admin/tipos";
 
 type FilaLeida = { cod: string; monto: number | null; unidad: Unidad | null };
 
-/** Igual a parseMonto() en app.html:176-182 — formato venezolano (1.234,56) y también 1234.56. */
-function parseMonto(v: string): number | null {
-  let s = String(v).replace(/[^\d.,-]/g, "").trim();
-  if (!s || s === "-") return null;
-  const coma = s.lastIndexOf(","),
-    punto = s.lastIndexOf(".");
-  if (coma > punto) s = s.replace(/\./g, "").replace(",", ".");
-  else s = s.replace(/,/g, "");
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Lector de CSV, sin dependencias — divide por coma o punto y coma. */
-function leerCSV(texto: string): string[][] {
-  return texto
-    .split(/\r?\n/)
-    .map((l) => l.split(/[,;]/).map((c) => c.trim()))
-    .filter((f) => f.some((c) => c));
-}
+/* La lectura de archivos (`leerTabla` para Excel/CSV, `leerPDF`) y
+   `parseMonto` viven en lib/admin/archivos-tabla.ts: los comparte con la
+   conciliación bancaria de Pagos, igual que en admin.html (las mismas
+   funciones sirven a las dos pantallas). */
 
 /**
- * Portado de ImportarSaldos() en app.html:1788-1915 — con una limitación
- * deliberada (ver docs/estado-migracion.md, sección Admin/Sesión 1): el
- * original lee Excel y PDF con `xlsx`/`pdf.js` cargados por CDN; ninguno
- * es dependencia de este proyecto y esta sesión no instaló paquetes
- * nuevos. Solo queda implementada la lectura de CSV (sin librería) — el
- * resto del flujo (previa, cruce por código, aplicar) está completo y
- * listo para conectar a un lector de Excel/PDF real más adelante.
+ * Portado de ImportarSaldos() en admin.html:1989-2123. Lee Excel, CSV y
+ * PDF, igual que main — las librerías entran por importación diferida
+ * desde lib/admin/archivos-tabla.ts, así que su peso solo se baja cuando
+ * alguien elige de verdad un archivo (ver el comentario de ese archivo).
  */
 export function ImportarSaldos({
   edificioId,
@@ -52,6 +35,8 @@ export function ImportarSaldos({
   const [filas, setFilas] = useState<FilaLeida[]>([]);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nota, setNota] = useState<string | null>(null);
+  const [leyendo, setLeyendo] = useState(false);
   const [hayCierres, setHayCierres] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -73,27 +58,45 @@ export function ImportarSaldos({
   async function leer(file: File | undefined) {
     if (!file) return;
     setError(null);
-    if (!/\.csv$/i.test(file.name)) {
-      setError(
-        "Por ahora solo se puede leer CSV. Excel (.xlsx/.xls) y PDF necesitan un paquete que todavía no está instalado (xlsx / pdf.js) — pendiente de decisión, ver docs/estado-migracion.md."
-      );
-      return;
+    setNota(null);
+    setLeyendo(true);
+    try {
+      /* El PDF no tiene columnas: de cada renglón se saca el código (lo que
+         viene al principio) y el último monto que aparezca
+         (admin.html:2009-2016). */
+      let crudas: string[][];
+      if (/\.pdf$/i.test(file.name)) {
+        crudas = (await leerPDF(file)).map((l) => {
+          const montos = l.match(/-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b/g) || [];
+          const cod = (l.match(/^[A-Za-zÀ-ÿ0-9ºª.\- ]{1,12}/) || [""])[0].trim();
+          return [cod, montos.length ? montos[montos.length - 1] : ""];
+        });
+      } else {
+        crudas = await leerTabla(file);
+      }
+
+      /* Se descartan las filas de total: en las planillas reales siempre hay
+         una al final que, si entra, se carga como si fuera una unidad. */
+      const limpias = crudas
+        .filter((f) => f.length >= 2)
+        .filter((f) => !/total|suma|deuda total/i.test(String(f[0] || "")));
+
+      const res: FilaLeida[] = limpias
+        .map((f) => {
+          const cod = String(f[0] || "").trim();
+          let monto: number | null = null;
+          for (let i = f.length - 1; i >= 1 && monto === null; i--) monto = parseMonto(f[i]);
+          return { cod, monto, unidad: porCodigo[normaliza(cod)] ?? null };
+        })
+        .filter((r) => r.cod && r.monto !== null);
+
+      setFilas(res);
+      const cuantasCruzan = res.filter((r) => r.unidad).length;
+      setNota(`${res.length} filas leídas, ${cuantasCruzan} cruzan con una unidad.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
-    const texto = await file.text();
-    const limpias = leerCSV(texto)
-      .filter((f) => f.length >= 2)
-      .filter((f) => !/total|suma|deuda total/i.test(String(f[0] || "")));
-
-    const res: FilaLeida[] = limpias
-      .map((f) => {
-        const cod = String(f[0] || "").trim();
-        let monto: number | null = null;
-        for (let i = f.length - 1; i >= 1 && monto === null; i--) monto = parseMonto(f[i]);
-        return { cod, monto, unidad: porCodigo[normaliza(cod)] ?? null };
-      })
-      .filter((r) => r.cod && r.monto !== null);
-
-    setFilas(res);
+    setLeyendo(false);
   }
 
   const cruzan = filas.filter((f): f is FilaLeida & { unidad: Unidad; monto: number } => !!f.unidad && f.monto !== null);
@@ -122,7 +125,7 @@ export function ImportarSaldos({
           <div>
             <h2 style={{ margin: 0, fontFamily: "var(--font-titulos)", fontSize: 16 }}>Cargar saldos iniciales</h2>
             <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--tenue)" }}>
-              CSV por ahora. Se cruza por el código de la unidad, sin importar puntos ni espacios.
+              Excel, CSV o PDF. Se cruza por el código de la unidad, sin importar puntos ni espacios.
             </p>
           </div>
           <Button type="button" variante="secundario" mini onClick={onVolver}>
@@ -135,23 +138,27 @@ export function ImportarSaldos({
             <Aviso tono="rojo" titulo="Este edificio ya tiene meses cerrados">
               El saldo inicial solo se usa mientras no exista ningún cierre. Después, el saldo
               parte de la última instantánea y cambiar este número no lo mueve. Si necesita
-              corregir una deuda de un mes ya cerrado, use una exoneración o un cargo puntual
-              (Pagos, Sesión 2).
+              corregir una deuda de un mes ya cerrado, use una exoneración o un cargo puntual.
             </Aviso>
           </div>
         )}
 
         <input
           type="file"
-          accept=".csv"
+          accept=".xlsx,.xls,.csv,.pdf"
+          disabled={leyendo}
           onChange={(e) => leer(e.target.files?.[0])}
           className="control"
           style={{ padding: 10, marginTop: 14 }}
         />
         <p style={{ fontSize: 12, color: "var(--tenue)", marginTop: 8 }}>
           Del archivo se toma la primera columna como código y el último número de la fila como
-          monto.
+          monto. La lectura de Excel y CSV es exacta; la de PDF es interpretada, así que revise la
+          previa con más cuidado.
         </p>
+        {nota && (
+          <p style={{ fontSize: 12.5, color: "var(--tinta-2)", marginTop: 8 }}>{nota}</p>
+        )}
         {error && (
           <div style={{ marginTop: 12 }}>
             <Aviso tono="ambar" titulo="No se pudo leer el archivo">
@@ -164,9 +171,10 @@ export function ImportarSaldos({
       {filas.length > 0 && (
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "16px 18px 0" }}>
-            <h3 style={{ margin: 0, fontSize: 14 }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Previa</h2>
+            <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--tenue)" }}>
               {cruzan.length} de {filas.length} filas cruzan con una unidad
-            </h3>
+            </p>
           </div>
           <div className="tabla-scroll" style={{ maxHeight: 380 }}>
             <table className="tabla">

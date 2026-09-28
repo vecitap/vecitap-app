@@ -11,9 +11,48 @@ desvíos de comportamiento frente al original.
 
 ---
 
+## Criterio del 28-sep — paridad con `main`
+
+Cambio de criterio de Nicolás: **la referencia es la versión actual de los HTML
+de `main`, en funcionalidad y también en estética.** Todo desvío de esta lista se
+revierte, salvo los que corrigen un riesgo de pérdida o corrupción de datos, o de
+seguridad. Cada caso de abajo lleva su marca (REVERTIDO / MANTENIDO / PORTADO /
+RESUELTO / PENDIENTE) justo debajo del título, con el motivo en una línea.
+
+| # | Caso | 28-sep |
+|---|---|---|
+| 1 | Tarjeta de saldo con 3 tonos | REVERTIDO |
+| 2 | Aviso "su saldo no cambia" | REVERTIDO |
+| 3 | Validación del comprobante por firma de bytes | **MANTENIDO** (seguridad) |
+| 4 | Cédula/RIF como selector V/E/G/J | REVERTIDO |
+| 5 | Obligatorios visibles + scroll al error | REVERTIDO |
+| 6 | Registro retirado de `/entrar` | MANTENIDO (ya era paridad) |
+| 7 | "Cobro dentro del recibo" controlado | **MANTENIDO** (pérdida de datos) |
+| 8 | Varias membresías por organización | **MANTENIDO** (modelo de datos) |
+| 9 | `aceptar_invitacion` no sobrescribe | **MANTENIDO** (pérdida de datos) |
+| 10 | Normalización de `unidad_id`/`edificio_id` | **MANTENIDO** (corrupción de datos) |
+| 11 | Umbral de saldo unificado | REVERTIDO |
+| 12 | Alícuota a 4 decimales en Propietarios | REVERTIDO |
+| 13 | Íconos de `lucide` no portados | **APROBADO, pendiente** (bloque 7) |
+| 14 | `ImportarSaldos` solo CSV | RESUELTO |
+| 15 | Columna lateral oscura no portada | PORTADO |
+| 16 | Paleta de `main` | MANTENIDO (es la de `main`) |
+| 17 | Recibo con la tasa de hoy | PORTADO |
+| 18 | `porCobrar`/`aFavor` suman en la app | MANTENIDO (es lo que hace `main`) |
+| 19 | Alta de administradora abierta | MANTENIDO (es lo que hace `main`) |
+| 20 | Enlace "¿Viene a registrar su administradora?" | MANTENIDO (arquitectura) |
+| 21 | `NuevoEdificio` movido al selector | REVERTIDO |
+| 22 | `/destino` y `/admin` deciden por rol | **MANTENIDO** (corrección de bug) |
+| 23 | `pdfjs-dist` más nuevo que el de `main` | **APROBADO** (seguridad) |
+| 24 | Librerías empaquetadas, no traídas de un CDN | **NUEVO** (seguridad) |
+| 25 | Enlace de la garita a `/garita` | NUEVO (arquitectura) |
+
+
 ## Residente
 
 ### 1. Tarjeta de saldo con 3 tonos en vez de 2
+
+> **28-sep — REVERTIDO.** Vuelve a los 2 tonos de `main` (rojo si debe, verde para todo lo demás, comparado contra cero sin margen). El criterio nuevo pide paridad también en lo visual, y eso pesa más que la decisión de diseño anterior.
 
 **Caso de uso:** cuando un residente tiene saldo a favor (le deben a él, no al revés),
 la tarjeta de saldo se lo muestra con un color propio, distinto del verde que usa el
@@ -33,6 +72,8 @@ original para "todo lo que no es deuda".
 
 ### 2. Aviso "su saldo no cambia hasta que se confirme"
 
+> **28-sep — REVERTIDO.** La línea no existe en `main`; se quitó de `MisPagos.tsx`.
+
 **Caso de uso:** un residente que acaba de reportar un pago ve, junto al estado
 "Esperando revisión", una aclaración de que su saldo no se va a actualizar todavía —
 para que no piense que el sistema falló si el número no cambia de inmediato.
@@ -47,6 +88,8 @@ para que no piense que el sistema falló si el número no cambia de inmediato.
 - **Cómo se revierte:** quitar el bloque condicional de `MisPagos.tsx:49-53`.
 
 ### 3. Validación real del comprobante (firma de bytes, no extensión)
+
+> **28-sep — MANTENIDO.** Excepción de seguridad: sin esto, un archivo cualquiera renombrado a `.jpg` entra como comprobante válido y ensucia la evidencia de una conciliación.
 
 **Caso de uso:** si alguien sube un archivo que no es una foto ni un PDF real (por
 ejemplo un archivo de texto renombrado a `.jpg`), el sistema lo rechaza aunque el
@@ -67,6 +110,8 @@ nombre y el tipo que reporta el navegador digan que es una imagen válida.
 
 ### 4. Cédula/RIF como selector V/E/G/J + número, en vez de texto libre
 
+> **28-sep — REVERTIDO.** `main` usa un solo campo de texto libre (`index.html:1683-1688`), con la ayuda "Solo los números, sin puntos.".
+
 **Caso de uso:** al reportar un pago móvil, la persona elige el tipo de documento
 (V/E/G/J) de una lista y escribe solo los números — no puede escribir el guion, letras
 sueltas u otro formato que después no case con lo que espera la administración.
@@ -85,6 +130,8 @@ sueltas u otro formato que después no case con lo que espera la administración
 
 ### 5. Formulario de pago: obligatorios visibles y validados antes de enviar
 
+> **28-sep — REVERTIDO.** Sin marcas de obligatorio ni scroll automático al aviso: `main` no los tiene.
+
 **Caso de uso:** si a alguien le falta llenar un campo obligatorio, la pantalla se lo
 señala con un asterisco desde el principio y, si igual intenta enviar, hace scroll
 automático hasta el aviso de error — no se queda con el formulario vacío sin
@@ -100,6 +147,8 @@ explicación.
   `obligatorio`.
 
 ### 6. Registro de residentes retirado de `/entrar`
+
+> **28-sep — MANTENIDO.** Ya estaba deshecho: `main` expone "Crear cuenta" en las tres pantallas de Entrar, así que el botón reactivado ES la paridad.
 
 **Caso de uso:** hoy nadie puede crear su propia cuenta de residente desde la pantalla
 de acceso — las cuentas las sigue creando la administración por fuera del sistema. El
@@ -134,6 +183,8 @@ botón que lo active.
 ## Operador
 
 ### 7. "Cobro dentro del recibo": campo controlado, sin doble-insert ni desfase
+
+> **28-sep — MANTENIDO.** Excepción explícita de pérdida de datos: sin el campo controlado, entrar y salir del campo pisaba un monto real por 0 y apagaba el cobro.
 
 **Caso de uso:** cuando el operador edita el monto de un servicio recurrente en la
 ficha de un cliente, el campo siempre muestra el valor real guardado (no se queda
@@ -174,6 +225,8 @@ migración.
 
 ### 8. Una persona puede tener varias membresías en la misma organización
 
+> **28-sep — MANTENIDO.** Corrección de modelo de datos ya aplicada en la base: sin ella, la segunda membresía de una persona pisaba la primera.
+
 **Caso de uso:** un propietario con dos apartamentos en el mismo condominio, o alguien
 que además de vivir en su unidad participa en la junta de condominio, va a poder tener
 las dos membresías activas al mismo tiempo — hoy el sistema solo lo deja tener una.
@@ -202,6 +255,8 @@ las dos membresías activas al mismo tiempo — hoy el sistema solo lo deja tene
   caso 10 nula.
 
 ### 9. `aceptar_invitacion` ya no reemplaza una membresía existente en silencio
+
+> **28-sep — MANTENIDO.** Pérdida de datos: sobrescribía una membresía existente en silencio.
 
 **Caso de uso:** si alguien que ya tenía un rol en una organización (por ejemplo,
 miembro de la junta) acepta una nueva invitación en esa misma organización (por
@@ -243,6 +298,8 @@ darse cuenta.
   anterior no admite que coexistan.
 
 ### 10. Normalización de `unidad_id`/`edificio_id` según el rol de la membresía
+
+> **28-sep — MANTENIDO.** Corrupción de datos ya observada (2 membresías con un edificio guardado de más).
 
 **Caso de uso:** una membresía solo guarda el dato que le corresponde a su rol —
 un residente nunca queda con un edificio pegado, ni un miembro de junta con una
@@ -288,6 +345,8 @@ con el socio comercial que el resto de esta lista.
 
 ### 11. Umbral de saldo unificado contra `estado`/`UMBRAL_SALDO`, no contra literales
 
+> **28-sep — REVERTIDO.** Vuelven los literales de `main` (`> 0.01` / `<= 0.01` / `< -0.01`) en Inicio (`metricas.ts`), Propietarios y Ficha. El widget `Edificio` sigue usando `estado`, porque `main` también lo hace ahí.
+
 **Caso de uso:** qué unidades cuentan como "con deuda" (en el KPI de Inicio, en el
 filtro de Propietarios, en la Ficha) ahora es siempre la misma clasificación que ya
 calcula la base, sin un margen distinto según la pantalla.
@@ -309,6 +368,8 @@ calcula la base, sin un margen distinto según la pantalla.
 
 ### 12. Alícuota siempre a 4 decimales, también en la lista de Propietarios
 
+> **28-sep — REVERTIDO.** La lista de Propietarios vuelve a `nf(5)` sin `%`, como `admin.html:1731`. El resto de las pantallas sigue con `pct()`, que es lo que `main` usa en cada una.
+
 **Caso de uso:** la alícuota se ve con el mismo formato en todas las pantallas de
 Admin — antes la lista de Propietarios la mostraba distinto que el resto.
 
@@ -325,6 +386,8 @@ Admin — antes la lista de Propietarios la mostraba distinto que el resto.
 
 ### 13. Íconos de `lucide` no portados
 
+> **28-sep — APROBADO, pendiente de implementar (bloque 7).** Nicolás aprobó instalar `lucide-react` (la misma librería, `lucide` 0.469.0, que `main` carga por CDN) para igualar los íconos. Es la única brecha visual que queda frente a `main`.
+
 **Caso de uso:** ninguno visible para quien usa la aplicación salvo estético — los
 botones que en `app.html` llevan un ícono (Plus, Trash2, ChevronRight, Search,
 etc.) ahora son solo texto o, donde el ícono era la única pista (Flechas de
@@ -337,12 +400,15 @@ reordenar), un carácter Unicode (▲▼).
   en esta sesión (instrucción explícita de Nicolás).
 - **Motivo:** consistencia con el resto de la migración, no una limitación técnica
   — `lucide-react` existe y se puede instalar cuando se decida.
-- **Estado:** aplicado (ausencia deliberada). Pendiente: decidir si se instala
-  `lucide-react` para las tres pantallas migradas y esta, de una sola vez.
+- **Estado (27-sep):** aplicado (ausencia deliberada). **Superado el 28-sep:**
+  `lucide-react` aprobado, se instala y se aplica en el bloque 7 a las cuatro
+  pantallas de una sola vez — ver la marca al principio de este caso.
 - **Cómo se revierte:** instalar `lucide-react` y agregar los íconos donde
   corresponda — no hay nada que deshacer, es agregar lo que falta.
 
 ### 14. `ImportarSaldos`: solo lee CSV por ahora, no Excel ni PDF
+
+> **28-sep — RESUELTO.** Ya lee Excel y PDF, igual que `main`: `xlsx` 0.20.3 desde `cdn.sheetjs.com` (no el 0.18.5 congelado del registro de npm) y `pdfjs-dist`. Ver el caso 23 por la versión de `pdfjs-dist`.
 
 **Caso de uso:** cargar saldos iniciales desde un archivo `.csv` funciona igual que
 en el original; desde `.xlsx`/`.xls`/`.pdf` todavía no — se muestra un aviso
@@ -371,6 +437,8 @@ explicando por qué en vez de fallar en silencio o fingir que se leyó.
 
 ### 15. Columna lateral oscura de `main` no portada — `NavAdmin` sigue horizontal
 
+> **28-sep — PORTADO.** La columna lateral oscura está construida (`components/admin/MarcoAdmin.tsx` + los estilos `.admin-*` de `ui.css`), con el menú hamburguesa y el velo de ≤900 px.
+
 **Caso de uso:** navegar entre secciones de Admin se ve igual que en la Sesión 1
 (botones horizontales debajo del encabezado), no como el menú lateral oscuro que
 el socio agregó en `main` entre el 09-sep y el 22-sep.
@@ -391,6 +459,8 @@ el socio agregó en `main` entre el 09-sep y el 22-sep.
 - **Cómo se revierte:** no aplica — todavía no se portó nada que revertir.
 
 ### 16. Paleta de colores actualizada a la de `main` (slate frío, 27-sep)
+
+> **28-sep — MANTENIDO.** Es la paleta de `main`. Lo que faltaba (`papel-recibo.ts` con los hex viejos) se resolvió al unificar el recibo en `lib/recibo-papel.ts`.
 
 **Caso de uso:** el aspecto visual de toda la app (los tres módulos, no solo
 Admin) cambió de la paleta original (crema `#F4F1EC` / marino `#111144`) a la
@@ -416,6 +486,8 @@ paleta slate que el socio subió a `main` (`#F8FAFC` / `#0A1128`).
 
 ### 17. Recibo con la tasa del BCV de HOY, no la congelada del período — no portado
 
+> **28-sep — PORTADO.** El recibo en papel y el de pantalla usan la tasa viva y estampan su fecha, igual que `main`. Sigue siendo un cambio con efecto en dinero: vale la pena mencionárselo al socio, aunque ya sea lo que sus HTML hacen.
+
 **Caso de uso:** al imprimir un corte de cuenta desde Cortes, el equivalente en
 bolívares seguiría calculándose con la tasa que quedó congelada al cerrar el
 período, no con la de hoy.
@@ -436,6 +508,8 @@ período, no con la de hoy.
 - **Cómo se revierte:** no aplica — todavía no se portó nada que revertir.
 
 ### 18. `porCobrar`/`aFavor`/`sumaAlicuotas` de Inicio: suma en la app, no en la base
+
+> **28-sep — MANTENIDO.** Es exactamente lo que hace `main`; no hay nada que revertir.
 
 **Caso de uso:** los tres números de la pantalla Inicio de Admin (por cobrar, a
 favor, suma de alícuotas) siguen calculándose sumando en el navegador, igual que
@@ -460,6 +534,8 @@ en `app.html`.
   comportamiento que `app.html` siempre tuvo.
 
 ### 19. El alta de administradora queda abierta a cualquier cuenta registrada
+
+> **28-sep — MANTENIDO.** Es exactamente lo que hace `main`. La decisión de producto (si el alta debe pasar por Vecitap) sigue abierta.
 
 **Caso de uso:** con el registro reactivado (caso 6), cualquiera que cree una cuenta
 en `/entrar` y entre a `/admin` ve el formulario de "Nueva administradora". La
@@ -491,6 +567,8 @@ organización que cree es suya, y aparece en la cartera que ve el operador de Ve
 
 ### 20. Enlace "¿Viene a registrar su administradora?" en la pantalla de invitación
 
+> **28-sep — MANTENIDO.** Equivalencia de arquitectura: `main` tiene un archivo por rol y nunca comparte esta pantalla; la app comparte un solo `/entrar`, así que sin el enlace esa cuenta no tiene cómo llegar a `/admin`.
+
 **Caso de uso:** alguien que se acaba de registrar para administrar un condominio
 (no para vivir en uno) y cae en "Falta un paso" (la pantalla de aceptar una
 invitación de residente) ahora tiene un enlace visible a `/admin` en vez de quedar
@@ -513,6 +591,8 @@ atascado pegando un código que no tiene.
   nada más.
 
 ### 21. `NuevoEdificio` movido de Ajustes al selector de edificio
+
+> **28-sep — REVERTIDO.** `NuevoEdificio` vuelve a abrirse desde el encabezado de "Datos del edificio" en Ajustes, como `admin.html:5817-5819`, y se quitó del selector de edificio.
 
 **Caso de uso:** una organización que ya tiene al menos un edificio puede crear
 otro sin pasar por Ajustes (que no está portado) — el botón "+ Otro edificio"
@@ -538,6 +618,8 @@ vive junto al selector de edificio, arriba de cada sección.
   no tiene otro punto de entrada.
 
 ### 22. `/destino` y `/admin` decidían "es administrador" por visibilidad de tabla, no por rol
+
+> **28-sep — MANTENIDO.** Corrección de un bug propio de compartir sesión entre roles, que `main` no necesita resolver porque cada rol tiene su archivo y su clave de `localStorage`.
 
 **Caso de uso:** un residente que entra sin decir a dónde va (o que escribe `/admin`
 a mano) ahora cae siempre en su recibo, no en el panel de administración de su
@@ -572,3 +654,62 @@ propio edificio.
   veces seguidas).
 - **Cómo se revierte:** no aplica — es la corrección de un bug real, no una
   decisión de producto a reconsiderar.
+
+---
+
+## Desvíos nuevos del 28-sep
+
+### 23. `pdfjs-dist` en una versión más nueva que la de `main`
+
+**Caso de uso:** ninguno visible — se lee el mismo PDF del banco. Lo que cambia es
+que el lector no tiene una vulnerabilidad conocida.
+
+- **`main`:** carga `pdf.js` **3.11.174** desde cdnjs (`admin.html:350-373`).
+- **Ahora:** `pdfjs-dist` **6.3.289**, como dependencia del proyecto.
+- **Motivo:** **CVE-2024-4367** (severidad alta, 8,8) afecta a `pdfjs-dist ≤ 4.1.392`
+  y se corrigió en 4.2.67. Con la configuración por omisión, un PDF preparado a
+  propósito puede ejecutar JavaScript en el dominio que lo abre. Acá el PDF lo sube
+  quien concilia, se lee **en el navegador** y en el mismo origen que la sesión de
+  Supabase — es exactamente el escenario del CVE. Entra por la excepción de
+  seguridad del criterio del 28-sep.
+- **Estado:** aplicado y **aprobado por Nicolás el 28-sep**. La API que se usa
+  (`getDocument`, `getTextContent`, `transform`) es la misma en las dos versiones,
+  así que el texto extraído no cambia.
+- **Cómo se revierte:** `npm install pdfjs-dist@3.11.174`. **No recomendado**:
+  reintroduce el CVE.
+
+### 24. Excel y PDF se empaquetan con la app, no se bajan de un CDN
+
+**Caso de uso:** la conciliación y la carga de saldos funcionan aunque la red del
+edificio bloquee cdnjs o cdn.jsdelivr, y no hay un tercero que pueda cambiar el
+código que lee los archivos del banco.
+
+- **`main`:** baja SheetJS, PapaParse y pdf.js por CDN en el momento de usarlos
+  (`admin.html:350-387`); si el CDN falla, la pantalla dice "lector no disponible".
+- **Ahora:** las dos librerías son dependencias reales y viajan en el build. Se
+  importan de forma diferida (`await import(...)`), así que su peso —480 KB de
+  SheetJS, 433 KB de pdf.js— solo se baja cuando alguien elige de verdad un
+  archivo, y nunca entra al bundle del residente (verificado contra los manifiestos
+  del build: los dos chunks solo los referencian `/admin/.../pagos` y
+  `/admin/.../propietarios`).
+- **Motivo:** el CSV se lee sin librería (`leerCSV` en `lib/admin/archivos-tabla.ts`,
+  reemplaza a PapaParse). Para Excel, `npm install xlsx` trae la 0.18.5, congelada
+  desde 2022 y con vulnerabilidades conocidas; la versión mantenida se instala
+  desde `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`, que es lo que quedó
+  en `package.json`.
+- **Estado:** aplicado.
+- **Cómo se revierte:** no aplica — es la forma de portar lo que `main` ya hacía.
+
+### 25. El enlace de la garita apunta a `/garita`, no a `garita.html`
+
+**Caso de uso:** el mensaje que Accesos copia para el vigilante lleva a la pantalla
+de la garita de esta app.
+
+- **`main`:** `admin.html:4190` arma el enlace como `…/garita.html`, un archivo
+  suelto al lado de `admin.html`.
+- **Ahora:** `/garita`, que es la ruta equivalente en la app.
+- **Motivo:** equivalencia de arquitectura, igual que el enlace al portal del
+  residente (`/entrar?volver=/mi` en vez de la raíz del sitio). No es un cambio de
+  comportamiento: es la misma pantalla en la dirección que le corresponde acá.
+- **Estado:** aplicado en `components/admin/Accesos.tsx`. La ruta en sí se
+  construye en el bloque 10.

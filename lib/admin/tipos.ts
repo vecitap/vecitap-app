@@ -66,3 +66,87 @@ export type InvitacionAdmin = Database["public"]["Functions"]["invitaciones_de"]
 
 /** Fila de `residentes_de(p_edificio)` — portado en Accesos. */
 export type ResidenteAcceso = Database["public"]["Functions"]["residentes_de"]["Returns"][number];
+
+/** Columnas que selecciona Pagos() en admin.html:3316-3320. */
+export type PagoAdmin = Pick<
+  Database["public"]["Tables"]["pagos"]["Row"],
+  | "id"
+  | "unidad_id"
+  | "fecha"
+  | "monto"
+  | "moneda"
+  | "tasa_aplicada"
+  | "monto_usd"
+  | "metodo"
+  | "destino"
+  | "referencia"
+  | "banco"
+  | "banco_codigo"
+  | "telefono_origen"
+  | "documento_origen"
+  | "correo_origen"
+  | "reportado_por"
+  | "estado"
+  | "periodo_cierre_id"
+  | "nota"
+>;
+
+/** `bancos` activos, como los pide admin.html:3327. */
+export type BancoFila = Pick<Database["public"]["Tables"]["bancos"]["Row"], "codigo" | "nombre" | "corto">;
+
+/** Ficha del comprobante (sin la imagen), como admin.html:3336-3337. */
+export type ComprobanteFila = Pick<
+  Database["public"]["Tables"]["comprobantes"]["Row"],
+  "id" | "pago_id" | "ruta" | "tipo" | "bytes" | "sha256" | "subido_en" | "imagen_borrada_en"
+>;
+
+/** Fila de `recibos` que lee Cortes() en admin.html:4943-4944. */
+export type ReciboAdmin = Pick<
+  Database["public"]["Tables"]["recibos"]["Row"],
+  | "id"
+  | "unidad_id"
+  | "numero"
+  | "cuota"
+  | "directos"
+  | "anterior"
+  | "a_favor"
+  | "mora"
+  | "honorario"
+  | "servicio"
+  | "anterior_hon"
+  | "anterior_serv"
+  | "total"
+  | "conceptos"
+  | "detalle"
+  | "tasa_bcv"
+  | "vence_el"
+  | "alicuota"
+>;
+
+/** Partida fija anidada dentro de su categoría, como admin.html:5685-5686. */
+export type PartidaFija = Pick<
+  Database["public"]["Tables"]["partidas_fijas"]["Row"],
+  "id" | "concepto" | "referencia" | "monto" | "orden"
+>;
+
+export type CategoriaConPartidas = CategoriaAdmin & { partidas_fijas: PartidaFija[] };
+
+/** La tasa viva del encabezado de Admin (admin.html:1148-1216). */
+export type TasaViva = {
+  valor: number;
+  fuente: string;
+  actualizada: string | null;
+  dias: number | null;
+};
+
+/** Las cinco consultas de Estadísticas (admin.html:4611-4620), ya resueltas. */
+export type DatosEstadisticas = {
+  resumen: Database["public"]["Functions"]["estadisticas_periodo"]["Returns"][number] | null;
+  categorias: Database["public"]["Functions"]["gastos_por_categoria"]["Returns"];
+  top: Database["public"]["Functions"]["top_gastos"]["Returns"];
+  serie: Database["public"]["Functions"]["serie_edificio"]["Returns"];
+  mora: Database["public"]["Functions"]["morosidad_edificio"]["Returns"];
+};
+
+/** Fila de `vigilantes_de(p_org)` — pestaña Vigilantes de Accesos. */
+export type VigilanteAcceso = Database["public"]["Functions"]["vigilantes_de"]["Returns"][number];

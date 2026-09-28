@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { Aviso, Badge, Button, Campo, Input, Select, type TonoBadge } from "@/components/ui";
 import { correoValido } from "@/lib/admin/personas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
-import type { InvitacionAdmin, ResidenteAcceso } from "@/lib/admin/tipos";
+import { fechaCorta } from "@/lib/formato";
+import type { InvitacionAdmin, ResidenteAcceso, VigilanteAcceso } from "@/lib/admin/tipos";
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
-type Pestana = "invitar" | "pendientes" | "gente";
+type Pestana = "invitar" | "pendientes" | "gente" | "vigilantes";
 
 const TONO_ESTADO: Record<string, TonoBadge> = {
   aceptada: "verde",
@@ -16,33 +17,44 @@ const TONO_ESTADO: Record<string, TonoBadge> = {
 };
 
 /**
- * Portado de Accesos() en app.html:3712-4143 — sin la pestaña de
- * vigilantes (requiere el módulo `garita`, fuera de alcance hoy, ver
- * docs/estado-migracion.md). `codigoUnidad()` del original no se portó:
- * estaba definida pero nunca se usaba en ninguna de las tres pestañas que
- * sí se portan acá.
+ * Portado de Accesos() en admin.html:3899-4252, con las cuatro pestañas:
+ * Invitar · Invitaciones · Quién tiene acceso · Vigilantes. La de
+ * vigilantes solo aparece si el edificio tiene contratada la garita —
+ * sin el módulo, invitar a un vigilante sería darle una cuenta para
+ * entrar a una pantalla donde la base le niega todo.
+ *
+ * `codigoUnidad()` del original no se portó: estaba definida pero nunca se
+ * usaba en ninguna pestaña.
  *
  * Igual que CierreMes.tsx: `notificar`/`fallo` locales (no hay una versión
- * global en este proyecto) y los datos de las tres pestañas son estado
- * propio, cargado por su cuenta con `cargar()` — mismo patrón que el
- * original, en vez de pasar por Server Component + `router.refresh()`
- * (`invs`/`gente` no son props de la página, cambian con cada pestaña y
- * con cada acción).
+ * global en este proyecto) y los datos de las pestañas son estado propio,
+ * cargado por su cuenta con `cargar()` — mismo patrón que el original, en
+ * vez de pasar por Server Component + `router.refresh()` (`invs`/`gente`/
+ * `vigis` no son props de la página, cambian con cada acción).
  */
 export function Accesos({
   orgId,
   edificioId,
+  nombreEdificio,
+  edificios,
   unidades,
+  hayGarita,
 }: {
   orgId: string;
   edificioId: string;
+  nombreEdificio: string;
+  edificios: { id: string; nombre: string }[];
   unidades: { id: string; codigo: string }[];
+  hayGarita: boolean;
 }) {
   const [pest, setPest] = useState<Pestana>("invitar");
   const [f, setF] = useState({ unidad: "", correo: "", relacion: "propietario" });
   const [codigo, setCodigo] = useState<{ token: string; correo: string } | null>(null);
   const [invs, setInvs] = useState<InvitacionAdmin[]>([]);
   const [gente, setGente] = useState<ResidenteAcceso[]>([]);
+  const [vigis, setVigis] = useState<VigilanteAcceso[]>([]);
+  const [fv, setFv] = useState({ correo: "", edificio: "" });
+  const [codigoVig, setCodigoVig] = useState<{ token: string; correo: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
 
@@ -81,6 +93,53 @@ export function Accesos({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, edificioId]);
+
+  useEffect(() => {
+    if (!hayGarita) return;
+    const supabase = crearClienteNavegador();
+    supabase.rpc("vigilantes_de", { p_org: orgId }).then(({ data, error }) => {
+      if (error) return fallo(error);
+      setVigis(data ?? []);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, hayGarita]);
+
+  async function cargarVigis() {
+    const supabase = crearClienteNavegador();
+    const { data, error } = await supabase.rpc("vigilantes_de", { p_org: orgId });
+    if (error) return fallo(error);
+    setVigis(data ?? []);
+  }
+
+  async function invitarVigilante() {
+    const correo = (fv.correo || "").trim().toLowerCase();
+    const ed = fv.edificio || edificioId;
+    if (!ed) return notificar("Elija el edificio de la garita.", "error");
+    if (!correoValido(correo)) return notificar("Ese correo no se entiende.", "error");
+    setOcupado(true);
+    const supabase = crearClienteNavegador();
+    const { data, error } = await supabase.rpc("crear_invitacion", {
+      p_org: orgId,
+      p_correo: correo,
+      p_rol: "vigilante",
+      p_edificio: ed,
+      p_unidad: undefined,
+      p_relacion: undefined,
+    });
+    setOcupado(false);
+    if (error) return fallo(error);
+    setCodigoVig({ token: data, correo });
+    setFv({ ...fv, correo: "" });
+    cargarVigis();
+  }
+
+  async function fijarVigilante(id: string, activo: boolean) {
+    const supabase = crearClienteNavegador();
+    const { error } = await supabase.rpc("fijar_vigilante", { p_membresia: id, p_activo: activo });
+    if (error) return fallo(error);
+    notificar(activo ? "Vigilante reactivado." : "Ese vigilante ya no entra a la garita.");
+    cargarVigis();
+  }
 
   async function invitar() {
     if (!f.unidad) return notificar("Elija la unidad.", "error");
@@ -147,6 +206,7 @@ export function Accesos({
             ["invitar", "Invitar"],
             ["pendientes", "Invitaciones"],
             ["gente", "Quién tiene acceso"],
+            ...(hayGarita ? ([["vigilantes", "Vigilantes"]] as [Pestana, string][]) : []),
           ] as [Pestana, string][]
         ).map(([k, t]) => (
           <Button key={k} type="button" variante={pest === k ? "primario" : "secundario"} mini onClick={() => setPest(k)}>
@@ -308,14 +368,16 @@ export function Accesos({
       {pest === "gente" && (
         <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)" }}>
           <div style={{ padding: "18px 18px 0" }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Quién tiene acceso</h2>
+            <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>
+              Quién tiene acceso · {nombreEdificio}
+            </h2>
             <p style={{ margin: "3px 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
               Qué ve el inquilino se decide por unidad, no por persona. El propietario siempre ve
               todo.
             </p>
           </div>
           <div className="tabla-scroll">
-            <table className="tabla">
+            <table className="tabla apila">
               <thead>
                 <tr>
                   <th>Unidad</th>
@@ -360,6 +422,155 @@ export function Accesos({
             </div>
           )}
         </div>
+      )}
+
+      {pest === "vigilantes" && hayGarita && (
+        <>
+          <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)", padding: 18 }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: 16, fontFamily: "var(--font-titulos)" }}>
+              Invitar a un vigilante
+            </h2>
+            <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
+              Un correo por persona o por turno, nunca uno compartido: la bitácora guarda quién hizo
+              cada cosa, y con una cuenta compartida esa firma no sirve de nada.
+            </p>
+            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+              <Campo etiqueta="Edificio de la garita">
+                <Select value={fv.edificio || edificioId} onChange={(e) => setFv({ ...fv, edificio: e.target.value })}>
+                  {edificios.map((e2) => (
+                    <option key={e2.id} value={e2.id}>
+                      {e2.nombre}
+                    </option>
+                  ))}
+                </Select>
+              </Campo>
+              <Campo etiqueta="Correo del vigilante">
+                <Input
+                  value={fv.correo}
+                  placeholder="vigilante@correo.com"
+                  onChange={(e) => setFv({ ...fv, correo: e.target.value })}
+                />
+              </Campo>
+            </div>
+            <div style={{ marginTop: 16, fontSize: 12.5, color: "var(--tinta-2)", lineHeight: 1.6 }}>
+              El vigilante solo ve el edificio donde lo asigne, y dentro de él solo el código de cada
+              unidad y el nombre de quien vive ahí. No ve saldos, ni recibos, ni pagos, ni teléfonos.
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <Button type="button" disabled={ocupado} onClick={invitarVigilante}>
+                Generar la invitación
+              </Button>
+            </div>
+          </div>
+
+          {codigoVig && (
+            <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)", padding: 18 }}>
+              <h2 style={{ margin: "0 0 4px", fontSize: 16, fontFamily: "var(--font-titulos)" }}>
+                Código para {codigoVig.correo}
+              </h2>
+              <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
+                Este código se muestra una sola vez. Pásaselo al vigilante junto con el enlace de la
+                garita.
+              </p>
+              <div
+                className="mono"
+                style={{
+                  padding: "14px 16px",
+                  background: "var(--fondo)",
+                  borderRadius: "var(--radio-chico)",
+                  border: "1px solid var(--linea)",
+                  wordBreak: "break-all",
+                  fontSize: 13.5,
+                }}
+              >
+                {codigoVig.token}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 16 }}>
+                <Button type="button" variante="secundario" onClick={() => copiar(codigoVig.token)}>
+                  Copiar el código
+                </Button>
+                <Button
+                  type="button"
+                  variante="secundario"
+                  onClick={() =>
+                    copiar(
+                      `Hola. Para entrar al panel de seguridad de la garita, abra ` +
+                        // El original manda a `garita.html`, que en main es un
+                        // archivo suelto. Acá la garita es una ruta de la app.
+                        `${location.origin}/garita\n\n` +
+                        `Toque "Es mi primera vez", cree su clave con el correo ` +
+                        `${codigoVig.correo} y pegue este código:\n${codigoVig.token}`
+                    )
+                  }
+                >
+                  Copiar el mensaje completo
+                </Button>
+                <Button type="button" variante="secundario" onClick={() => setCodigoVig(null)}>
+                  Listo
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)" }}>
+            <div style={{ padding: "18px 18px 0" }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Vigilantes</h2>
+              <p style={{ margin: "3px 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
+                Al que deja el puesto se le da de baja, no se le borra: la bitácora que firmó tiene
+                que seguir teniendo a quién apuntar.
+              </p>
+            </div>
+            {vigis.length === 0 ? (
+              <div style={{ padding: 34, textAlign: "center", color: "var(--tenue)", fontSize: 14 }}>
+                Todavía no hay vigilantes dados de alta.
+              </div>
+            ) : (
+              <div className="tabla-scroll">
+                <table className="tabla apila">
+                  <thead>
+                    <tr>
+                      <th>Correo</th>
+                      <th>Edificio</th>
+                      <th>Anotaciones</th>
+                      <th>Última vez</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vigis.map((v) => (
+                      <tr key={v.membresia_id} style={{ opacity: v.activo ? 1 : 0.55 }}>
+                        <td className="cabeza" data-t="Correo">
+                          {v.correo}
+                        </td>
+                        <td data-t="Edificio">{v.edificio || "—"}</td>
+                        <td data-t="Anotaciones" className="mono">
+                          {v.anotaciones}
+                        </td>
+                        <td data-t="Última vez">
+                          {v.ultima_anotacion ? (
+                            fechaCorta(v.ultima_anotacion)
+                          ) : (
+                            <span style={{ color: "var(--tenue)" }}>nunca</span>
+                          )}
+                        </td>
+                        <td className="acciones">
+                          <Button
+                            type="button"
+                            variante="secundario"
+                            mini
+                            onClick={() => fijarVigilante(v.membresia_id, !v.activo)}
+                          >
+                            {v.activo ? "Dar de baja" : "Reactivar"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

@@ -32,12 +32,6 @@ const METODOS: Record<
   Otro: { referencia: true },
 };
 
-// Fase 4 (fix 3): antes un solo input de texto libre. Un V/E/G/J real
-// reduce ambigüedad para la administración al conciliar contra el banco.
-const TIPOS_DOCUMENTO = ["V", "E", "G", "J"] as const;
-
-type TipoDocumento = (typeof TIPOS_DOCUMENTO)[number];
-
 type Tasa = { fecha: string; tasa: number; propia: boolean };
 
 type EstadoFormulario = {
@@ -48,8 +42,7 @@ type EstadoFormulario = {
   referencia: string;
   banco: string;
   telefono: string;
-  documentoTipo: TipoDocumento;
-  documentoNumero: string;
+  documento: string;
   correo: string;
 };
 
@@ -61,19 +54,25 @@ const VACIO: EstadoFormulario = {
   referencia: "",
   banco: "",
   telefono: "",
-  documentoTipo: "V",
-  documentoNumero: "",
+  documento: "",
   correo: "",
 };
 
-/** Portado de Reportar() en residente.html:907-1102, con las 4
- * correcciones pendientes de la Fase 4 aplicadas:
- * 1. comprobante restringido a jpg/png/pdf validando la firma real del
- *    archivo (ver lib/archivos.ts), no solo la extensión/`type`.
- * 2. al fallar la validación, la pantalla hace scroll hasta el aviso.
- * 3. cédula/RIF como select V/E/G/J + número, en vez de texto libre.
- * 4. campos obligatorios marcados con * (Campo ya lo hace) y validados
- *    antes de enviar, no solo al perder el foco.
+/**
+ * Portado de Reportar() en index.html:1522-1717 — mismos campos, mismo
+ * orden, mismas validaciones y mismos textos que `main`.
+ *
+ * **Un solo desvío, y es de seguridad:** el comprobante se valida por la
+ * firma real del archivo (`lib/archivos.ts` lee los bytes de cabecera), no
+ * por la extensión ni por el `type` que reporta el navegador, que un
+ * archivo mal etiquetado puede burlar. Un comprobante inválido guardado
+ * como si fuera válido dificulta la conciliación con el banco y ensucia la
+ * evidencia (ver docs/casos-de-uso-mejorados.md, caso 3).
+ *
+ * Los otros tres agregados de la Sesión 1 —selector V/E/G/J para la
+ * cédula, marcas de campo obligatorio y scroll automático hasta el aviso—
+ * se revirtieron el 28-sep por el criterio de paridad con `main` (casos 4
+ * y 5 de ese mismo archivo).
  */
 export function FormularioReportarPago({
   orgId,
@@ -95,7 +94,6 @@ export function FormularioReportarPago({
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
-  const bannerError = useRef<HTMLDivElement>(null);
 
   const pide = METODOS[f.metodo] ?? {};
 
@@ -117,13 +115,6 @@ export function FormularioReportarPago({
       cancelado = true;
     };
   }, [f.fecha, f.moneda]);
-
-  // Fix 2: si aparece un error de validación general, la pantalla baja
-  // hasta el aviso — en un formulario largo, un error arriba de todo
-  // podía quedar fuera de la vista sin que nadie lo notara.
-  useEffect(() => {
-    if (errorGeneral) bannerError.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [errorGeneral]);
 
   async function elegirArchivo(evento: ChangeEvent<HTMLInputElement>) {
     const a = evento.target.files?.[0];
@@ -170,7 +161,6 @@ export function FormularioReportarPago({
     if (pide.banco && !f.banco) errs.banco = "Elija el banco.";
     if (pide.telefono && !f.telefono.trim())
       errs.telefono = "Falta el teléfono desde el que hizo el pago móvil.";
-    if (pide.documento && !f.documentoNumero.trim()) errs.documento = "Falta la cédula o RIF del que paga.";
     if (pide.correo && !f.correo.trim()) errs.correo = "Falta el correo desde el que envió el Zelle.";
     if (pide.referencia && !f.referencia.trim())
       errs.referencia = "Falta la referencia. Sin ella su pago es muy difícil de ubicar.";
@@ -206,7 +196,7 @@ export function FormularioReportarPago({
         referencia: f.referencia.trim() || null,
         banco_codigo: pide.banco ? f.banco || null : null,
         telefono_origen: pide.telefono ? f.telefono.trim() : null,
-        documento_origen: pide.documento ? `${f.documentoTipo}-${f.documentoNumero.trim()}` : null,
+        documento_origen: pide.documento ? f.documento.trim() : null,
         correo_origen: pide.correo ? f.correo.trim() : null,
         estado: "reportado",
       })
@@ -266,7 +256,6 @@ export function FormularioReportarPago({
 
       {errorGeneral && (
         <div
-          ref={bannerError}
           style={{
             marginBottom: 12,
             padding: "12px 14px",
@@ -282,7 +271,7 @@ export function FormularioReportarPago({
       )}
 
       <form onSubmit={enviar} noValidate>
-        <Campo etiqueta="Fecha del pago" obligatorio ayuda="La del día en que hizo la transferencia, no la de hoy." error={errores.fecha}>
+        <Campo etiqueta="Fecha del pago" ayuda="La del día en que hizo la transferencia, no la de hoy." error={errores.fecha}>
           <Input
             type="date"
             className="mono"
@@ -292,7 +281,7 @@ export function FormularioReportarPago({
           />
         </Campo>
 
-        <Campo etiqueta="Moneda" obligatorio>
+        <Campo etiqueta="Moneda">
           <Select value={f.moneda} onChange={(e) => setF({ ...f, moneda: e.target.value as "VES" | "USD" })}>
             <option value="VES">Bolívares</option>
             <option value="USD">Dólares</option>
@@ -301,7 +290,6 @@ export function FormularioReportarPago({
 
         <Campo
           etiqueta={f.moneda === "VES" ? "Monto en bolívares" : "Monto en dólares"}
-          obligatorio
           ayuda="Puede escribirlo con coma: 3.450,75"
           error={errores.monto}
         >
@@ -345,7 +333,7 @@ export function FormularioReportarPago({
         )}
         {errores.tasa && <p className="campo-error" style={{ marginTop: -8, marginBottom: 12 }}>{errores.tasa}</p>}
 
-        <Campo etiqueta="Cómo pagó" obligatorio>
+        <Campo etiqueta="Cómo pagó">
           <Select value={f.metodo} onChange={(e) => setF({ ...f, metodo: e.target.value })}>
             {Object.keys(METODOS).map((m) => (
               <option key={m}>{m}</option>
@@ -354,7 +342,7 @@ export function FormularioReportarPago({
         </Campo>
 
         {pide.banco && (
-          <Campo etiqueta="Banco desde el que pagó" obligatorio error={errores.banco}>
+          <Campo etiqueta="Banco desde el que pagó" error={errores.banco}>
             <Select value={f.banco} onChange={(e) => setF({ ...f, banco: e.target.value })}>
               <option value="">Elija el banco…</option>
               {bancos.map((b) => (
@@ -369,7 +357,6 @@ export function FormularioReportarPago({
         {pide.telefono && (
           <Campo
             etiqueta="Teléfono desde el que pagó"
-            obligatorio
             ayuda="El que tiene afiliado al pago móvil. Es lo que aparece en el estado de cuenta."
             error={errores.telefono}
           >
@@ -384,38 +371,19 @@ export function FormularioReportarPago({
         )}
 
         {pide.documento && (
-          <Campo
-            etiqueta="Cédula o RIF del que paga"
-            obligatorio
-            ayuda="El tipo va en el selector de la izquierda; acá solo el número, sin puntos — las letras y puntos que escriba se descartan solos."
-            error={errores.documento}
-          >
-            <div style={{ display: "flex", gap: 8 }}>
-              <Select
-                style={{ flex: "0 0 76px" }}
-                value={f.documentoTipo}
-                onChange={(e) => setF({ ...f, documentoTipo: e.target.value as TipoDocumento })}
-              >
-                {TIPOS_DOCUMENTO.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </Select>
-              <Input
-                className="mono"
-                inputMode="numeric"
-                style={{ flex: 1 }}
-                value={f.documentoNumero}
-                placeholder="12345678"
-                onChange={(e) => setF({ ...f, documentoNumero: e.target.value.replace(/\D/g, "") })}
-              />
-            </div>
+          <Campo etiqueta="Cédula o RIF del que paga" ayuda="Solo los números, sin puntos.">
+            <Input
+              className="mono"
+              inputMode="numeric"
+              value={f.documento}
+              placeholder="12345678"
+              onChange={(e) => setF({ ...f, documento: e.target.value })}
+            />
           </Campo>
         )}
 
         {pide.correo && (
-          <Campo etiqueta="Correo desde el que envió el Zelle" obligatorio error={errores.correo}>
+          <Campo etiqueta="Correo desde el que envió el Zelle" error={errores.correo}>
             <Input
               type="email"
               inputMode="email"
@@ -429,7 +397,6 @@ export function FormularioReportarPago({
         {pide.referencia && (
           <Campo
             etiqueta={f.metodo === "Zelle" ? "Número de confirmación" : "Referencia"}
-            obligatorio
             ayuda="El número que le dio el banco. Es lo que permite encontrar su pago."
             error={errores.referencia}
           >

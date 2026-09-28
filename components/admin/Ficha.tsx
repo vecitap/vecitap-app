@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, type TonoBadge } from "@/components/ui";
 import { nf, usd } from "@/lib/formato";
 import { nombreDe, normalizarTel, vigente } from "@/lib/admin/personas";
-import { tonoEstadoUnidad } from "@/lib/estados-unidad";
 import { imprimirEstado } from "@/lib/admin/imprimir-estado";
 import type { Database } from "@/types/supabase";
 import type { OrganizacionAdmin, SaldoActual, Unidad } from "@/lib/admin/tipos";
@@ -51,9 +50,13 @@ export function Ficha({
   const prop = vigente(unidad.vinculos, "propietario");
   const inq = vigente(unidad.vinculos, "inquilino");
   const total = Number(saldo?.total) || 0;
-  const tono = tonoEstadoUnidad(saldo?.estado ?? "");
-  const color = tono === "rojo" ? "var(--rojo)" : tono === "azul" ? "var(--azul)" : "var(--verde)";
-  const etiquetaEstado = tono === "rojo" ? "debe" : tono === "azul" ? "a favor" : "al día";
+  // Mismos literales que main (admin.html:2233, 2258). La Sesión 1 los
+  // había unificado contra `estado` de `saldos_actuales`
+  // (docs/casos-de-uso-mejorados.md, caso 11); el criterio del 28-sep es
+  // paridad con main, así que vuelven los literales.
+  const tono: TonoBadge = total > 0.01 ? "rojo" : total < -0.01 ? "azul" : "verde";
+  const color = total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--azul)" : "var(--verde)";
+  const etiquetaEstado = total > 0.01 ? "debe" : total < -0.01 ? "a favor" : "al día";
 
   const filasImpresion: FilaMostrar[] = [
     ...historial,

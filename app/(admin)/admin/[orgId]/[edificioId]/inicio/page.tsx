@@ -62,11 +62,15 @@ export default async function PaginaInicio({
   const periodoAbierto = (periodos ?? []).find((p) => p.estado === "abierto") ?? null;
   const hayConceptos = (conceptos ?? []).some((c) => c.activo);
   const usaPresupuesto = (conceptos ?? []).some((c) => c.activo && c.modo.startsWith("presupuesto"));
-  const morosos = [...saldosFilas].filter((s) => (Number(s.total) || 0) > 0 && s.estado === "debe").sort((a, b) => Number(b.total) - Number(a.total)).slice(0, 6);
+  // Mismo literal que main (admin.html:1620). Ver docs/casos-de-uso-mejorados.md, caso 11.
+  const morosos = [...saldosFilas]
+    .filter((s) => (Number(s.total) || 0) > 0.01)
+    .sort((a, b) => Number(b.total) - Number(a.total))
+    .slice(0, 6);
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
+      <div className="apila-movil" style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
         <Card>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
             Por cobrar
@@ -146,7 +150,7 @@ export default async function PaginaInicio({
               Los seis saldos más altos. Haga clic para ver la cuenta completa.
             </p>
           </div>
-          <table className="tabla" style={{ width: "100%" }}>
+          <table className="tabla apila" style={{ width: "100%" }}>
             <thead>
               <tr>
                 <th>Unidad</th>
@@ -159,7 +163,7 @@ export default async function PaginaInicio({
             <tbody>
               {morosos.map((m) => (
                 <tr key={m.unidad_id}>
-                  <td className="mono" style={{ fontWeight: 600 }}>
+                  <td className="mono cabeza" style={{ fontWeight: 600 }}>
                     <Link
                       href={`/admin/${orgId}/${edificioId}/propietarios/${m.unidad_id}`}
                       style={{ color: "inherit", textDecoration: "none" }}
@@ -167,10 +171,16 @@ export default async function PaginaInicio({
                       {m.codigo}
                     </Link>
                   </td>
-                  <td className="mono">{usd(m.condominio)}</td>
-                  <td className="mono">{usd(m.administracion)}</td>
-                  <td className="mono">{usd(m.servicio)}</td>
-                  <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: "var(--rojo)" }}>
+                  <td className="mono" data-t="Condominio">
+                    {usd(m.condominio)}
+                  </td>
+                  <td className="mono" data-t="Administración">
+                    {usd(m.administracion)}
+                  </td>
+                  <td className="mono" data-t="Servicio">
+                    {usd(m.servicio)}
+                  </td>
+                  <td className="mono" data-t="Total" style={{ textAlign: "right", fontWeight: 700, color: "var(--rojo)" }}>
                     {usd(m.total)}
                   </td>
                 </tr>

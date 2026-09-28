@@ -115,3 +115,259 @@
 .dialogo::backdrop { background: rgba(0,0,0,.35); }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ══════════════════════════════════════════════════════════════
+   ARMAZÓN DE ADMIN
+   Portado del <style> de App() en admin.html:1229-1307. La columna
+   lateral es oscura en los DOS temas (tokens --lat-*): separa "dónde
+   estoy" de "qué estoy haciendo" con un cambio de superficie en vez de
+   una línea.
+   ══════════════════════════════════════════════════════════════ */
+
+.admin-marco { display: flex; min-height: 100vh; }
+
+.admin-lateral {
+  display: flex;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: 244px;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 22px 14px;
+  background: var(--lat-fondo);
+  color: var(--lat-texto);
+  border-right: 1px solid var(--lat-linea);
+  z-index: 40;
+}
+.admin-lateral-cab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 16px;
+}
+.admin-iso {
+  width: 32px; height: 32px; border-radius: 9px;
+  background: var(--acento); flex-shrink: 0;
+}
+.admin-org {
+  font-family: var(--font-titulos);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--lat-texto-on);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* El selector vive sobre el lateral oscuro: no puede usar los colores de
+   campo del tema claro o queda invisible. */
+.admin-sel-edificio {
+  font-size: 13px;
+  padding: 9px 11px;
+  background: rgba(255,255,255,.07);
+  color: var(--lat-texto-on);
+  border: 1px solid var(--lat-linea);
+}
+.admin-sel-edificio option { color: var(--tinta); background: var(--lienzo); }
+
+.admin-nav {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: var(--radio-chico);
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--lat-texto);
+  text-decoration: none;
+}
+.admin-nav:hover { color: var(--lat-texto-on); }
+.admin-nav.activa {
+  background: var(--lat-activo);
+  color: var(--lat-texto-on);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--acento);
+}
+.admin-lateral-pie {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--lat-linea);
+}
+.admin-cerrar-menu { display: none; }
+.admin-velo { display: none; }
+
+.admin-principal { flex: 1; min-width: 0; }
+
+.admin-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--linea);
+  background: var(--fondo);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.admin-titulo {
+  font-family: var(--font-titulos);
+  font-weight: 600;
+  font-size: 20px;
+  margin: 0;
+  color: var(--tinta);
+}
+.admin-subtitulo { font-size: 12.5px; color: var(--tenue); margin: 2px 0 0; }
+.admin-hamburguesa {
+  display: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--tinta);
+  padding: 6px;
+  font-size: 21px;
+  line-height: 1;
+  font-family: inherit;
+}
+.admin-tasa { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.admin-tasa > div { text-align: right; }
+.admin-tasa-rotulo {
+  font-size: 11.5px; color: var(--tenue);
+  display: flex; align-items: center; gap: 6px; justify-content: flex-end;
+}
+.admin-tasa-rotulo button {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--acento-texto); padding: 0; font-size: 13px; line-height: 1;
+}
+.admin-tasa-rotulo button:disabled { opacity: .4; cursor: wait; }
+.admin-tasa-valor { font-size: 16px; font-weight: 600; }
+.admin-tasa-pie { font-size: 10.5px; }
+
+.admin-relleno { padding: 28px; max-width: 1180px; }
+
+@media (max-width: 900px) {
+  .admin-lateral {
+    display: none;
+    position: fixed;
+    left: 0;
+    box-shadow: 0 0 40px rgba(7,12,28,.35);
+  }
+  .admin-lateral.abierto { display: flex; }
+  .admin-cerrar-menu {
+    display: inline-flex;
+    order: 9;
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--lat-texto);
+    padding: 4px;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .admin-velo {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(7,12,28,.45);
+    z-index: 35;
+  }
+  .admin-hamburguesa { display: inline-flex; align-items: center; }
+  .admin-relleno { padding: 16px; }
+  .admin-cabecera { padding: 14px 16px; }
+}
+
+@media (max-width: 520px) {
+  /* La tasa deja de ser un bloque aparte y pasa a una línea compacta
+     debajo del título, en vez de romper la cabecera. */
+  .admin-tasa { width: 100%; margin-left: 0; }
+  .admin-tasa > div {
+    text-align: left;
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  .admin-tasa-rotulo { justify-content: flex-start; }
+  .admin-tasa-valor { font-size: 14px; }
+  .admin-cabecera { gap: 8px; padding: 12px 16px; }
+  .admin-titulo { font-size: 17px; }
+}
+
+/* ── Tablas que se vuelven tarjetas en el teléfono ──────────────
+   Portado de admin.html:1249-1281. Una tabla de seis columnas en una
+   pantalla de 390 px obliga a arrastrar de lado para leer una sola
+   fila. Aquí cada fila pasa a ser una tarjeta y cada celda enseña su
+   rótulo, que viene en el atributo data-t. La celda marcada "cabeza" es
+   el título de la tarjeta; la marcada "flecha" desaparece, porque la
+   tarjeta entera ya se puede tocar. */
+@media (max-width: 720px) {
+  table.apila, table.apila tbody, table.apila tr, table.apila td {
+    display: block;
+    width: 100%;
+  }
+  table.apila thead { display: none; }
+  table.apila tr {
+    padding: 13px 2px;
+    border-bottom: 1px solid var(--linea);
+    display: flex;
+    flex-direction: column;
+  }
+  table.apila tbody tr:last-child { border-bottom: none; }
+  table.apila td {
+    border: none;
+    padding: 3px 0;
+    font-size: 13.5px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    text-align: right;
+  }
+  table.apila td::before {
+    content: attr(data-t);
+    color: var(--tenue);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-align: left;
+    flex: 0 0 auto;
+    font-family: var(--font-texto);
+    letter-spacing: .01em;
+  }
+  /* El título de la tarjeta va primero aunque en la tabla no sea la
+     primera columna: en Pagos la primera columna es la fecha, pero lo
+     que identifica la fila es la unidad. */
+  table.apila td.cabeza {
+    order: -1;
+    justify-content: flex-start;
+    font-size: 16px;
+    font-weight: 700;
+    padding-bottom: 6px;
+  }
+  table.apila td.cabeza::before { content: none; }
+  table.apila td.acciones { justify-content: flex-start; padding-top: 8px; }
+  table.apila td.acciones::before { content: none; }
+  table.apila td.flecha { display: none; }
+  table.apila td:empty { display: none; }
+
+  .tabla td, .tabla th { padding: 10px 11px; font-size: 12.5px; }
+}
+
+/* Cuatro tarjetas de resumen una debajo de otra son cuatro pantallas de
+   scroll antes de ver nada. En el teléfono van de dos en dos, con el
+   número más chico. (admin.html:1284-1291) */
+@media (max-width: 720px) {
+  .apila-movil { grid-template-columns: 1fr 1fr !important; }
+  .apila-movil > * { padding: 14px !important; }
+}
+@media (max-width: 380px) {
+  .apila-movil { grid-template-columns: 1fr !important; }
+}
