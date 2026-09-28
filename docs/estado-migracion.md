@@ -53,11 +53,10 @@ retira, no es parte del producto.
    `PanelModulos` de Operador construidos (bloques 0 a 9), **sin validar**. Las
    fundaciones de Garita (bloque 10) están **validadas en lectura y navegación**
    (29-sep). Las cuatro vistas de Garita (bloques 11 y 12) están
-   **construidas en lectura y navegación, sin validar** — sus 4 acciones de
-   escritura (`garita_entrada`, `garita_avisar`, `garita_salida`,
-   `garita_nota`) quedan sin conectar a la base hasta confirmar el SQL real
-   con `pg_get_functiondef` (pedido a Nicolás el 28-sep, respuesta
-   pendiente).
+   **construidas y completas, sin validar** — sus 4 acciones de escritura
+   (`garita_entrada`, `garita_avisar`, `garita_salida`, `garita_nota`) se
+   conectaron el 28-sep, después de confirmar el SQL real de las cuatro con
+   `pg_get_functiondef`.
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -608,13 +607,12 @@ El inventario nuevo, pantalla por pantalla y acción por acción, está en
 | 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) |
 | 9 | Operador · `PanelModulos` + campo de clave con ojo en su login |
 | 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón y "falta un paso" — **validado en lectura y navegación** (29-sep, ver abajo) |
-| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar — construido, escritura pendiente (ver abajo) |
-| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** — construido, escritura pendiente (ver abajo) |
+| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar — completo, con escritura (ver abajo) |
+| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** — completo, con escritura (ver abajo) |
 
-Los 12 bloques de la reescritura están construidos. Lo único que falta de
-Garita es conectar sus 4 acciones de escritura (ver "Bloques 11 y 12" abajo)
-y validar manualmente los tres módulos que todavía no se probaron con una
-cuenta real.
+Los 12 bloques de la reescritura están construidos y completos. Lo que falta
+es validar manualmente los módulos que todavía no se probaron con una cuenta
+real — Garita incluida (ver "Bloques 11 y 12" abajo).
 
 Garita ocupa tres bloques porque es un módulo propio, del tamaño de Residente, no
 un archivo suelto — ver "Ruta de la garita" más abajo.
@@ -732,48 +730,96 @@ un archivo suelto — ver "Ruta de la garita" más abajo.
   reemplazaron — el archivo se borró en el bloque 12, cuando ya no quedaba
   ningún `<nav>` que llevara a él.
 
-- **Bloques 11 y 12 (Garita · las cuatro vistas), construidos en lectura y
-  navegación (28-sep) — escritura pendiente.** Las cuatro vistas de
-  `garita.html:630-896` están reescritas como componentes de cliente propios
-  (`components/garita/Vista{Entrada,Adentro,Consultar,Bitacora}.tsx`), una por
-  ruta. Lo que ya llama a la base y funciona de punta a punta:
+- **Bloques 11 y 12 (Garita · las cuatro vistas), construidos y completos
+  (28-sep).** Las cuatro vistas de `garita.html:630-896` están reescritas
+  como componentes de cliente propios
+  (`components/garita/Vista{Entrada,Adentro,Consultar,Bitacora}.tsx`), una
+  por ruta, con sus 10 llamadas a `garita_*` conectadas (6 de lectura + las 4
+  de escritura).
 
   - **Entrada** (`VistaEntrada.tsx`): `garita_validar` (código QR o escrito a
-    mano) con el veredicto a pantalla completa, y `garita_visitante`
-    (autocompletado por cédula, debounce 350ms) en "Visita sin anunciar".
-  - **Adentro** (`VistaAdentro.tsx`): `garita_dentro`, con refresco automático
-    cada 60s (para el relevo de turno, igual que garita.html:1004-1009) y un
-    botón "Actualizar".
+    mano) con el veredicto a pantalla completa, `garita_visitante`
+    (autocompletado por cédula, debounce 350ms), y "Registrar entrada"
+    (`garita_entrada` + `garita_avisar`) en los dos caminos — el veredicto y
+    "Visita sin anunciar".
+  - **Adentro** (`VistaAdentro.tsx`): `garita_dentro` con refresco automático
+    cada 60s (para el relevo de turno, igual que garita.html:1004-1009), un
+    botón "Actualizar" y "Registrar salida" (`garita_salida`).
   - **Consultar** (`VistaConsultar.tsx`): `garita_vehiculos` (debounce 280ms,
     mínimo 2 caracteres) y el directorio del edificio, filtrado en memoria
     sobre el mismo directorio que ya trajo el layout (máximo 60 filas) — vista
     **completa**, no tiene ninguna acción de escritura.
-  - **Bitácora** (`VistaBitacora.tsx`): `garita_bitacora`, el día completo
-    (200 filas como máximo), recarga sola al cambiar la fecha.
+  - **Bitácora** (`VistaBitacora.tsx`): `garita_bitacora` (el día completo,
+    200 filas como máximo, recarga sola al cambiar la fecha) y "Anotar"
+    (`garita_nota`).
 
-  **Lo que queda sin conectar, a propósito, hasta confirmar el SQL real:** las
-  4 acciones de escritura del módulo —"Registrar entrada" (`garita_entrada` +
-  `garita_avisar`, en el veredicto y en "Visita sin anunciar"), "Registrar
-  salida" (`garita_salida`, en Adentro) y "Anotar" (`garita_nota`, en
-  Bitácora, **inmutable por diseño**: no se puede borrar ni corregir después).
-  Pedido explícito de Nicolás en esta sesión: antes de llamar a una función
-  `garita_*` de escritura hace falta ver su SQL con `pg_get_functiondef` (el
-  mismo criterio que ya evitó el bug de `edificios_visibles()` del Sesión 1 de
-  Admin — no asumir la forma de un RPC sin haberla visto). Cada uno de esos
-  cuatro botones queda con su validación de formulario intacta (ej.: "Anotar"
-  sigue rechazando una nota vacía) pero, en vez de llamar a la base, muestra
-  un aviso claro de "todavía no está conectado" — `lib/garita/pendiente-escritura.ts`,
-  mismo criterio que `ImportarSaldos` en Admin ("deja un aviso claro en vez de
-  fingir que funciona"). La consulta ya se le pidió a Nicolás:
+  **Las 4 acciones de escritura se conectaron después de confirmar su SQL
+  real con `pg_get_functiondef`** (pedido explícito de Nicolás en esta
+  sesión — el mismo criterio que ya evitó el bug de `edificios_visibles()`
+  de la Sesión 1 de Admin: no asumir la forma de un RPC sin haberla visto).
+  Acá sí hizo falta: la nota anterior de este mismo documento sobre
+  `p_unidad` (ver "Dos detalles de los tipos" más arriba) decía justo lo
+  contrario de lo que confirmó el SQL real. Lo que se verificó de cada una:
 
-  ```sql
-  select p.proname, pg_get_functiondef(p.oid)
-  from pg_proc p
-  join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public'
-    and p.proname in ('garita_entrada', 'garita_avisar', 'garita_salida', 'garita_nota')
-  order by p.proname;
-  ```
+  | Función | Toca | Obligatorio verificar | Idempotente |
+  |---|---|---|---|
+  | `garita_entrada` | `visitas` (insert), `bitacora` (insert "entrada"), `visitantes` (upsert si hay documento), `invitaciones_visita` (`usos+1` si hay invitación, revalida vigencia/estado/cupo ahí mismo) | `permitir_garita(p_edificio)`; unidad pertenece al edificio si se manda; nombre no vacío | **No** — cada llamada crea una visita nueva |
+  | `garita_avisar` | `cola_correo` (insert, uno por destinatario de `destinatarios_de(unidad_id)` con correo) | `permitir_garita(r.edificio_id)`, resuelto de la visita (el único parámetro es `p_visita`) | No, pero se llama una sola vez por entrada; cada insert va en su propio `exception when others` — un correo roto no tumba a los demás ni a la entrada ya registrada |
+  | `garita_salida` | `visitas` (update a `salio`), `bitacora` (insert "salida") | `permitir_garita(r.ed)`, resuelto de la visita | **Sí** — si `estado <> 'dentro'` no hace nada, `return` sin error |
+  | `garita_nota` | `bitacora` (insert únicamente) | `permitir_garita(p_edificio)`; texto no vacío; `p_tipo` restringido a `novedad`/`ronda`/`relevo` (nuestro `<select>` ya solo ofrece esas 3) | No — inmutable por diseño, no hay ningún `update`/`delete` sobre `bitacora` en todo el esquema de Garita |
+
+  `permitir_garita(p_edificio)` es el punto único de autorización de las 6
+  funciones `garita_*` de escritura y de `garita_validar`/`garita_visitante`
+  también (las dos llaman a `permitir_garita` aunque sean de lectura) — no
+  está en la lista de funciones de seguridad de `AGENTS.md` (que lista
+  `puede_operar`/`tiene_rol`/`es_operador`/etc.), pero cumple el mismo papel
+  para este módulo y conviene tenerla presente si se la toca. No se pidió su
+  SQL en esta ronda (no cambia nada del lado del cliente); si hiciera falta
+  auditarla, es la candidata obvia.
+
+  **`garita_validar` no es de solo lectura**, aunque esté documentada así en
+  `docs/inventario-main.md`: si el código no existe, inserta ella misma un
+  rechazo en `bitacora` (`tipo='rechazo'`) antes de devolver el veredicto —
+  "para que si alguien prueba códigos al azar en la puerta, quede asentado"
+  (comentario del propio SQL). El código ya conectado en el bloque 11 es fiel
+  a esto: llama a la función normalmente y solo lee el resultado, sin asumir
+  que era de solo lectura ni intentar replicar el registro por su cuenta —
+  el insert es un efecto de la función, no algo que dependa del cliente.
+  `garita_visitante` sí es `STABLE` de verdad (sin ningún `insert`/`update` en
+  el cuerpo): el código que ya la llama (autocompletado por cédula) es
+  puramente de lectura, sin ajustes.
+
+  **Corrección de comportamiento encontrada al leer el SQL, aplicada en el
+  bloque 11 (no en una sesión anterior):** `p_unidad` de `garita_entrada` **no
+  tiene `DEFAULT`** en la firma real — a diferencia de `p_documento`/
+  `p_placa`/`p_invitacion`/`p_nota`, que sí. El tipo generado (`p_unidad:
+  string`, sin `| null`) no es un error del generador: refleja bien que el
+  parámetro es obligatorio. Lo que no expresa es que la función acepta `NULL`
+  como valor de ese parámetro obligatorio (lo comprueba ella misma). Los dos
+  puntos donde se llama (`registrarEntradaDesdeVeredicto`, `registrarSinAnunciar`
+  en `VistaEntrada.tsx`) mandan siempre `p_unidad` — con el uuid real o con
+  `null` explícito — nunca lo omiten; se castea a
+  `Database["public"]["Functions"]["garita_entrada"]["Args"]` en la llamada
+  porque el tipo generado no admite `null` ahí, con el motivo comentado en el
+  código. Esto reemplaza la nota anterior de este documento que decía mandar
+  `undefined` — esa nota nunca se verificó contra el SQL real y estaba al
+  revés (ver "Dos detalles de los tipos" arriba, donde queda tachada).
+
+  **Blindaje contra reenvíos, según cada función:** `garita_entrada` y
+  `garita_nota` no son idempotentes, así que sus botones se deshabilitan
+  mientras la llamada está en curso (`enviandoSinAnunciar`/`enviandoNota`); el
+  veredicto, en cambio, se cierra de inmediato al tocar "Registrar entrada"
+  (igual que garita.html:612), lo que ya alcanza para no poder tocarlo dos
+  veces. `garita_salida` es idempotente (confirmado en el SQL), así que
+  alcanza con deshabilitar el botón de esa fila nada más por prolijidad
+  visual, no por riesgo real de duplicar nada.
+
+  **Un detalle de paridad que se corrigió de paso, al releer `garita.html`
+  con más cuidado:** el veredicto negativo (código inválido/vencido/anulado)
+  también muestra los datos de quién intentó entrar
+  (`garita.html:602-607,626` arma `datos` antes del `if(r.valido)` y lo pasa
+  en los dos casos) — la primera versión de `VistaEntrada.tsx` solo lo hacía
+  en el camino válido; quedó corregido en esta misma pasada.
 
   Piezas nuevas, compartidas entre las cuatro vistas:
 
@@ -839,22 +885,21 @@ rompió. Dos detalles para el bloque 10 están anotados en
 `docs/inventario-main.md` sección 5.
 
 **Los bloques 0 a 9, 11 y 12 siguen sin validar.** Ninguno ejecutó una escritura
-contra la base; la validación manual la hace Nicolás — y en Garita (11 y 12) no
-puede ejecutar ninguna hasta que las 4 acciones de escritura del módulo se
-conecten (ver "Bloques 11 y 12" arriba). **La excepción es el bloque 10**,
-validado el 29-sep en lectura y navegación (ver "Qué quedó verificado del bloque
-10" más abajo) — y, de paso, el `PanelModulos` del bloque 9, que quedó probado en
-escritura al prender el módulo `garita` en Torre Ida.
+contra la base con una cuenta real; la validación manual la hace Nicolás — Garita
+incluida, ahora que sus 4 acciones de escritura ya están conectadas (ver
+"Bloques 11 y 12" arriba). **La excepción es el bloque 10**, validado el 29-sep
+en lectura y navegación (ver "Qué quedó verificado del bloque 10" más abajo) —
+y, de paso, el `PanelModulos` del bloque 9, que quedó probado en escritura al
+prender el módulo `garita` en Torre Ida.
 
 #### Pendientes concretos que dejan estos bloques
 
 Lo que queda abierto y hay que retomar, además del alcance de los bloques 7 a 12:
 
-- **Conectar las 4 acciones de escritura de Garita** (`garita_entrada`,
-  `garita_avisar`, `garita_salida`, `garita_nota`) una vez que Nicolás corra la
-  consulta de `pg_get_functiondef` de la sección "Bloques 11 y 12" y pase el
-  CSV — hoy cada botón muestra un aviso de "pendiente" en vez de escribir en
-  la base.
+- **Validar manualmente las 4 acciones de escritura de Garita** con una
+  cuenta de vigilante real (`garita_entrada`, `garita_avisar`, `garita_salida`,
+  `garita_nota`) — conectadas y con build/lint/typecheck verdes, pero sin
+  ejecutar todavía contra la base.
 - **Instalar `lucide-react` y poner los íconos** (caso 13, aprobado). Es lo
   primero del bloque 7. Las citas de `main` están en `docs/inventario-main.md`;
   los puntos donde hoy no hay ícono son los botones de acción de todas las
@@ -1383,11 +1428,25 @@ regenerado (están también en `docs/inventario-main.md`, sección 5):
   necesita mostrar, y no hay ningún id que resolver. `garita_edificios()` es la
   única fuente de los edificios de la sesión **para pintar**; para **autorizar**
   se usa `edificios_del_vigilante()`.
-- **A `garita_entrada` hay que pasarle `undefined`, no `null`, en `p_unidad`.**
-  El tipo generado dice `p_unidad: string` (el generador nunca marca nullable),
-  pero `garita.html:721` manda `null` cuando la visita no dice a qué unidad va.
-  `undefined` es como PostgREST omite el parámetro y deja que tome su valor por
-  omisión; `null` explícito no compila.
+- **Corregido el 28-sep con el SQL real (esta nota decía lo contrario, sin
+  haberlo verificado — no seguirla, queda solo como historial):** a
+  `garita_entrada` hay que pasarle **`null` explícito**, no `undefined`, en
+  `p_unidad`. La firma real (`pg_get_functiondef`) es
+  `garita_entrada(p_edificio uuid, p_unidad uuid, p_nombre text, p_documento
+  text DEFAULT NULL, p_placa text DEFAULT NULL, p_invitacion uuid DEFAULT
+  NULL, p_nota text DEFAULT NULL)` — **`p_unidad` no tiene `DEFAULT`**, a
+  diferencia de los cuatro parámetros de atrás. El tipo generado dice
+  `p_unidad: string` sin `| null` no porque el generador "nunca marque
+  nullable", sino porque refleja correctamente que el parámetro es
+  obligatorio (sin `DEFAULT`, PostgREST no puede omitirlo); lo que el
+  generador no expresa es que la función SÍ acepta `NULL` como valor de ese
+  parámetro obligatorio (lo comprueba ella misma:
+  `if p_unidad is not null and not exists (...)`). Mandar `undefined` (que
+  es como este cliente omite una clave) habría roto la llamada — "función no
+  encontrada", porque Postgres no tiene con qué completar un parámetro sin
+  `DEFAULT`. `garita.html:615/713` ya mandaba `null` explícito en los dos
+  casos, nunca omitía la clave — el original tenía razón, esta nota no.
+  Detalle completo en "Bloques 11 y 12" más abajo.
 
 ### Garita es un módulo propio, como los otros tres
 

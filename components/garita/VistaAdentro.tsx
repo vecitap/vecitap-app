@@ -4,23 +4,26 @@ import { useCallback, useEffect, useState } from "react";
 import { Aviso } from "@/components/ui";
 import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
 import { horaCorta } from "@/lib/formato";
-import { mensajePendienteEscritura } from "@/lib/garita/pendiente-escritura";
 import type { VisitaDentro } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 
 /**
  * Vista 2 · Adentro — garita.html:733-771. Lista de quién está adentro
- * ahora (`garita_dentro`, lectura) con refresco automático cada 60s — para
- * el relevo de turno, que tiene que ver lo que dejó el anterior sin tocar
- * nada (garita.html:1004-1009).
+ * ahora (`garita_dentro`) con refresco automático cada 60s — para el
+ * relevo de turno, que tiene que ver lo que dejó el anterior sin tocar nada
+ * (garita.html:1004-1009).
  *
- * "Registrar salida" llama a `garita_salida`, escritura, pendiente de
- * confirmar el SQL antes de conectarse (docs/estado-migracion.md, bloque 11).
+ * "Registrar salida" (`garita_salida`) ya está conectado — confirmado su
+ * SQL real con `pg_get_functiondef` el 28-sep: es **idempotente** (una
+ * visita que ya no está "dentro" hace que la función retorne sin tocar
+ * nada), así que un doble click no duplica nada — a diferencia de
+ * `garita_entrada`, no hace falta blindarlo contra reenvíos.
  */
 export function VistaAdentro({ edificioId }: { edificioId: string }) {
   const { aviso, mostrarAviso } = useAvisoTemporal();
   const [adentro, setAdentro] = useState<VisitaDentro[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [saliendoIds, setSaliendoIds] = useState<Set<string>>(new Set());
 
   const cargar = useCallback(async () => {
     const supabase = crearClienteNavegador();
@@ -50,8 +53,20 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
     };
   }, [edificioId, mostrarAviso, cargar]);
 
-  const registrarSalida = () => {
-    mostrarAviso(mensajePendienteEscritura("Registrar salida"), "mal");
+  const registrarSalida = async (visitaId: string) => {
+    setSaliendoIds((s) => new Set(s).add(visitaId));
+    const supabase = crearClienteNavegador();
+    const { error } = await supabase.rpc("garita_salida", { p_visita: visitaId });
+    if (error) {
+      setSaliendoIds((s) => {
+        const n = new Set(s);
+        n.delete(visitaId);
+        return n;
+      });
+      return mostrarAviso(error.message, "mal");
+    }
+    mostrarAviso("Salida registrada.");
+    cargar();
   };
 
   return (
@@ -78,7 +93,12 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
                     {v.documento ? ` · ${v.documento}` : ""}
                   </div>
                 </div>
-                <button type="button" className="garita-boton chico" onClick={registrarSalida}>
+                <button
+                  type="button"
+                  className="garita-boton chico"
+                  disabled={saliendoIds.has(v.visita_id)}
+                  onClick={() => registrarSalida(v.visita_id)}
+                >
                   Registrar salida
                 </button>
               </div>

@@ -6,25 +6,28 @@ import { useDirectorioGarita } from "@/components/garita/DirectorioContexto";
 import { VeredictoPantallaCompleta, type DatosVeredicto } from "@/components/garita/VeredictoPantallaCompleta";
 import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
 import { useLectorQR } from "@/hooks/useLectorQR";
-import { mensajePendienteEscritura } from "@/lib/garita/pendiente-escritura";
+import type { ValidacionCodigo } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import type { Database } from "@/types/supabase";
 
 type Veredicto = {
   ok: boolean;
   titulo: string;
   datos?: DatosVeredicto;
+  /** Solo en el camino válido — lo que hace falta para "Registrar entrada". */
+  fila?: ValidacionCodigo;
 };
+
+type ArgsGaritaEntrada = Database["public"]["Functions"]["garita_entrada"]["Args"];
 
 /**
  * Vista 1 · Entrada — garita.html:630-728. Dos caminos para dejar pasar a
  * alguien: código QR de una invitación (`garita_validar`) o visita sin
- * anunciar con autocompletado por cédula (`garita_visitante`). Los dos son
- * de lectura y ya están conectados a la base.
+ * anunciar con autocompletado por cédula (`garita_visitante`).
  *
- * "Registrar entrada" (adentro del veredicto y en el formulario de abajo)
- * llama a `garita_entrada` + `garita_avisar`, escritura, y queda pendiente
- * de confirmar el SQL real con `pg_get_functiondef` antes de conectarse —
- * ver docs/estado-migracion.md, bloque 11.
+ * Las 4 acciones de escritura (`garita_entrada`, `garita_avisar`) ya están
+ * conectadas — confirmado su SQL real con `pg_get_functiondef` el 28-sep
+ * (ver docs/estado-migracion.md, "Bloques 11 y 12").
  */
 export function VistaEntrada({ edificioId }: { edificioId: string }) {
   const directorio = useDirectorioGarita();
@@ -39,6 +42,7 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
   const [unidadId, setUnidadId] = useState("");
   const [placa, setPlaca] = useState("");
   const [pistaDoc, setPistaDoc] = useState("");
+  const [enviandoSinAnunciar, setEnviandoSinAnunciar] = useState(false);
   const temporizadorDoc = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const validar = async (codigoBruto: string) => {
@@ -54,10 +58,17 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
     });
     setValidando(false);
 
+    // garita_validar no es de solo lectura: si el código no existe, inserta
+    // ella misma un rechazo en la bitácora (para que quede asentado si
+    // alguien prueba códigos al azar en la puerta) — efecto de la función,
+    // no algo que este cliente tenga que replicar.
     if (error) return mostrarAviso(error.message, "mal");
     const r = data?.[0];
     if (!r) return;
 
+    // El original arma `datos` antes del if(valido) y lo muestra en los dos
+    // casos (garita.html:602-607, 610/626) — quién intentó entrar importa
+    // también cuando se lo rechaza.
     const datos: DatosVeredicto = {
       nombre: r.nombre,
       documento: r.documento,
@@ -67,8 +78,8 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
 
     setVeredicto(
       r.valido
-        ? { ok: true, titulo: "Puede pasar", datos }
-        : { ok: false, titulo: r.motivo || "No puede pasar" }
+        ? { ok: true, titulo: "Puede pasar", datos, fila: r }
+        : { ok: false, titulo: r.motivo || "No puede pasar", datos }
     );
   };
 
@@ -82,9 +93,41 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
     if (e.key === "Enter") validar(codigo);
   };
 
-  const registrarEntradaDesdeVeredicto = () => {
+  const registrarEntradaDesdeVeredicto = async () => {
+    const fila = veredicto?.fila;
+    // Cierra ya mismo, como el original (garita.html:612) — evita un
+    // segundo click sobre el mismo veredicto mientras se escribe (garita_entrada
+    // no es idempotente: cada llamada crea una visita nueva).
     setVeredicto(null);
-    mostrarAviso(mensajePendienteEscritura("Registrar entrada"), "mal");
+    if (!fila) return;
+
+    const unidad = directorio.find((u) => u.codigo === fila.unidad)?.unidad_id ?? null;
+    const supabase = crearClienteNavegador();
+    const args: Omit<ArgsGaritaEntrada, "p_unidad"> & { p_unidad: string | null } = {
+      p_edificio: edificioId,
+      p_unidad: unidad,
+      p_nombre: fila.nombre,
+      p_documento: fila.documento ?? undefined,
+      p_placa: fila.placa ?? undefined,
+      p_invitacion: fila.invitacion_id ?? undefined,
+      p_nota: undefined,
+    };
+    // p_unidad no tiene DEFAULT en la firma SQL (confirmado con
+    // pg_get_functiondef) — a diferencia de p_documento/p_placa/p_invitacion/
+    // p_nota, es obligatorio mandarlo siempre, con null explícito si no hay
+    // unidad. El tipo generado lo declara `string` sin `| null` porque el
+    // generador no marca nullable un parámetro sin DEFAULT, no porque no
+    // acepte NULL — la función lo comprueba ella misma
+    // (`if p_unidad is not null and not exists (...)`).
+    const { data: id, error } = await supabase.rpc("garita_entrada", args as ArgsGaritaEntrada);
+    if (error) return mostrarAviso(error.message, "mal");
+    if (!id) return;
+
+    mostrarAviso(`Entrada registrada. ${fila.nombre}`, "ok");
+    // Sin esperar el resultado, igual que garita.html:620 — a diferencia del
+    // formulario de abajo, este camino no le dice al vigilante si el aviso
+    // llegó o no.
+    void supabase.rpc("garita_avisar", { p_visita: id });
   };
 
   const onInputDocumento = (valor: string) => {
@@ -106,7 +149,7 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
         setPistaDoc("");
         return;
       }
-      setNombre((actual) => actual.trim() ? actual : r.nombre);
+      setNombre((actual) => (actual.trim() ? actual : r.nombre));
       setPistaDoc(
         `Ya vino ${r.veces} ${r.veces === 1 ? "vez" : "veces"}` +
           (r.ultima_unidad ? ` · la última a la ${r.ultima_unidad}` : "")
@@ -114,10 +157,39 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
     }, 350);
   };
 
-  const registrarSinAnunciar = (e: FormEvent) => {
+  const registrarSinAnunciar = async (e: FormEvent) => {
     e.preventDefault();
-    if (!nombre.trim()) return mostrarAviso("Falta el nombre de quien entra.", "mal");
-    mostrarAviso(mensajePendienteEscritura("Registrar y avisar al residente"), "mal");
+    const nombreLimpio = nombre.trim();
+    if (!nombreLimpio) return mostrarAviso("Falta el nombre de quien entra.", "mal");
+
+    setEnviandoSinAnunciar(true);
+    const supabase = crearClienteNavegador();
+    const args: Omit<ArgsGaritaEntrada, "p_unidad"> & { p_unidad: string | null } = {
+      p_edificio: edificioId,
+      p_unidad: unidadId || null,
+      p_nombre: nombreLimpio,
+      p_documento: documento.trim() || undefined,
+      p_placa: placa.trim() || undefined,
+      p_invitacion: undefined,
+      p_nota: undefined,
+    };
+    const { data: id, error } = await supabase.rpc("garita_entrada", args as ArgsGaritaEntrada);
+    setEnviandoSinAnunciar(false);
+    if (error) return mostrarAviso(error.message, "mal");
+    if (!id) return;
+
+    // Acá sí se espera y se le dice al vigilante si el aviso llegó
+    // (garita.html:720-723), a diferencia del camino del veredicto de arriba.
+    const { data: n } = await supabase.rpc("garita_avisar", { p_visita: id });
+    mostrarAviso(
+      (n ?? 0) > 0 ? "Entrada registrada. Se le avisó al residente." : "Entrada registrada. No se le pudo avisar al residente.",
+      (n ?? 0) > 0 ? "ok" : "mal"
+    );
+    setDocumento("");
+    setNombre("");
+    setPlaca("");
+    setUnidadId("");
+    setPistaDoc("");
   };
 
   return (
@@ -243,7 +315,7 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
             </div>
           </div>
           <div className="garita-fila">
-            <button type="submit" className="garita-boton ancho">
+            <button type="submit" className="garita-boton ancho" disabled={enviandoSinAnunciar}>
               Registrar y avisar al residente
             </button>
           </div>

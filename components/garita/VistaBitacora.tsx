@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Aviso } from "@/components/ui";
 import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
 import { horaCorta, hoyLocalISO } from "@/lib/formato";
-import { mensajePendienteEscritura } from "@/lib/garita/pendiente-escritura";
 import type { NotaBitacora } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 
@@ -19,19 +18,19 @@ const ETIQUETA_TIPO: Record<string, string> = {
 
 /**
  * Vista 4 · Bitácora — garita.html:838-896. El día completo
- * (`garita_bitacora`, lectura, 200 filas como máximo) ya está conectado.
+ * (`garita_bitacora`) ya está conectado.
  *
- * "Anotar" (`garita_nota`) es escritura y **inmutable por diseño** — no se
- * puede borrar ni corregir — así que queda pendiente de confirmar el SQL
- * antes de conectarla (docs/estado-migracion.md, bloque 12): más vale
- * frenar acá que escribir algo mal en una bitácora que no se puede arreglar
- * después.
+ * "Anotar" (`garita_nota`) ya está conectado — confirmado su SQL real con
+ * `pg_get_functiondef` el 28-sep. Es **inmutable por diseño**: la función
+ * solo hace `insert` (nunca `update`/`delete`) y no hay ningún RPC de borrado
+ * — cada llamada agrega una fila nueva, sin excepción.
  */
 export function VistaBitacora({ edificioId }: { edificioId: string }) {
   const { aviso, mostrarAviso } = useAvisoTemporal();
   const [fecha, setFecha] = useState(hoyLocalISO());
   const [texto, setTexto] = useState("");
   const [tipo, setTipo] = useState("novedad");
+  const [enviandoNota, setEnviandoNota] = useState(false);
 
   // "Cargando" se deriva de la clave (fecha), no de un setState sincrónico
   // dentro del efecto — mismo patrón que Cortes.tsx/Estadisticas.tsx (ver
@@ -40,8 +39,24 @@ export function VistaBitacora({ edificioId }: { edificioId: string }) {
   const notas = cargado?.fecha === fecha ? cargado.notas : [];
   const cargando = cargado?.fecha !== fecha;
 
+  // `cargar` queda aparte (no solo el efecto de abajo) porque "Anotar"
+  // también tiene que refrescar cuando la fecha ya era la de hoy —
+  // garita.html:892 llama a cargar() sin condición, no solo cuando cambia
+  // $("#fecha").value.
+  const cargar = useCallback(async () => {
+    const supabase = crearClienteNavegador();
+    const { data, error } = await supabase.rpc("garita_bitacora", {
+      p_edificio: edificioId,
+      p_fecha: fecha,
+      p_limite: 200,
+    });
+    if (error) return mostrarAviso(error.message, "mal");
+    setCargado({ fecha, notas: data ?? [] });
+  }, [edificioId, fecha, mostrarAviso]);
+
   // Recarga sola al montar y cada vez que cambia la fecha (garita.html:881,
-  // $("#fecha").onchange = cargar).
+  // $("#fecha").onchange = cargar) — inline, no `cargar()` (el lint rechaza
+  // llamar dentro de un efecto a una función que hace setState).
   useEffect(() => {
     let vivo = true;
     const supabase = crearClienteNavegador();
@@ -58,10 +73,26 @@ export function VistaBitacora({ edificioId }: { edificioId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edificioId, fecha]);
 
-  const anotar = (e: FormEvent) => {
+  const anotar = async (e: FormEvent) => {
     e.preventDefault();
-    if (!texto.trim()) return mostrarAviso("La nota está vacía.", "mal");
-    mostrarAviso(mensajePendienteEscritura("Anotar"), "mal");
+    const t = texto.trim();
+    if (!t) return mostrarAviso("La nota está vacía.", "mal");
+
+    setEnviandoNota(true);
+    const supabase = crearClienteNavegador();
+    const { data: id, error } = await supabase.rpc("garita_nota", {
+      p_edificio: edificioId,
+      p_texto: t,
+      p_tipo: tipo,
+    });
+    setEnviandoNota(false);
+    if (error) return mostrarAviso(error.message, "mal");
+    if (!id) return;
+
+    setTexto("");
+    mostrarAviso("Anotado.");
+    setFecha(hoyLocalISO());
+    cargar();
   };
 
   return (
@@ -95,7 +126,7 @@ export function VistaBitacora({ edificioId }: { edificioId: string }) {
             </div>
           </div>
           <div className="garita-fila">
-            <button type="submit" className="garita-boton ancho">
+            <button type="submit" className="garita-boton ancho" disabled={enviandoNota}>
               Anotar
             </button>
           </div>
