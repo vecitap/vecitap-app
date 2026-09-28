@@ -48,10 +48,10 @@ retira, no es parte del producto.
 3. Autenticación y capa de datos — ✅ Completa
 4. Migración vertical por módulo (Residente → Operador → Admin) — ⏳ En
    curso. **Desde el 28-sep se reescribe contra los HTML actuales de `main`**
-   (ver la sección "Reescritura contra `main`" más abajo): Admin completo y
-   las reversiones de criterio construidos (bloques 0 a 6); faltan las
-   diferencias de Residente, Mis visitas, `PanelModulos` de Operador y
-   Garita. Nada validado todavía.
+   (ver la sección "Reescritura contra `main`" más abajo): Admin, las
+   diferencias de Residente (banda oscura, pestañas, Mis visitas) y
+   `PanelModulos` de Operador construidos (bloques 0 a 9); falta Garita
+   completo (bloques 10 a 12). Nada validado todavía.
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -598,15 +598,15 @@ El inventario nuevo, pantalla por pantalla y acción por acción, está en
 | 4 | Admin · **Ajustes** + logo de la administradora + `NuevoEdificio` de vuelta a Ajustes |
 | 5 | Admin · armazón: columna lateral oscura, `mis_modulos`, tasa del BCV en el encabezado, pestaña Vigilantes en Accesos, recuperación de clave |
 | 6 | Reversión de desvíos (umbrales, alícuota, 2 tonos, cédula, obligatorios) + lectura real de Excel y PDF |
+| 7 | `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas |
+| 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) |
+| 9 | Operador · `PanelModulos` + campo de clave con ojo en su login |
 
-**Quedan 6 bloques:**
+**Quedan 3 bloques — frenar acá, el 10 no arranca sin aprobación (pedido explícito):**
 
 | Bloque | Alcance |
 |---|---|
-| 7 | **Siguiente.** `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas |
-| 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) |
-| 9 | Operador · `PanelModulos` + campo de clave con ojo en su login |
-| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón, login y "falta un paso" |
+| 10 | **Siguiente, sin empezar.** Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón, login y "falta un paso" |
 | 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar |
 | 12 | Garita · **Adentro**, **Consultar** y **Bitácora** |
 
@@ -639,6 +639,63 @@ un archivo suelto — ver "Ruta de la garita" más abajo.
   8,8) afecta a `≤ 4.1.392`: un PDF preparado a propósito puede ejecutar
   JavaScript en el origen que lo abre, y acá el PDF del banco se lee en el
   navegador, en el mismo origen que la sesión de Supabase.
+- **Bloque 7 (íconos + banda de Residente), cerrado.** `lucide-react` 0.469.0
+  (misma versión que `main` carga por CDN, `--save-exact`). El caso 13 resultó
+  ser una brecha solo de Admin: `index.html`, `operador.html` y `garita.html`
+  no usan lucide en `main` (verificado por conteo), así que la banda oscura de
+  Residente se portó **sin íconos**, igual que main — agregárselos habría sido
+  una mejora no pedida. El detalle completo de qué ícono va en qué pantalla
+  quedó en `docs/inventario-main.md`, sección 6. La pestaña "Mis visitas" ya
+  aparece cuando el edificio tiene el módulo `garita` activo, pero todavía
+  lleva a un 404 hasta que el bloque 8 construya esa ruta.
+- **Bloque 8 (Residente · Mis visitas), cerrado.** `app/(residente)/mi/[unidadId]/visitas/page.tsx`
+  gatea por el módulo `garita` del lado del servidor (`notFound()` si está
+  apagado — a diferencia de main, acá sí hay una URL propia que alguien
+  podría visitar directo) y trae `invitaciones_visita`, `mis_visitas` y
+  `vehiculos` en paralelo. Las cuatro secciones de main quedaron portadas:
+  `InvitarVisitas.tsx` (V1/V2), `MisVehiculos.tsx` (V3/V4) y
+  `QuienHaEntrado.tsx` (lectura de `mis_visitas`). `qrcode` 1.5.4 se instaló
+  por npm (`--save-exact`, misma versión que main baja por CDN) y
+  `lib/residente/tarjeta-visita.ts` tiene el QR y el canvas de la tarjeta.
+
+  **El SQL de `crear_invitacion_visita`/`anular_invitacion_visita`** (pedido
+  con la consulta que quedó acá, corrida por Nicolás contra `vecitap-pruebas`)
+  confirmó reglas que no estaban documentadas y que ahora aplica el cliente:
+  `p_hasta` tiene que ser futura y a lo sumo 30 días adelante (lo valida la
+  función, no el formulario); `p_documento`/`p_placa` se normalizan en la
+  base (mayúsculas, sin caracteres raros) y `p_usos` se clampa entre 1 y 50;
+  el código lo genera la base (`gen_random_bytes`), nunca el navegador; y
+  `anular_invitacion_visita` autoriza por `unidades_visibles()` (mismo
+  criterio de RLS que ya filtra qué unidades ve la sesión) o `puede_operar`,
+  así que alcanza con mandarle el id de la invitación. Las dos funciones son
+  `SECURITY DEFINER` con `search_path` fijo, correctamente — ninguna de las
+  dos está en la lista de funciones de seguridad de `AGENTS.md`, pero
+  conviene tenerlas presentes si se tocan en el futuro: son las que deciden
+  quién puede crear o anular un acceso a un edificio.
+  **`MisVehiculos.tsx` preserva un detalle de main:** el formulario tiene un
+  solo campo "Marca y modelo" (no dos), porque `main` nunca conecta su
+  `auto.modelo` a ningún input — `modelo` siempre queda `null`. Es un bug de
+  main sin riesgo de datos, se copia tal cual (criterio del 28-sep).
+- **Bloque 9 (Operador · PanelModulos + login), cerrado.** `components/operador/PanelModulos.tsx`
+  se insertó en `FichaCliente.tsx` entre "Suscripción" y "Contacto" (mismo
+  lugar que main), usando `modulos_de`/`fijar_modulo`/`soltar_modulo` —
+  las tres ya estaban tipadas en `types/supabase.ts` desde el 28-sep, sin
+  sorpresas. El toggle "Habilitado"/"Apagado" y el resto de las piezas
+  (excepciones por edificio, alta de excepción con 2+ edificios) son fieles
+  a `operador.html:709-849`, con los tokens de `globals.css` en vez de los
+  colores propios de `operador.html`.
+
+  **El "campo de clave con ojo en el login del Operador" resultó ser un
+  pendiente ya resuelto, no código nuevo.** A diferencia de main (donde
+  `operador.html` tiene su propia pantalla de login con un
+  `<input type="password">` pelado), Operador en el port **no tiene login
+  propio**: `/operador` ya redirigía a `/entrar?volver=/operador` desde antes
+  de este bloque, y `/entrar` es compartido por los cuatro roles desde el
+  bloque 5 — con `CampoClave` (el campo con ojo) puesto ahí una sola vez para
+  todos. El inventario lo arrastraba como pendiente porque describía
+  `operador.html` tal cual es en `main`, no lo que ya construyó la
+  arquitectura compartida. Verificado también que no hay ningún otro
+  `type="password"` suelto en `components/operador/` ni en `app/(interno)/`.
 
 #### Lo único que falta para igualar a `main` en aspecto
 

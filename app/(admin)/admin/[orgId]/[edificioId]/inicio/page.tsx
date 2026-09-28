@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Building2, CalendarClock, ChevronRight, CircleDollarSign, ReceiptText, TrendingDown } from "lucide-react";
 import { Aviso, Card, Vacio } from "@/components/ui";
 import { Edificio } from "@/components/admin/Edificio";
 import { calcularMetricasInicio } from "@/lib/admin/metricas";
@@ -47,6 +48,7 @@ export default async function PaginaInicio({
       <Vacio
         titulo="Empiece por cargar los propietarios"
         texto="Registre las unidades con su alícuota y el saldo que arrastran hoy. Puede pegarlos desde su hoja de cálculo."
+        icono={<Building2 size={28} />}
         accion={
           <Link href={`/admin/${orgId}/${edificioId}/propietarios`} className="btn" style={{ textDecoration: "none" }}>
             Ir a Propietarios
@@ -72,8 +74,11 @@ export default async function PaginaInicio({
     <div style={{ display: "grid", gap: 20 }}>
       <div className="apila-movil" style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
         <Card>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
-            Por cobrar
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <TrendingDown size={15} style={{ color: "var(--tenue)" }} />
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
+              Por cobrar
+            </div>
           </div>
           <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: porCobrar > 0 ? "var(--rojo)" : "var(--verde)" }}>
             {usd(porCobrar)}
@@ -83,15 +88,21 @@ export default async function PaginaInicio({
           </div>
         </Card>
         <Card>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
-            Saldos a favor
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <CircleDollarSign size={15} style={{ color: "var(--tenue)" }} />
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
+              Saldos a favor
+            </div>
           </div>
           <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>{usd(Math.abs(aFavor))}</div>
           <div style={{ fontSize: 11.5, color: "var(--tenue)", marginTop: 4 }}>Anticipos que ya pagaron</div>
         </Card>
         <Card>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
-            Último mes cerrado
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <ReceiptText size={15} style={{ color: "var(--tenue)" }} />
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
+              Último mes cerrado
+            </div>
           </div>
           <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>{ultimo ? ultimo.etiqueta : "—"}</div>
           <div style={{ fontSize: 11.5, color: "var(--tenue)", marginTop: 4 }}>
@@ -103,8 +114,11 @@ export default async function PaginaInicio({
           style={{ textDecoration: "none", color: "inherit" }}
         >
           <Card>
-            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
-              Mes abierto
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <CalendarClock size={15} style={{ color: "var(--tenue)" }} />
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
+                Mes abierto
+              </div>
             </div>
             <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>
               {periodoAbierto ? periodoAbierto.etiqueta : "ninguno"}
@@ -158,6 +172,7 @@ export default async function PaginaInicio({
                 <th>Administración</th>
                 <th>Servicio</th>
                 <th style={{ textAlign: "right" }}>Total</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -182,6 +197,11 @@ export default async function PaginaInicio({
                   </td>
                   <td className="mono" data-t="Total" style={{ textAlign: "right", fontWeight: 700, color: "var(--rojo)" }}>
                     {usd(m.total)}
+                  </td>
+                  <td className="flecha" style={{ width: 28 }}>
+                    <Link href={`/admin/${orgId}/${edificioId}/propietarios/${m.unidad_id}`}>
+                      <ChevronRight size={15} style={{ color: "var(--tenue)" }} />
+                    </Link>
                   </td>
                 </tr>
               ))}

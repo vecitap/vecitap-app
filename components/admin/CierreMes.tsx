@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, ReceiptText, RotateCcw, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Flechas, Input, Select } from "@/components/ui";
 import { nf, num, num0, usd } from "@/lib/formato";
 import { MESES } from "@/lib/admin/constantes";
@@ -445,7 +446,7 @@ export function CierreMes({
                   </p>
                 </div>
                 <Button type="button" variante="secundario" mini onClick={traerFijas}>
-                  Traer partidas fijas
+                  <RotateCcw size={14} /> Traer partidas fijas
                 </Button>
               </div>
 
@@ -476,7 +477,7 @@ export function CierreMes({
                   <Input className="mono" value={nuevo.monto} onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} />
                 </Campo>
                 <Button type="button" onClick={agregarGasto}>
-                  +
+                  <Plus size={15} />
                 </Button>
               </div>
 
@@ -595,7 +596,7 @@ export function CierreMes({
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Button type="button" disabled={ocupado} onClick={() => setConfirma({ que: "cerrar" })}>
-              Cerrar el mes y emitir recibos
+              <ReceiptText size={16} /> Cerrar el mes y emitir recibos
             </Button>
             {cerrados.length > 0 && (
               <Button
@@ -603,7 +604,7 @@ export function CierreMes({
                 variante="secundario"
                 onClick={() => setConfirma({ que: "reabrir", id: cerrados[0].id, etiqueta: cerrados[0].etiqueta, enviado: !!cerrados[0].enviado_en })}
               >
-                Reabrir {cerrados[0].etiqueta}
+                <RotateCcw size={15} /> Reabrir {cerrados[0].etiqueta}
               </Button>
             )}
           </div>
@@ -766,7 +767,7 @@ function FilasDirectas({
           <CampoMonto key={`monto:${g.monto}`} valor={Number(g.monto)} onGuardar={(v) => onEditar(g.id, { monto: v })} />
           <td style={{ width: 34 }}>
             <button onClick={() => onQuitar(g.id)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}>
-              ✕
+              <Trash2 size={15} />
             </button>
           </td>
         </tr>
@@ -818,7 +819,7 @@ function FilaGasto({
       <CampoMonto key={`monto:${g.monto}`} valor={Number(g.monto)} onGuardar={(v) => onEditar(g.id, { monto: v })} />
       <td style={{ width: 34 }}>
         <button onClick={() => onQuitar(g.id)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}>
-          ✕
+          <Trash2 size={15} />
         </button>
       </td>
     </tr>

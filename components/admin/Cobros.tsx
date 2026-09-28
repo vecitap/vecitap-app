@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Input, Select, type TonoBadge } from "@/components/ui";
 import { num0 } from "@/lib/formato";
 import { BOLSILLOS, MODOS_COBRO } from "@/lib/admin/constantes";
@@ -171,7 +172,7 @@ export function Cobros({
             <Input className="mono" value={nuevo.iva} onChange={(e) => setNuevo({ ...nuevo, iva: e.target.value })} />
           </Campo>
           <Button type="button" onClick={agregar}>
-            Agregar
+            <Plus size={15} /> Agregar
           </Button>
         </div>
       </div>
@@ -268,7 +269,7 @@ function FilaConcepto({
       <td style={{ width: 34 }}>
         {!deVecitap && (
           <button onClick={onEliminar} title="Eliminar" style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}>
-            ✕
+            <Trash2 size={15} />
           </button>
         )}
       </td>

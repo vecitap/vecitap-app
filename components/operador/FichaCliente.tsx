@@ -7,6 +7,7 @@ import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularCuotaPrevista, PLANES, DESCUENTO } from "@/lib/operador/planes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { ClienteCartera, CobroSuscripcion, ConceptoServicio, EdificioOperador } from "@/lib/operador/tipos";
+import { PanelModulos } from "./PanelModulos";
 
 // Los estados que la administradora puede elegir a mano — "sin suscripción"
 // es un valor calculado (no hay fila en `suscripciones` todavía), no una
@@ -310,6 +311,8 @@ export function FichaCliente({
               </div>
             </div>
           </Card>
+
+          <PanelModulos orgId={c.org_id} edificios={edificios} notificar={notificar} fallo={fallo} />
 
           <Card>
             <h3 style={{ margin: "0 0 12px", fontSize: 13, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tinta-2)" }}>

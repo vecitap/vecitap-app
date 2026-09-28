@@ -210,10 +210,10 @@ Sin escrituras. Se esconde si el módulo `estadisticas` está apagado.
 | Login (`Entrar`) | 390–479 | **distinta** | Falta: "Olvidé mi clave" (`resetPasswordForEmail`) y el campo de clave con ojo. El botón "No tengo cuenta todavía" (signUp) ya está y coincide con main. |
 | Clave nueva tras recuperación (`ClaveNueva`) | 481–528 | **falta** | Igual que en Admin: mínimo 8, repetición, sin salida salvo guardar o salir. |
 | Aceptar invitación (`Invitacion`) | 530–573 | ya está | El enlace extra "¿Viene a registrar su administradora?" no está en main (main tiene un archivo por rol): **se mantiene**, es consecuencia de compartir `/entrar` (caso 20). |
-| Banda superior oscura (logo crema, "Mi condominio", correo, tema, salir) | 307–333 | **falta** | main usa tokens `banda*` idénticos a los `--lat-*` que ya están en `globals.css`. |
+| Banda superior oscura (logo crema, "Mi condominio", correo, tema, salir) | 307–333 | **ya está** (bloque 7) | `EncabezadoResidente.tsx`, ahora fuera del contenedor de 640px (franja de ancho completo, igual que main), con los tokens `--lat-*` — sin íconos, ver caso 13 más abajo. |
 | Selector de unidad | 344–353 | ya está | — |
 | Tarjeta de la unidad (código, relación, alícuota 4 dec, saldo) | 646–675 | **ya está** (bloque 6) | Vuelve a los 2 tonos de main (caso 1). |
-| Pestañas: Mi recibo · Reportar un pago · Mis pagos · **Mis visitas** | 678–683 | **distinta** | Falta "Mis visitas" (solo si `mis_modulos(edificio).garita` está activo). |
+| Pestañas: Mi recibo · Reportar un pago · Mis pagos · **Mis visitas** | 678–683 | **ya está** (bloque 7) | `PestanasResidente.tsx` agrega la pestaña "Mis visitas" cuando `mis_modulos(edificio).garita` está activo, igual que `verVisitas` en main. **El enlace todavía lleva a un 404**: la ruta `/mi/[unidadId]/visitas` se construye en el bloque 8 — mismo tipo de pendiente que el enlace `/garita` de Accesos. |
 | Recibo en pantalla (`Recibo`) | 1328–1481 | **ya está** (bloque 2) | Portada la **tasa de hoy** (`tasa_atrasada`): main muestra "Si paga hoy" con la tasa viva y solo cae a `tasa_bcv` del recibo si la base no dio ninguna. Cambió también el pie ("cambia todos los días… Si paga mañana, el monto en bolívares será otro"). |
 | Recibo en papel (`papelRecibo`) | 1115–1326 | **ya está** (bloque 2) | Unificado en `lib/recibo-papel.ts` con el de Admin (en main el mismo código está dos veces, byte a byte), con la paleta nueva y `tasaHoy`. |
 | Reportar un pago (`Reportar`) | 1522–1717 | **ya está** (bloque 6) | Casos 4 y 5 revertidos (un solo campo de texto para cédula/RIF, sin marcas de obligatorio ni scroll). El caso 3 (validación por firma real del archivo) se mantiene: es la excepción de seguridad. |
@@ -242,12 +242,38 @@ Sin escrituras. Se esconde si el módulo `estadisticas` está apagado.
 - **Quién ha entrado**: nombre, fecha/hora, placa, "anunciada"/"sin anunciar",
   y "Adentro" o "Salió HH:MM".
 
-| # | Acción | Cómo | Notas |
-|---|---|---|---|
-| V1 | Crear invitación de visita | `crear_invitacion_visita` | — |
-| V2 | Anular invitación | `anular_invitacion_visita(p_invitacion)` | 🔴 no hay "des-anular" |
-| V3 | Agregar vehículo | `insert vehiculos` | — |
-| V4 | Quitar vehículo | `delete vehiculos` | 🔴 |
+| # | Acción | Cómo | Notas | Estado |
+|---|---|---|---|---|
+| V1 | Crear invitación de visita | `crear_invitacion_visita` | — | ✅ construido (bloque 8) |
+| V2 | Anular invitación | `anular_invitacion_visita(p_invitacion)` | 🔴 no hay "des-anular" | ✅ construido (bloque 8) |
+| V3 | Agregar vehículo | `insert vehiculos` | — | ✅ construido (bloque 8) |
+| V4 | Quitar vehículo | `delete vehiculos` | 🔴 | ✅ construido (bloque 8) |
+
+**Bloque 8, completo.** `app/(residente)/mi/[unidadId]/visitas/page.tsx` gatea
+por el módulo `garita` del lado del servidor (`notFound()` si no está
+activo) y trae `invitaciones_visita`, `mis_visitas` y `vehiculos` en
+paralelo. Las cuatro secciones de main están portadas:
+`InvitarVisitas.tsx` (V1/V2), `MisVehiculos.tsx` (V3/V4, con el detalle del
+campo único "Marca y modelo" — ver el comentario del componente) y
+`QuienHaEntrado.tsx` (lectura). El QR/canvas de la tarjeta vive en
+`lib/residente/tarjeta-visita.ts`, con `qrcode` 1.5.4 instalado por npm
+(`--save-exact`, misma versión que `main` baja por CDN).
+
+El SQL de `crear_invitacion_visita`/`anular_invitacion_visita` (traído con
+la consulta del bloque 8 en `docs/estado-migracion.md`) confirmó reglas que
+no estaban en el inventario original y que ahora aplica el cliente:
+
+- `p_hasta` tiene que ser futura y a lo sumo 30 días adelante — lo valida
+  la función, el formulario no agrega un `max` al `datetime-local` (igual
+  que main, que tampoco lo hace del lado del cliente).
+- `p_documento`/`p_placa` se normalizan en la base (mayúsculas, sin
+  caracteres raros) y `p_usos` se clampa entre 1 y 50 — el cliente manda el
+  valor tal cual lo escribió la persona.
+- El código lo genera la base (`gen_random_bytes`), nunca el navegador.
+- `anular_invitacion_visita` autoriza por `unidades_visibles()` (mismo
+  criterio de RLS que ya filtra qué unidades ve la sesión) o `puede_operar`
+  — alcanza con mandarle el id de la invitación, sin repetir el id de la
+  unidad.
 
 ---
 
@@ -256,10 +282,10 @@ Sin escrituras. Se esconde si el módulo `estadisticas` está apagado.
 | Pieza | Estado | Detalle |
 |---|---|---|
 | Consola, KPIs, morosidad, tasa BCV, cobros automáticos, cartera, CSV | ya está | — |
-| Ficha de cliente (5 secciones) | ya está | El campo controlado de "Cobro dentro del recibo" (caso 7) **se mantiene**: riesgo de pérdida de datos. |
-| Login | **distinta** | Faltan "Olvidé mi clave" y el campo de clave con ojo. |
-| `ClaveNueva` (recuperación) | **falta** | Igual que en los otros módulos. |
-| **`PanelModulos`** (709–849) | **falta** | Dentro de la ficha del cliente: lista de módulos con su nombre y descripción, los de núcleo marcados "siempre incluido" y sin interruptor, los demás con botón Habilitado/Apagado, marca "fijado a mano", bloque de **excepciones por edificio** (mandan sobre la regla general) con "Quitar la excepción", y —solo con 2+ edificios— alta de excepción ("Habilitar solo ahí" / "Apagar solo ahí"). RPCs `modulos_de(p_org)`, `fijar_modulo(p_org, p_clave, p_activo, p_edificio, p_nota)`, `soltar_modulo(p_org, p_clave, p_edificio)`. |
+| Ficha de cliente (6 secciones) | ya está | El campo controlado de "Cobro dentro del recibo" (caso 7) **se mantiene**: riesgo de pérdida de datos. |
+| Login | **ya está** — no hace falta código nuevo | Operador **no tiene pantalla de login propia** en el port: `/operador` redirige a `/entrar?volver=/operador` (ese redirect ya existía desde antes del bloque 9). `/entrar` es compartido por los cuatro roles desde el bloque 5 y ya usa `CampoClave` (el campo con ojo) en todas partes — lo que en `operador.html` es un `<input type="password">` pelado, en el port ya es el mismo componente que usan Admin y Residente. Nada que construir acá; era un pendiente que la arquitectura compartida ya había resuelto sin que el inventario lo reflejara. |
+| `ClaveNueva` (recuperación) | ya está | Comparte `/entrar`, modo `clave-nueva` — ver el bloque 5. |
+| **`PanelModulos`** (709–849) | **ya está** (bloque 9) | Dentro de la ficha del cliente, entre "Suscripción" y "Contacto" (mismo lugar que main): lista de módulos con su nombre y descripción, los de núcleo marcados "siempre incluido" y sin interruptor, los demás con botón Habilitado/Apagado, marca "fijado a mano", bloque de **excepciones por edificio** (mandan sobre la regla general) con "Quitar la excepción", y —solo con 2+ edificios— alta de excepción ("Habilitar solo ahí" / "Apagar solo ahí"). RPCs `modulos_de(p_org)`, `fijar_modulo(p_org, p_clave, p_activo, p_edificio, p_nota)`, `soltar_modulo(p_org, p_clave, p_edificio)` — todas ya estaban tipadas en `types/supabase.ts`. `components/operador/PanelModulos.tsx`. |
 
 ---
 
@@ -350,10 +376,20 @@ no solo comportarse igual. Eso cerró dos cosas que estaban abiertas:
   eran una decisión aprobada con un "no revertir" explícito. El criterio nuevo la
   reemplaza: la tarjeta vuelve a los 2 tonos de `main`. Queda anotado acá y en
   `docs/casos-de-uso-mejorados.md` para que no parezca un olvido.
-- **Caso 13 (íconos).** Deja de ser "consistencia con el resto de la migración" y
-  pasa a ser una brecha visual real. Es lo único que falta para igualar a `main`
-  en aspecto. Nicolás **aprobó `lucide-react` el 28-sep**; se instala y se aplica
-  en el bloque 7.
+- **Caso 13 (íconos). ✅ Resuelto en el bloque 7.** Deja de ser "consistencia con
+  el resto de la migración" y pasa a ser una brecha visual real. Nicolás
+  **aprobó `lucide-react` el 28-sep** (misma versión que `main` carga por CDN,
+  0.469.0, fijada con `--save-exact`). Solo `admin.html` usa lucide en `main`
+  (verificado: cero usos en `index.html`, `operador.html`, `garita.html`), así
+  que el alcance es exclusivamente Admin: los 9 íconos del menú lateral
+  (`House`/`Users`/`ListChecks`/`ReceiptText`/`Wallet`/`Send`/`ChartColumn`/
+  `KeyRound`/`Settings2`), `Sun`/`Moon`/`LogOut`/`RefreshCw`/`Building2`/`X` del
+  armazón, las 4 métricas y la flecha de fila de Inicio, los botones de
+  Propietarios/Ficha/Cobros/CierreMes/Estadísticas/Cortes/Ajustes, y
+  `Flechas.tsx` (`ChevronUp`/`ChevronDown` en vez de ▲▼ Unicode) y `Vacio.tsx`
+  (prop `icono` nueva, opcional). La banda oscura de Residente **no** lleva
+  íconos: `index.html` tampoco los usa ahí, así que llevarlos habría sido una
+  mejora no pedida, no paridad.
 
 El resto de los desvíos quedó marcado uno por uno en
 `docs/casos-de-uso-mejorados.md`, con su motivo en una línea.
@@ -371,9 +407,9 @@ El resto de los desvíos quedó marcado uno por uno en
 | 4 | Admin · Ajustes (+ logo, NuevoEdificio de vuelta a su lugar) | ✅ construido |
 | 5 | Admin · armazón: lateral oscuro, `mis_modulos`, tasa en el encabezado, Accesos/Vigilantes, recuperación de clave | ✅ construido |
 | 6 | Reversión de desvíos (umbrales, alícuota, 2 tonos, cédula, obligatorios) + Excel/PDF reales | ✅ construido |
-| 7 | **Siguiente.** `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas | pendiente |
-| 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) | pendiente |
-| 9 | Operador · `PanelModulos` + campo de clave con ojo en su login | pendiente |
+| 7 | `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas | ✅ construido |
+| 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) | ✅ construido |
+| 9 | Operador · `PanelModulos` + campo de clave con ojo en su login | ✅ construido |
 | 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón, login y "falta un paso" | pendiente |
 | 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar | pendiente |
 | 12 | Garita · **Adentro**, **Consultar** y **Bitácora** | pendiente |

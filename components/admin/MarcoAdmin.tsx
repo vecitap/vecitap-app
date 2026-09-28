@@ -3,6 +3,24 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import {
+  Building2,
+  ChartColumn,
+  KeyRound,
+  ListChecks,
+  LogOut,
+  House,
+  Moon,
+  ReceiptText,
+  RefreshCw,
+  Send,
+  Settings2,
+  Sun,
+  Users,
+  Wallet,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { Logo, Select } from "@/components/ui";
 import { nf } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -27,16 +45,17 @@ import type { OrganizacionAdmin } from "@/lib/admin/tipos";
  * props desde el layout, que sí es servidor.
  */
 
-const SECCIONES = [
-  { seg: "inicio", etiqueta: "Inicio" },
-  { seg: "propietarios", etiqueta: "Propietarios" },
-  { seg: "cobros", etiqueta: "Cobros" },
-  { seg: "mes", etiqueta: "Cierre del mes" },
-  { seg: "pagos", etiqueta: "Pagos" },
-  { seg: "cortes", etiqueta: "Cortes de cuenta", modulo: "cortes" },
-  { seg: "estadisticas", etiqueta: "Estadísticas", modulo: "estadisticas" },
-  { seg: "accesos", etiqueta: "Accesos" },
-] as const;
+// Mismos íconos que el menú de admin.html:1189-1199 (caso 13).
+const SECCIONES: { seg: string; etiqueta: string; icono: LucideIcon; modulo?: string }[] = [
+  { seg: "inicio", etiqueta: "Inicio", icono: House },
+  { seg: "propietarios", etiqueta: "Propietarios", icono: Users },
+  { seg: "cobros", etiqueta: "Cobros", icono: ListChecks },
+  { seg: "mes", etiqueta: "Cierre del mes", icono: ReceiptText },
+  { seg: "pagos", etiqueta: "Pagos", icono: Wallet },
+  { seg: "cortes", etiqueta: "Cortes de cuenta", icono: Send, modulo: "cortes" },
+  { seg: "estadisticas", etiqueta: "Estadísticas", icono: ChartColumn, modulo: "estadisticas" },
+  { seg: "accesos", etiqueta: "Accesos", icono: KeyRound },
+];
 
 export function MarcoAdmin({
   organizacion,
@@ -94,7 +113,7 @@ export function MarcoAdmin({
     }
   }, [modulos, seccion, edificioId, organizacion.id, router]);
 
-  const menu = SECCIONES.filter((m) => !("modulo" in m) || hayModulo(m.modulo));
+  const menu = SECCIONES.filter((m) => m.modulo === undefined || hayModulo(m.modulo));
 
   return (
     <div className="admin-marco">
@@ -106,14 +125,16 @@ export function MarcoAdmin({
             onClick={() => setMenuAbierto(false)}
             aria-label="Cerrar el menú"
           >
-            ✕
+            <X size={20} />
           </button>
           {organizacion.logo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={organizacion.logo_url} alt="" style={{ maxHeight: 34, maxWidth: 130 }} />
           ) : (
             <>
-              <div className="admin-iso" aria-hidden="true" />
+              <div className="admin-iso" aria-hidden="true" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Building2 size={17} style={{ color: "var(--acento-sobre)" }} />
+              </div>
               {/* Sin `slice`: cortar a mano deja "Administradora U" sin
                   avisar. Con puntos suspensivos se lee como un nombre
                   largo, que es lo que es. */}
@@ -148,7 +169,7 @@ export function MarcoAdmin({
               className={`admin-nav ${seccion === m.seg ? "activa" : ""}`}
               onClick={() => setMenuAbierto(false)}
             >
-              {m.etiqueta}
+              <m.icono size={17} /> {m.etiqueta}
             </Link>
           ))}
 
@@ -159,7 +180,7 @@ export function MarcoAdmin({
               className={`admin-nav ${seccion === "ajustes" ? "activa" : ""}`}
               onClick={() => setMenuAbierto(false)}
             >
-              Ajustes
+              <Settings2 size={17} /> Ajustes
             </Link>
           )}
           <button
@@ -168,11 +189,12 @@ export function MarcoAdmin({
             title="Cambiar entre claro y oscuro"
             onClick={() => ponerTema(tema === "oscuro" ? "claro" : "oscuro")}
           >
+            {tema === "oscuro" ? <Sun size={17} /> : <Moon size={17} />}
             {tema === "oscuro" ? "Tema claro" : "Tema oscuro"}
           </button>
           <form action="/api/auth/salir" method="post">
             <button type="submit" className="admin-nav">
-              Salir
+              <LogOut size={17} /> Salir
             </button>
           </form>
           <div style={{ padding: "16px 12px 4px", opacity: 0.75 }}>
@@ -247,7 +269,7 @@ function TasaCabecera({ inicial }: { inicial: TasaViva | null }) {
         <div className="admin-tasa-rotulo">
           Tasa BCV de hoy
           <button type="button" onClick={actualizar} disabled={cargando} title="Actualizar" aria-label="Actualizar la tasa">
-            ↻
+            <RefreshCw size={12} />
           </button>
         </div>
         <div className="mono admin-tasa-valor">{tasa?.valor ? nf(2).format(tasa.valor) : "—"}</div>

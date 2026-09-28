@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Trash2 } from "lucide-react";
 import { Aviso, Button, Campo, Card, Flechas, Input, Select, Textarea } from "@/components/ui";
 import { num, num0, usd } from "@/lib/formato";
 import { interpretarPegado } from "@/lib/admin/pegar-partidas";
@@ -214,7 +215,7 @@ export function Ajustes({
             </p>
           </div>
           <Button type="button" variante="secundario" mini onClick={() => setNuevoEd(true)}>
-            + Otro edificio
+            <Plus size={14} /> Otro edificio
           </Button>
         </div>
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
@@ -273,7 +274,7 @@ export function Ajustes({
                 <span style={{ fontWeight: 600, fontSize: 14 }}>{c.nombre}</span>
               </div>
               <Button type="button" variante="secundario" mini onClick={() => agregarPartida(c.id)}>
-                + Partida
+                <Plus size={13} /> Partida
               </Button>
             </div>
             {(c.partidas_fijas ?? []).map((p) => (
@@ -504,7 +505,7 @@ function FilaPartida({
         title="Eliminar"
         style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}
       >
-        ✕
+        <Trash2 size={15} />
       </button>
     </div>
   );

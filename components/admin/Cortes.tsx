@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Check, Download, Eye, Mail, MessageCircle, Printer, Send, Undo2 } from "lucide-react";
 import { Aviso, Button, Campo, Card, Cargando, Confirmar, Input, Select, Textarea, Vacio } from "@/components/ui";
 import { bs, fechaCorta, nf, usd } from "@/lib/formato";
 import { PLANTILLA_WHATSAPP } from "@/lib/admin/constantes";
@@ -325,6 +326,7 @@ export function Cortes({
       <Vacio
         titulo="Todavía no hay recibos que enviar"
         texto="Los cortes de cuenta se arman con los recibos de un mes ya cerrado."
+        icono={<Send size={28} />}
       />
     );
   }
@@ -357,7 +359,7 @@ export function Cortes({
               onClick={listadoPDF}
               title="Abre el listado del mes listo para imprimir o guardar como PDF"
             >
-              Listado en PDF
+              <Printer size={15} /> Listado en PDF
             </Button>
             <Button
               type="button"
@@ -366,10 +368,10 @@ export function Cortes({
               onClick={exportarCSV}
               title="El mismo listado como archivo de Excel, para el contador"
             >
-              CSV
+              <Download size={15} /> CSV
             </Button>
             <Button type="button" variante="secundario" mini onClick={imprimirTodos}>
-              Imprimir los {recibos.length} recibos
+              <Printer size={15} /> Imprimir los {recibos.length} recibos
             </Button>
             <Button
               type="button"
@@ -378,19 +380,19 @@ export function Cortes({
               disabled={!recibos.length}
               onClick={() => setPrueba(recibos[0]?.unidad_id ?? "")}
             >
-              Probar el correo
+              <Mail size={15} /> Probar el correo
             </Button>
             <Button type="button" mini disabled={!recibos.length || enviando} onClick={() => setConfirmaEnvio(true)}>
-              {enviando ? "Enviando…" : "Enviar por correo"}
+              <Send size={15} /> {enviando ? "Enviando…" : "Enviar por correo"}
             </Button>
             {periodo &&
               (periodo.enviado_en ? (
                 <Button type="button" variante="secundario" mini onClick={() => marcarEnviados(false)}>
-                  Quitar &quot;enviados&quot;
+                  <Undo2 size={15} /> Quitar &quot;enviados&quot;
                 </Button>
               ) : (
                 <Button type="button" variante="secundario" mini onClick={() => marcarEnviados(true)}>
-                  Marcar como enviados
+                  <Check size={15} /> Marcar como enviados
                 </Button>
               ))}
           </div>
@@ -666,7 +668,7 @@ export function Cortes({
                                   rel="noreferrer"
                                   href={`https://wa.me/${x.tel}?text=${encodeURIComponent(textoDe(r))}`}
                                 >
-                                  {x.rol.slice(0, 4)}.
+                                  <MessageCircle size={13} /> {x.rol.slice(0, 4)}.
                                 </a>
                               )}
                               {x.correo && (
@@ -677,7 +679,7 @@ export function Cortes({
                                     textoDe(r)
                                   )}`}
                                 >
-                                  {x.rol.slice(0, 4)}.
+                                  <Mail size={13} /> {x.rol.slice(0, 4)}.
                                 </a>
                               )}
                             </span>
@@ -688,7 +690,7 @@ export function Cortes({
                             </span>
                           )}
                           <Button type="button" variante="secundario" mini onClick={() => setPrevia(r)}>
-                            Vista previa
+                            <Eye size={13} /> Vista previa
                           </Button>
                           <Link
                             href={`/admin/${orgId}/${edificioId}/propietarios/${r.unidad_id}`}
@@ -792,7 +794,7 @@ export function Cortes({
                     </Campo>
                   </div>
                   <Button type="button" disabled={enviando} onClick={enviarPrueba}>
-                    {enviando ? "Enviando…" : "Enviar la prueba"}
+                    <Send size={14} /> {enviando ? "Enviando…" : "Enviar la prueba"}
                   </Button>
                 </div>
 
@@ -878,7 +880,7 @@ export function Cortes({
                       mini
                       onClick={() => imprimirDocumento(armar(previa), () => notificar(VENTANA_BLOQUEADA, "error"))}
                     >
-                      Imprimir o guardar PDF
+                      <Printer size={14} /> Imprimir o guardar PDF
                     </Button>
                     <Button type="button" variante="secundario" mini onClick={() => setPrevia(null)}>
                       Cerrar

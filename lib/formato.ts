@@ -63,3 +63,19 @@ export function fechaLarga(iso: string | null | undefined): string {
   const [a, m, d] = String(iso).slice(0, 10).split("-");
   return `${Number(d)} de ${MESES[Number(m) - 1]} de ${a}`;
 }
+
+/**
+ * Día/mes y hora:minuto, igual que `fechaHora()` en index.html:942-945
+ * (Visitas). A diferencia de `fechaCorta`/`fechaLarga`, esta sí necesita la
+ * hora local del navegador — `toLocaleString`, no el recorte de un ISO — y
+ * por eso solo tiene sentido llamarla desde un Client Component.
+ */
+export function fechaHora(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("es-VE", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

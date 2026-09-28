@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { ChevronRight, FileSpreadsheet, Plus, Search, Upload } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { nf, pct, usd } from "@/lib/formato";
 import { nombreDe, vigente } from "@/lib/admin/personas";
@@ -95,24 +96,27 @@ export function Propietarios({
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Button type="button" variante="secundario" mini onClick={() => setPantalla("saldos")}>
-                Cargar saldos
+                <FileSpreadsheet size={14} /> Cargar saldos
               </Button>
               <Button type="button" variante="secundario" mini onClick={() => setPantalla("importar")}>
-                Importar unidades
+                <Upload size={14} /> Importar unidades
               </Button>
               <Button type="button" mini onClick={() => setAlta(true)}>
-                Nueva unidad
+                <Plus size={14} /> Nueva unidad
               </Button>
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "14px 0" }}>
-            <Input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por unidad o por nombre"
-              style={{ flex: 1, minWidth: 200 }}
-            />
+            <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+              <Search size={15} style={{ position: "absolute", left: 12, top: 13, color: "var(--tenue)" }} />
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por unidad o por nombre"
+                style={{ paddingLeft: 34 }}
+              />
+            </div>
             {FILTROS.map(([k, t]) => (
               <Button key={k} type="button" variante={filtro === k ? "primario" : "secundario"} mini onClick={() => setFiltro(k)}>
                 {t}
@@ -130,6 +134,7 @@ export function Propietarios({
                 <th>Propietario</th>
                 <th>Inquilino</th>
                 <th style={{ textAlign: "right" }}>Saldo</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -160,6 +165,11 @@ export function Propietarios({
                     <td data-t="Inquilino">{nombreDe(i) || <span style={{ color: "var(--tenue)" }}>—</span>}</td>
                     <td className="mono" data-t="Saldo" style={{ textAlign: "right", fontWeight: 600, color: COLOR_TOTAL(total) }}>
                       {usd(total)}
+                    </td>
+                    <td className="flecha" style={{ width: 28 }}>
+                      <Link href={`${base}/${u.id}`}>
+                        <ChevronRight size={15} style={{ color: "var(--tenue)" }} />
+                      </Link>
                     </td>
                   </tr>
                 );

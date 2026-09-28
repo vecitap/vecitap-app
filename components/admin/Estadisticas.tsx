@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChartColumn, TriangleAlert } from "lucide-react";
 import { Aviso, Button, Card, Select, Vacio } from "@/components/ui";
 import { nf, num0, usd } from "@/lib/formato";
 import { MESES } from "@/lib/admin/constantes";
@@ -106,12 +107,13 @@ export function Estadisticas({
       <Vacio
         titulo="Todavía no hay un mes cerrado"
         texto="Las estadísticas se arman con lo que quedó congelado al cerrar el mes. Cierre un período y vuelva a esta pantalla."
+        icono={<ChartColumn size={28} />}
       />
     );
   }
 
   if (bloqueado) {
-    return <Vacio titulo="No se pudieron cargar las estadísticas" texto={bloqueado} />;
+    return <Vacio titulo="No se pudieron cargar las estadísticas" texto={bloqueado} icono={<TriangleAlert size={28} />} />;
   }
 
   return (

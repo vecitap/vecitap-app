@@ -34,18 +34,23 @@ export default async function LayoutUnidad({
   if (!unidad) notFound();
 
   return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: "18px 16px 60px" }}>
+    <>
+      {/* Banda de marca oscura, fuera del ancho máximo de 640px: igual que
+          index.html:308-330, es una franja de ancho completo con su propio
+          contenido centrado adentro (ver EncabezadoResidente.tsx). */}
       <EncabezadoResidente correo={user.email ?? ""} />
 
-      {unidades.length > 1 && (
-        <SelectorUnidad unidades={unidades} unidadIdActual={unidadId} />
-      )}
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "18px 16px 60px" }}>
+        {unidades.length > 1 && (
+          <SelectorUnidad unidades={unidades} unidadIdActual={unidadId} />
+        )}
 
-      <TarjetaSaldo unidad={unidad} />
+        <TarjetaSaldo unidad={unidad} />
 
-      <PestanasResidente unidadId={unidadId} />
+        <PestanasResidente unidadId={unidadId} edificioId={unidad.edificio_id} />
 
-      {children}
-    </div>
+        {children}
+      </div>
+    </>
   );
 }

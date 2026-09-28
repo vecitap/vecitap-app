@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { MessageCircle, Printer } from "lucide-react";
 import { Badge, Button, type TonoBadge } from "@/components/ui";
 import { nf, usd } from "@/lib/formato";
 import { nombreDe, normalizarTel, vigente } from "@/lib/admin/personas";
@@ -178,7 +179,7 @@ export function Ficha({
                 })
               }
             >
-              Imprimir o guardar en PDF
+              <Printer size={15} /> Imprimir o guardar en PDF
             </Button>
             {telWa && (
               <a
@@ -190,7 +191,7 @@ export function Ficha({
                 target="_blank"
                 rel="noreferrer"
               >
-                WhatsApp
+                <MessageCircle size={15} /> WhatsApp
               </a>
             )}
           </div>
