@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
+import { DirectorioProvider } from "@/components/garita/DirectorioContexto";
 import { MarcoGarita } from "@/components/garita/MarcoGarita";
 import { NavGarita } from "@/components/garita/NavGarita";
 import { crearClienteServidor } from "@/lib/supabase/server";
@@ -42,6 +43,13 @@ export default async function LayoutGaritaEdificio({
   const actual = garitas.find((g) => g.edificio_id === edificioId);
   if (!actual) notFound();
 
+  // Una sola carga por edificio, igual que cargarEdificio() en garita.html —
+  // Entrada y Consultar la reusan por contexto, no vuelven a pedirla.
+  const { data: directorio, error: errorDirectorio } = await supabase.rpc("garita_directorio", {
+    p_edificio: edificioId,
+  });
+  if (errorDirectorio) notFound();
+
   return (
     <>
       <MarcoGarita
@@ -52,7 +60,9 @@ export default async function LayoutGaritaEdificio({
         edificioIdActual={edificioId}
       />
       <NavGarita edificioId={edificioId} />
-      <main className="garita-main">{children}</main>
+      <main className="garita-main">
+        <DirectorioProvider directorio={directorio ?? []}>{children}</DirectorioProvider>
+      </main>
     </>
   );
 }

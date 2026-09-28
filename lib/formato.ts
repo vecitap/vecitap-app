@@ -79,3 +79,23 @@ export function fechaHora(iso: string | null | undefined): string {
     minute: "2-digit",
   });
 }
+
+/** Solo hora:minuto — `hora()` de garita.html:240-241 (Adentro y Bitácora). */
+export function horaCorta(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * El "hoy" del navegador en su propia zona horaria, no en UTC — a
+ * diferencia de `hoyISO()` de arriba. Es `hoyISO()` de garita.html:242-245:
+ * el selector de fecha de la Bitácora tiene que abrir en el día del
+ * vigilante, no en el de Greenwich (con `hoyISO()` normal, después de las
+ * 20:00 hora de Venezuela ya muestra el día siguiente). Solo tiene sentido
+ * en un Client Component, igual que `fechaHora`.
+ */
+export function hoyLocalISO(): string {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}

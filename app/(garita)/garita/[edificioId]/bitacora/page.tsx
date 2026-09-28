@@ -1,5 +1,6 @@
-import { EnConstruccion } from "@/components/garita/EnConstruccion";
+import { VistaBitacora } from "@/components/garita/VistaBitacora";
 
-export default function PaginaBitacora() {
-  return <EnConstruccion vista="Bitácora" bloque={12} />;
+export default async function PaginaBitacora({ params }: { params: Promise<{ edificioId: string }> }) {
+  const { edificioId } = await params;
+  return <VistaBitacora edificioId={edificioId} />;
 }

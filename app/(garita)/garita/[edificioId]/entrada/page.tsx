@@ -1,5 +1,6 @@
-import { EnConstruccion } from "@/components/garita/EnConstruccion";
+import { VistaEntrada } from "@/components/garita/VistaEntrada";
 
-export default function PaginaEntrada() {
-  return <EnConstruccion vista="Entrada" bloque={11} />;
+export default async function PaginaEntrada({ params }: { params: Promise<{ edificioId: string }> }) {
+  const { edificioId } = await params;
+  return <VistaEntrada edificioId={edificioId} />;
 }

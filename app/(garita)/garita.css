@@ -182,6 +182,11 @@
   outline-offset: 1px;
 }
 
+textarea.garita-campo {
+  min-height: 88px;
+  resize: vertical;
+}
+
 .garita-boton {
   min-height: 60px;
   padding: 14px 22px;
@@ -225,4 +230,125 @@
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 14px;
+}
+
+/* ── El veredicto: tiene que verse desde lejos y de reojo (garita.html:129-148) ──
+   El texto y los botones son #fff/#0A1128 fijos, no tokens: se paran sobre
+   var(--veredicto-si)/var(--veredicto-no), que ya cambian de tono entre
+   claro/oscuro, y el blanco funciona sobre los dos. */
+.garita-veredicto {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  color: #fff;
+}
+
+.garita-veredicto.si {
+  background: var(--veredicto-si);
+}
+
+.garita-veredicto.no {
+  background: var(--veredicto-no);
+}
+
+.garita-veredicto-signo {
+  font-size: clamp(90px, 22vw, 190px);
+  line-height: 1;
+  font-weight: 700;
+}
+
+.garita-veredicto-titulo {
+  font-size: clamp(28px, 6vw, 46px);
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.garita-veredicto-datos {
+  font-size: clamp(18px, 3.4vw, 26px);
+  margin-top: 18px;
+  line-height: 1.6;
+  max-width: 640px;
+}
+
+.garita-veredicto-datos b {
+  display: block;
+  font-size: clamp(24px, 4.4vw, 34px);
+}
+
+.garita-veredicto-acciones {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 26px;
+}
+
+.garita-veredicto-acciones button {
+  min-height: 64px;
+  padding: 14px 26px;
+  font-size: 19px;
+  font-weight: 700;
+  border-radius: var(--radio-chico);
+  cursor: pointer;
+  font-family: inherit;
+  border: 2px solid #fff;
+  background: transparent;
+  color: #fff;
+}
+
+.garita-veredicto-acciones button.fuerte {
+  background: #fff;
+  color: #0a1128;
+  border-color: #fff;
+}
+
+/* ── Cámara (garita.html:164-165) ── */
+.garita-camara {
+  width: 100%;
+  max-height: 44vh;
+  border-radius: var(--radio-chico);
+  background: #000;
+  object-fit: cover;
+}
+
+/* ── Listas de Adentro / Consultar / Bitácora (garita.html:150-158) ── */
+.garita-lista {
+  display: grid;
+  gap: 2px;
+}
+
+.garita-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  /* garita.html:37/45 tenía un token --alto propio para esta superficie
+     elevada; acá es --lienzo-alt, el equivalente que ya existe en
+     app/globals.css (garita.css no inventa colores propios). */
+  background: var(--lienzo-alt);
+  border-radius: var(--radio-chico);
+  flex-wrap: wrap;
+}
+
+.garita-item-principal {
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.garita-item-secundario {
+  font-size: 14px;
+  color: var(--tenue);
+}
+
+.garita-campos {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }

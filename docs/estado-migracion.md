@@ -52,7 +52,12 @@ retira, no es parte del producto.
    diferencias de Residente (banda oscura, pestañas, Mis visitas) y
    `PanelModulos` de Operador construidos (bloques 0 a 9), **sin validar**. Las
    fundaciones de Garita (bloque 10) están **validadas en lectura y navegación**
-   (29-sep); faltan sus cuatro vistas (bloques 11 y 12).
+   (29-sep). Las cuatro vistas de Garita (bloques 11 y 12) están
+   **construidas en lectura y navegación, sin validar** — sus 4 acciones de
+   escritura (`garita_entrada`, `garita_avisar`, `garita_salida`,
+   `garita_nota`) quedan sin conectar a la base hasta confirmar el SQL real
+   con `pg_get_functiondef` (pedido a Nicolás el 28-sep, respuesta
+   pendiente).
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -603,13 +608,13 @@ El inventario nuevo, pantalla por pantalla y acción por acción, está en
 | 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) |
 | 9 | Operador · `PanelModulos` + campo de clave con ojo en su login |
 | 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón y "falta un paso" — **validado en lectura y navegación** (29-sep, ver abajo) |
+| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar — construido, escritura pendiente (ver abajo) |
+| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** — construido, escritura pendiente (ver abajo) |
 
-**Quedan 2 bloques — frenar acá, el 11 no arranca sin aprobación (pedido explícito):**
-
-| Bloque | Alcance |
-|---|---|
-| 11 | **Siguiente, sin empezar.** Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar |
-| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** |
+Los 12 bloques de la reescritura están construidos. Lo único que falta de
+Garita es conectar sus 4 acciones de escritura (ver "Bloques 11 y 12" abajo)
+y validar manualmente los tres módulos que todavía no se probaron con una
+cuenta real.
 
 Garita ocupa tres bloques porque es un módulo propio, del tamaño de Residente, no
 un archivo suelto — ver "Ruta de la garita" más abajo.
@@ -722,11 +727,98 @@ un archivo suelto — ver "Ruta de la garita" más abajo.
   `--veredicto-si`/`--veredicto-no`, agregados a `globals.css` en los dos temas;
   `--verde`/`--rojo` **no** se pisaron.
 
-  **Andamio temporal, a propósito:** las cuatro vistas son `<EnConstruccion>`
+  **Andamio temporal, a propósito:** las cuatro vistas eran `<EnConstruccion>`
   (`components/garita/EnConstruccion.tsx`) hasta que los bloques 11 y 12 las
-  construyan. Sin ellas el `<nav>` del armazón llevaría a cuatro 404 y no habría
-  forma de validar el armazón, que es lo que entrega este bloque. Cada bloque
-  siguiente reemplaza el suyo; cuando no quede ninguno, ese archivo se borra.
+  reemplazaron — el archivo se borró en el bloque 12, cuando ya no quedaba
+  ningún `<nav>` que llevara a él.
+
+- **Bloques 11 y 12 (Garita · las cuatro vistas), construidos en lectura y
+  navegación (28-sep) — escritura pendiente.** Las cuatro vistas de
+  `garita.html:630-896` están reescritas como componentes de cliente propios
+  (`components/garita/Vista{Entrada,Adentro,Consultar,Bitacora}.tsx`), una por
+  ruta. Lo que ya llama a la base y funciona de punta a punta:
+
+  - **Entrada** (`VistaEntrada.tsx`): `garita_validar` (código QR o escrito a
+    mano) con el veredicto a pantalla completa, y `garita_visitante`
+    (autocompletado por cédula, debounce 350ms) en "Visita sin anunciar".
+  - **Adentro** (`VistaAdentro.tsx`): `garita_dentro`, con refresco automático
+    cada 60s (para el relevo de turno, igual que garita.html:1004-1009) y un
+    botón "Actualizar".
+  - **Consultar** (`VistaConsultar.tsx`): `garita_vehiculos` (debounce 280ms,
+    mínimo 2 caracteres) y el directorio del edificio, filtrado en memoria
+    sobre el mismo directorio que ya trajo el layout (máximo 60 filas) — vista
+    **completa**, no tiene ninguna acción de escritura.
+  - **Bitácora** (`VistaBitacora.tsx`): `garita_bitacora`, el día completo
+    (200 filas como máximo), recarga sola al cambiar la fecha.
+
+  **Lo que queda sin conectar, a propósito, hasta confirmar el SQL real:** las
+  4 acciones de escritura del módulo —"Registrar entrada" (`garita_entrada` +
+  `garita_avisar`, en el veredicto y en "Visita sin anunciar"), "Registrar
+  salida" (`garita_salida`, en Adentro) y "Anotar" (`garita_nota`, en
+  Bitácora, **inmutable por diseño**: no se puede borrar ni corregir después).
+  Pedido explícito de Nicolás en esta sesión: antes de llamar a una función
+  `garita_*` de escritura hace falta ver su SQL con `pg_get_functiondef` (el
+  mismo criterio que ya evitó el bug de `edificios_visibles()` del Sesión 1 de
+  Admin — no asumir la forma de un RPC sin haberla visto). Cada uno de esos
+  cuatro botones queda con su validación de formulario intacta (ej.: "Anotar"
+  sigue rechazando una nota vacía) pero, en vez de llamar a la base, muestra
+  un aviso claro de "todavía no está conectado" — `lib/garita/pendiente-escritura.ts`,
+  mismo criterio que `ImportarSaldos` en Admin ("deja un aviso claro en vez de
+  fingir que funciona"). La consulta ya se le pidió a Nicolás:
+
+  ```sql
+  select p.proname, pg_get_functiondef(p.oid)
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname in ('garita_entrada', 'garita_avisar', 'garita_salida', 'garita_nota')
+  order by p.proname;
+  ```
+
+  Piezas nuevas, compartidas entre las cuatro vistas:
+
+  - **`components/garita/DirectorioContexto.tsx`**: el layout de
+    `[edificioId]` trae `garita_directorio()` **una sola vez** por edificio
+    (igual que `cargarEdificio()` en garita.html:995-1002) y lo reparte por
+    contexto — Entrada (select de unidad) y Consultar lo reusan sin volver a
+    pedirlo al cambiar de pestaña, a diferencia de si cada ruta lo pidiera por
+    su cuenta.
+  - **`hooks/useLectorQR.ts`**: cámara + `BarcodeDetector` nativo con `jsQR`
+    como respaldo (garita.html:523-591). A diferencia del original, que baja
+    `jsQR` por CDN (`import()` a una URL de jsdelivr), acá es
+    `jsqr` 1.4.0 por npm (`--save-exact`) con `import()` dinámico — mismo
+    efecto de no bajar el chunk salvo que haga falta, sin depender de un CDN
+    externo en tiempo de ejecución. Ninguna de las dos APIs de navegador tiene
+    tipos en TypeScript 5.9 (verificado contra `lib.dom.d.ts`): se agregaron
+    `types/barcode-detector.d.ts` y `types/jsqr.d.ts`.
+  - **`lib/garita/pitido.ts`**: el pitido (880/220Hz) y la vibración del
+    veredicto (garita.html:292-303), envueltos en `try/catch` como el
+    original — son un plus, no una condición para operar la garita.
+  - **`lib/formato.ts`**: se agregaron `horaCorta()` (solo hora:minuto, para
+    Adentro y Bitácora) y `hoyLocalISO()` — el "hoy" en la zona horaria del
+    navegador, no en UTC como el `hoyISO()` que ya usan Pagos/Cierre del
+    mes/Operador. Hace falta uno propio para el selector de fecha de
+    Bitácora: con el `hoyISO()` normal, después de las 20:00 hora de
+    Venezuela el selector ya abriría en el día siguiente.
+
+  **Lección de lint, para las próximas vistas con carga periódica o
+  reactiva:** el rechazo a `setState` sincrónico dentro de un efecto (ver
+  "Patrones nuevos" más abajo) también alcanza a **llamar dentro del efecto a
+  una función nombrada que internamente hace `setState`**, aunque sea
+  `async` y el `setState` ocurra después de un `await` — no es una cuestión
+  de sincronía real, el lint lo rechaza igual. Apareció en `VistaAdentro.tsx`
+  (`cargar()` llamada al montar) y en `VistaBitacora.tsx` (`setCargando(true)`
+  síncrono al principio del efecto). La solución: la carga que dispara el
+  efecto va **inline**, con `.then()` directo sobre la llamada a Supabase
+  dentro del propio efecto (con su `vivo` para no pisar un fetch viejo); una
+  función aparte (`cargar`, con `useCallback`) queda solo para lo que se
+  dispara **fuera** de un efecto — un botón, un `setInterval`. Bitácora, de
+  paso, sumó a `cargando` a la lista de estados que se derivan de una clave
+  en vez de un booleano propio (mismo patrón que Cortes.tsx/Estadísticas.tsx).
+  Por separado, `hooks/useLectorQR.ts` tropezó con la otra mitad de esa
+  familia de reglas: escribir un `ref` durante el render también está
+  prohibido, así que el "último valor" de un callback (`onDetectadoRef`) se
+  sincroniza en un efecto sin dependencias, no en el cuerpo de la función.
 
 #### Lo único que falta para igualar a `main` en aspecto
 
@@ -746,16 +838,23 @@ direcciones). Llegaron 564 líneas: las tablas `bitacora`, `invitaciones_visita`
 rompió. Dos detalles para el bloque 10 están anotados en
 `docs/inventario-main.md` sección 5.
 
-**Los bloques 0 a 9 siguen sin validar.** Ninguno ejecutó una escritura contra la
-base; la validación manual la hace Nicolás. **La excepción es el bloque 10**,
+**Los bloques 0 a 9, 11 y 12 siguen sin validar.** Ninguno ejecutó una escritura
+contra la base; la validación manual la hace Nicolás — y en Garita (11 y 12) no
+puede ejecutar ninguna hasta que las 4 acciones de escritura del módulo se
+conecten (ver "Bloques 11 y 12" arriba). **La excepción es el bloque 10**,
 validado el 29-sep en lectura y navegación (ver "Qué quedó verificado del bloque
 10" más abajo) — y, de paso, el `PanelModulos` del bloque 9, que quedó probado en
 escritura al prender el módulo `garita` en Torre Ida.
 
 #### Pendientes concretos que dejan estos bloques
 
-Lo que queda abierto y hay que retomar, además del alcance de los bloques 7 a 10:
+Lo que queda abierto y hay que retomar, además del alcance de los bloques 7 a 12:
 
+- **Conectar las 4 acciones de escritura de Garita** (`garita_entrada`,
+  `garita_avisar`, `garita_salida`, `garita_nota`) una vez que Nicolás corra la
+  consulta de `pg_get_functiondef` de la sección "Bloques 11 y 12" y pase el
+  CSV — hoy cada botón muestra un aviso de "pendiente" en vez de escribir en
+  la base.
 - **Instalar `lucide-react` y poner los íconos** (caso 13, aprobado). Es lo
   primero del bloque 7. Las citas de `main` están en `docs/inventario-main.md`;
   los puntos donde hoy no hay ícono son los botones de acción de todas las
