@@ -8,35 +8,55 @@
    residente.html, que coincidían entre sí byte a byte; donde
    operador.html divergía (azul, tenue oscuro, opacidades de fondo)
    se unificó a ese mismo valor.
+
+   Actualizado 2026-09-27 a la paleta nueva que el socio comercial subió a
+   main entre el 09-sep y el 22-sep (slate frío en vez del crema/marino
+   original) — ver docs/casos-de-uso-mejorados.md. Incluye los tokens
+   `--lat-*` (columna lateral oscura, en los dos temas) que main agregó:
+   se traen la fuente de verdad hoy aunque NavAdmin todavía no los use
+   (decisión explícita: el lateral oscuro queda para más adelante, ver
+   docs/casos-de-uso-mejorados.md).
    ══════════════════════════════════════════════════════════════ */
 :root {
-  --fondo: #F4F1EC;
+  --fondo: #F8FAFC;
   --lienzo: #FFFFFF;
-  --lienzo-alt: #EDE9E1;
+  /* Sin equivalente en main (main no tiene este token): superficie
+     "hundida" para fondos de fila/badge, derivada acá muy cerca de
+     --linea, igual que en la paleta anterior (los dos valores casi
+     coincidían: #EDE9E1 vs #E6E3EC). */
+  --lienzo-alt: #E9EEF4;
   --campo: #FFFFFF;
 
-  --tinta: #111144;
-  --tinta-2: #3D3D6B;
-  --tenue: #66668A;
+  --tinta: #0A1128;
+  --tinta-2: #2A3654;
+  --tenue: #64748B;
 
-  --linea: #E6E3EC;
-  --linea-fuerte: #D3D0DE;
+  --linea: #E4E9F0;
+  --linea-fuerte: #D0D7E2;
 
-  --verde: #1F6B4A;     --verde-bg: #E8F0EB;
-  --ambar: #8A5A00;     --ambar-bg: #F7EFE0;
-  --rojo:  #A32A1E;     --rojo-bg:  #FAEAE7;
-  --azul:  #111144;     --azul-bg:  #ECEAF2;
+  --verde: #0E7C6B;     --verde-bg: #E3F4F0;
+  --ambar: #92400E;     --ambar-bg: #FDF0E0;
+  --rojo:  #9B2C1F;     --rojo-bg:  #FBEBE8;
+  --azul:  #0A1128;     --azul-bg:  #EEF2F7;
 
-  --sombra: 0 1px 2px rgba(17,17,68,.04), 0 8px 24px -12px rgba(17,17,68,.14);
-  --sombra-alta: 0 2px 6px rgba(17,17,68,.07), 0 20px 48px -16px rgba(17,17,68,.24);
+  /* Columna lateral: oscura también en el tema claro (decisión del
+     socio, ver comentario arriba). */
+  --lat-fondo: #0A1128;
+  --lat-linea: rgba(255,255,255,.11);
+  --lat-texto: #B6C0D0;
+  --lat-texto-on: #F8FAFC;
+  --lat-activo: rgba(255,255,255,.09);
+
+  --sombra: 0 1px 2px rgba(10,17,40,.04), 0 8px 24px -12px rgba(10,17,40,.14);
+  --sombra-alta: 0 2px 6px rgba(10,17,40,.07), 0 20px 48px -16px rgba(10,17,40,.24);
 
   /* Marca. No depende de claro/oscuro salvo donde el contraste lo exige
      (acento-suave, acento-texto). Punto único de cambio cuando llegue el
      manual de marca. */
   --acento: #F98513;
-  --acento-sobre: #111144;
-  --acento-suave: #FDEDDC;
-  --acento-texto: #8A4A00;
+  --acento-sobre: #0A1128;
+  --acento-suave: #FDF0E0;
+  --acento-texto: #92400E;
 
   --radio: 14px;
   --radio-chico: 10px;
@@ -48,22 +68,28 @@
 }
 
 :root[data-theme="oscuro"] {
-  --fondo: #0B0B2E;
-  --lienzo: #141440;
-  --lienzo-alt: #1B1B4E;
-  --campo: #0B0B2E;
+  --fondo: #070C1C;
+  --lienzo: #0E1730;
+  --lienzo-alt: #152140;
+  --campo: #070C1C;
 
-  --tinta: #F4F1EC;
-  --tinta-2: #C3C6DE;
-  --tenue: #9494B8;
+  --tinta: #F8FAFC;
+  --tinta-2: #C3CBDC;
+  --tenue: #94A3B8;
 
-  --linea: #2C2C63;
-  --linea-fuerte: #3C3C7E;
+  --linea: #1E2A4E;
+  --linea-fuerte: #263862;
 
-  --verde: #5FCB9B;     --verde-bg: rgba(95,203,155,.14);
-  --ambar: #E8A33C;     --ambar-bg: rgba(232,163,60,.14);
-  --rojo:  #E8776A;     --rojo-bg:  rgba(232,119,106,.14);
-  --azul:  #9BACD8;     --azul-bg:  rgba(155,172,216,.14);
+  --verde: #00D1B2;     --verde-bg: rgba(0,209,178,.14);
+  --ambar: #F9A94F;     --ambar-bg: rgba(249,169,79,.14);
+  --rojo:  #F08A78;     --rojo-bg:  rgba(240,138,120,.14);
+  --azul:  #A3B4D4;     --azul-bg:  rgba(163,180,212,.14);
+
+  --lat-fondo: #0E1730;
+  --lat-linea: rgba(255,255,255,.09);
+  --lat-texto: #B6C0D0;
+  --lat-texto-on: #F8FAFC;
+  --lat-activo: rgba(255,255,255,.09);
 
   --sombra: 0 1px 2px rgba(0,0,0,.30), 0 8px 24px -12px rgba(0,0,0,.55);
   --sombra-alta: 0 2px 6px rgba(0,0,0,.40), 0 20px 48px -16px rgba(0,0,0,.70);

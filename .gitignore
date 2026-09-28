@@ -43,3 +43,8 @@ supabase/.temp/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# volcados de esquema en la raíz (se generan para armar la base de
+# producción, no son parte del repo). Solo la raíz: las migraciones de
+# supabase/migrations/ sí se versionan.
+/*.sql

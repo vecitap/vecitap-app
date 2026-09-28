@@ -96,6 +96,10 @@ otra.**
 ## Flujo de trabajo
 - El proyecto vive en una carpeta sincronizada con OneDrive; `node_modules/` y
   `.next/` generan avisos de borrado masivo al recompilar (comportamiento normal)
+- Tras crear una carpeta nueva bajo `app/` (una ruta nueva del App Router,
+  con o sin segmento dinámico), reiniciar `npm run dev` — el watcher de Next
+  no siempre recoge una carpeta de ruta creada mientras el servidor ya
+  estaba corriendo, y la ruta nueva da 404 hasta reiniciar
 
 ## Comunicación con el socio comercial
 No es técnico: requiere formatos visuales (gráficos, colores, lenguaje simple) en

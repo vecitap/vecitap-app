@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { EncabezadoAdmin } from "@/components/admin/EncabezadoAdmin";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { esUuid } from "@/lib/validacion";
 
 const ROLES_ADMIN = ["propietario_cuenta", "administrador", "contador", "junta"] as const;
 
@@ -19,6 +20,10 @@ export default async function LayoutOrg({
   params: Promise<{ orgId: string }>;
 }) {
   const { orgId } = await params;
+  // Formato inválido (typo, URL armada a mano): 404 directo, sin gastar
+  // una consulta ni una llamada RPC en un id que no puede ser real.
+  if (!esUuid(orgId)) notFound();
+
   const supabase = await crearClienteServidor();
   const {
     data: { user },

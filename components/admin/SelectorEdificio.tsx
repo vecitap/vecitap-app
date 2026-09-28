@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const SECCIONES = ["inicio", "propietarios", "cobros", "mes"];
+const SECCIONES = ["inicio", "propietarios", "cobros", "mes", "accesos"];
 
 /**
  * Portado del selector de edificios de App() en app.html:1213-1226 — antes

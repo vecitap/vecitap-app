@@ -60,3 +60,9 @@ export type OrganizacionAdmin = Pick<
 >;
 
 export type SimulacionCierre = Database["public"]["Functions"]["simular_cierre"]["Returns"][number];
+
+/** Fila de `invitaciones_de(p_org)` — portado en Accesos, ver app.html:3712-4143. */
+export type InvitacionAdmin = Database["public"]["Functions"]["invitaciones_de"]["Returns"][number];
+
+/** Fila de `residentes_de(p_edificio)` — portado en Accesos. */
+export type ResidenteAcceso = Database["public"]["Functions"]["residentes_de"]["Returns"][number];

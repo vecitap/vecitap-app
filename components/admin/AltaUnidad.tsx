@@ -95,7 +95,10 @@ export function AltaUnidad({
         position: "fixed",
         inset: 0,
         zIndex: 90,
-        background: "rgba(11,11,46,.55)",
+        // rgba de --tinta oscuro (paleta actualizada 27-sep, ver
+        // app/globals.css) — este overlay no puede leer la variable CSS
+        // porque necesita opacidad propia, distinta del token.
+        background: "rgba(10,17,40,.55)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

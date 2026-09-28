@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { Button, Card } from "@/components/ui";
+import { Card } from "@/components/ui";
+import { Invitacion } from "@/components/residente/Invitacion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 /**
@@ -8,10 +9,11 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  * unidad asociada, y eso solo lo sabe `mis_unidades()` (RLS-scoped a la
  * sesión), así que se revalida acá como corresponde.
  *
- * El caso de "cuenta sin unidades" ya no ofrece aceptar una invitación acá
- * (componentes/residente/Invitacion.tsx existe pero quedó sin punto de
- * entrada a propósito) — registro/invitación de residentes está fuera del
- * alcance de la Fase 4, ver docs/estado-migracion.md bajo Fase 5.
+ * El caso de "cuenta sin unidades" muestra `<Invitacion>` (27-sep,
+ * adelantado de Fase 5 para el piloto — ver docs/casos-de-uso-mejorados.md
+ * y el comentario en FormularioEntrar.tsx): sin esto, un residente que
+ * acaba de crear su cuenta desde /entrar quedaba en un callejón sin
+ * salida, sin forma de pegar el código de su invitación.
  */
 export default async function ResidenteHome() {
   const supabase = await crearClienteServidor();
@@ -36,24 +38,7 @@ export default async function ResidenteHome() {
   }
 
   if (!unidades || unidades.length === 0) {
-    return (
-      <main style={{ maxWidth: 420, margin: "0 auto", padding: 24 }}>
-        <Card>
-          <h1 style={{ marginTop: 0, fontFamily: "var(--font-titulos)", fontSize: 18 }}>
-            Sin unidades asociadas
-          </h1>
-          <p style={{ color: "var(--tinta-2)", fontSize: 13.5, lineHeight: 1.6, marginTop: 0 }}>
-            Su cuenta ({user.email}) todavía no está asociada a ninguna unidad. Contacte a su
-            administración para que la vincule.
-          </p>
-          <form action="/api/auth/salir" method="post">
-            <Button type="submit" variante="secundario" mini>
-              Salir
-            </Button>
-          </form>
-        </Card>
-      </main>
-    );
+    return <Invitacion correo={user.email ?? ""} />;
   }
 
   redirect(`/mi/${unidades[0].unidad_id}/recibo`);

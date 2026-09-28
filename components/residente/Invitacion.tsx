@@ -1,12 +1,22 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Campo, Card, Input } from "@/components/ui";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 
-/** Cuenta existe pero `mis_unidades()` devolvió vacío — portado de
- * Invitacion() en residente.html:373-413. */
+/**
+ * Cuenta existe pero `mis_unidades()` devolvió vacío — portado de
+ * Invitacion() en residente.html:373-413, con un agregado: el enlace a
+ * "¿Viene a registrar su administradora?" (27-sep, decisión de Nicolás,
+ * ver docs/casos-de-uso-mejorados.md). No existe en `main` — ahí cada rol
+ * entraba por su propio archivo, así que esta ambigüedad no se daba nunca.
+ * Con un solo `/entrar` compartido, alguien que se acaba de registrar para
+ * ADMINISTRAR un condominio (no para vivir en uno) también cae acá, porque
+ * tampoco tiene unidades — sin este enlace quedaría atascado pegando un
+ * código que no tiene.
+ */
 export function Invitacion({ correo }: { correo: string }) {
   const router = useRouter();
   const [codigo, setCodigo] = useState("");
@@ -71,6 +81,11 @@ export function Invitacion({ correo }: { correo: string }) {
           <Button type="button" variante="secundario" mini onClick={salir}>
             Salir
           </Button>
+        </div>
+        <div style={{ textAlign: "center", marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--linea)" }}>
+          <Link href="/admin" style={{ fontSize: 13, color: "var(--tenue)" }}>
+            ¿Viene a registrar su administradora?
+          </Link>
         </div>
       </Card>
     </main>

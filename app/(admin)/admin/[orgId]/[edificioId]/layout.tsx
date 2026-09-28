@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { NavAdmin } from "@/components/admin/NavAdmin";
+import { NuevoEdificio } from "@/components/admin/NuevoEdificio";
 import { SelectorEdificio } from "@/components/admin/SelectorEdificio";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { esUuid } from "@/lib/validacion";
 
 /**
  * Gate de edificio (decisión de Nicolás al revisar el inventario): un
@@ -25,10 +27,15 @@ export default async function LayoutEdificio({
   params: Promise<{ orgId: string; edificioId: string }>;
 }) {
   const { orgId, edificioId } = await params;
+  // orgId ya lo validó el layout padre. edificioId es nuevo en este nivel:
+  // formato inválido, 404 directo, antes de gastar la consulta.
+  if (!esUuid(edificioId)) notFound();
+
   const supabase = await crearClienteServidor();
 
   const { data: visibles, error: errorVisibles } = await supabase.rpc("edificios_visibles");
-  if (errorVisibles || !visibles?.includes(edificioId)) notFound();
+  if (errorVisibles) notFound();
+  if (!visibles?.includes(edificioId)) notFound();
 
   const { data: edificios, error } = await supabase
     .from("edificios")
@@ -40,11 +47,16 @@ export default async function LayoutEdificio({
   const edificioActual = edificios?.find((e) => e.id === edificioId);
   if (!edificioActual) notFound();
 
+  const hayVarios = !!edificios && edificios.length > 1;
+
   return (
     <div>
-      {edificios && edificios.length > 1 && (
-        <SelectorEdificio orgId={orgId} edificios={edificios} edificioIdActual={edificioId} />
-      )}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap", marginBottom: hayVarios ? 0 : 16 }}>
+        {hayVarios && <SelectorEdificio orgId={orgId} edificios={edificios!} edificioIdActual={edificioId} />}
+        <div style={{ marginLeft: "auto", marginBottom: hayVarios ? 16 : 0 }}>
+          <NuevoEdificio orgId={orgId} />
+        </div>
+      </div>
       <NavAdmin orgId={orgId} edificioId={edificioId} />
       {children}
     </div>

@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card } from "@/components/ui";
+import { CrearOrganizacion } from "@/components/admin/CrearOrganizacion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 /**
  * Portado de la resolución de organización en App() (app.html:900-906):
  * si `organizaciones` trae una sola fila, se elige sola; si trae más de
- * una, se pide elegir (antes Organizaciones(), app.html:782-840, sin la
- * opción de crear una administradora nueva — alta de organización queda
- * fuera de esta migración, ver docs/estado-migracion.md).
+ * una (o ninguna), se pide elegir/crear — antes Organizaciones()
+ * (app.html:782-840). La alta de organización quedó fuera de la Sesión 1
+ * (ver docs/estado-migracion.md); se agrega hoy porque sin ella una cuenta
+ * nueva sin membresías no tiene forma de arrancar (ver
+ * docs/casos-de-uso-mejorados.md).
  *
  * proxy.ts solo garantiza sesión acá (el gate por rol es por organización,
  * a partir de /admin/[orgId]/*), así que se revalida como corresponde.
@@ -39,15 +42,8 @@ export default async function AdminHome() {
 
   if (!orgs || orgs.length === 0) {
     return (
-      <main style={{ maxWidth: 420, margin: "0 auto", padding: 24 }}>
-        <Card>
-          <h1 style={{ marginTop: 0, fontFamily: "var(--font-titulos)", fontSize: 18 }}>
-            Sin administradora asociada
-          </h1>
-          <p style={{ color: "var(--tinta-2)", fontSize: 13.5, lineHeight: 1.6 }}>
-            Su cuenta ({user.email}) todavía no está asociada a ninguna administradora.
-          </p>
-        </Card>
+      <main style={{ display: "flex", justifyContent: "center", paddingTop: 12 }}>
+        <CrearOrganizacion />
       </main>
     );
   }
@@ -55,7 +51,7 @@ export default async function AdminHome() {
   if (orgs.length === 1) redirect(`/admin/${orgs[0].id}`);
 
   return (
-    <main style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
+    <main style={{ maxWidth: 480, margin: "0 auto", padding: 24, display: "grid", gap: 18 }}>
       <Card>
         <h1 style={{ marginTop: 0, fontFamily: "var(--font-titulos)", fontSize: 18 }}>Su administradora</h1>
         <div style={{ display: "grid", gap: 8 }}>
@@ -74,6 +70,7 @@ export default async function AdminHome() {
           ))}
         </div>
       </Card>
+      <CrearOrganizacion />
     </main>
   );
 }

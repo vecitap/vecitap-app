@@ -45,18 +45,18 @@ export function imprimirEstado(params: {
 
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
 <title>Estado de cuenta ${esc(unidad.codigo)}</title><style>
-*{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111144;margin:32px;font-size:12px}
-h1{font-size:19px;margin:0 0 2px} .sub{color:#3D3D6B;font-size:12px;margin-bottom:18px}
-.caja{border:1px solid #DAD1C8;padding:12px 14px;margin-bottom:18px;background:#F4F1EC;border-radius:8px}
-.caja b{display:inline-block;min-width:96px;color:#3D3D6B;font-weight:400}
+*{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#0A1128;margin:32px;font-size:12px}
+h1{font-size:19px;margin:0 0 2px} .sub{color:#2A3654;font-size:12px;margin-bottom:18px}
+.caja{border:1px solid #CBD5E1;padding:12px 14px;margin-bottom:18px;background:#F8FAFC;border-radius:8px}
+.caja b{display:inline-block;min-width:96px;color:#2A3654;font-weight:400}
 table{width:100%;border-collapse:collapse;margin-top:6px}
-th{background:#111144;color:#fff;text-align:left;padding:7px 9px;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
-td{padding:7px 9px;border-bottom:1px solid #DAD1C8;vertical-align:top}
-.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap} .a{color:#3E7A5E} .p{color:#8A5E10} .s{font-weight:bold}
-.d{color:#3D3D6B;font-size:10.5px}
-.tot{margin-top:18px;border-top:2px solid #111144;padding-top:12px;display:flex;justify-content:space-between;align-items:baseline}
+th{background:#0A1128;color:#fff;text-align:left;padding:7px 9px;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+td{padding:7px 9px;border-bottom:1px solid #CBD5E1;vertical-align:top}
+.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap} .a{color:#2E7A6C} .p{color:#92400E} .s{font-weight:bold}
+.d{color:#2A3654;font-size:10.5px}
+.tot{margin-top:18px;border-top:2px solid #0A1128;padding-top:12px;display:flex;justify-content:space-between;align-items:baseline}
 .tot .v{font-size:22px;font-weight:bold}
-.pie{margin-top:26px;color:#3D3D6B;font-size:10px;border-top:1px solid #DAD1C8;padding-top:10px}
+.pie{margin-top:26px;color:#2A3654;font-size:10px;border-top:1px solid #CBD5E1;padding-top:10px}
 @media print{body{margin:14mm}.noimp{display:none}}
 </style></head><body>
 <h1>${esc(edificio.nombre || "Estado de cuenta")}</h1>
@@ -73,10 +73,10 @@ td{padding:7px 9px;border-bottom:1px solid #DAD1C8;vertical-align:top}
 <tbody>${filasHtml || '<tr><td colspan="5">Sin movimientos registrados.</td></tr>'}</tbody></table>
 <div class="tot"><span>${saldoFinal > 0.009 ? "Saldo pendiente" : saldoFinal < -0.009 ? "Saldo a favor del propietario" : "Unidad solvente"}</span>
 <span class="v">${esc(usd(Math.abs(saldoFinal)))}</span></div>
-${tasa ? `<div style="text-align:right;color:#3D3D6B;margin-top:4px">Equivalente: Bs ${nf(2).format(Math.abs(saldoFinal) * tasa)} · tasa ${nf(2).format(tasa)}</div>` : ""}
+${tasa ? `<div style="text-align:right;color:#2A3654;margin-top:4px">Equivalente: Bs ${nf(2).format(Math.abs(saldoFinal) * tasa)} · tasa ${nf(2).format(tasa)}</div>` : ""}
 <div class="pie">Documento generado a partir de los movimientos registrados. Los montos en bolívares son referenciales.</div>
 <div class="noimp" style="margin-top:22px"><button onclick="window.print()"
-  style="padding:10px 18px;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid #DDD2C2;background:#fff">
+  style="padding:10px 18px;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid #CBD5E1;background:#fff">
   Imprimir o guardar como PDF</button></div>
 </body></html>`;
 

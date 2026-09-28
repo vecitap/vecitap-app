@@ -116,10 +116,18 @@ botón que lo active.
 - **Motivo:** capacidad fuera de alcance — el modelo de registro (con su rate limiting)
   todavía se está definiendo; queda para la Fase 5, no es un bug ni una mejora todavía
   cerrada.
-- **Estado:** pendiente de revisión con el socio (la decisión de producto sobre cómo
-  debe funcionar el registro es de la Fase 5).
-- **Cómo se revierte:** no aplica revertir — es simplemente conectar el botón ya
-  existente cuando el modelo de registro esté definido.
+- **Estado:** **actualizado 27-sep — reactivado como adelanto de Fase 5 para el
+  piloto.** Ver docs/estado-migracion.md: mañana (28-sep) el socio carga datos reales
+  y necesita que los residentes invitados puedan crear su cuenta. Se conectó el botón
+  que ya existía (`FormularioEntrar.tsx`) y se enganchó `Invitacion.tsx` en
+  `app/(residente)/mi/page.tsx` cuando la cuenta no tiene unidades — el mismo flujo de
+  dos pantallas de `main` (crear cuenta, después pegar el código), sin cambios de
+  fondo. El rate limiting propio sigue sin hacerse (Supabase Auth limita intentos por
+  su cuenta, pero no hay nada adicional de este lado) — pendiente real de Fase 5, no
+  bloqueante para un piloto de un solo condominio.
+- **Cómo se revierte:** quitar el botón de `FormularioEntrar.tsx` y volver
+  `app/(residente)/mi/page.tsx` al mensaje estático — los dos cambios son locales y
+  no tocan ninguna función de la base.
 
 ---
 
@@ -350,7 +358,181 @@ explicando por qué en vez de fallar en silencio o fingir que se leyó.
 - **Motivo:** limitación temporal, no una decisión de producto — `xlsx` y un lector
   de PDF (`pdfjs-dist` u otro) no son dependencias de este proyecto todavía.
 - **Estado:** aplicado (limitación deliberada, documentada en pantalla).
-  **Pendiente de decisión:** qué paquete(s) instalar para Excel/PDF — Nicolás debe
-  decidirlo antes de dar por cerrada esta pantalla; no bloquea validar el resto de
-  la Sesión 1.
+  **Actualizado 27-sep:** para mañana (28-sep, piloto con datos reales) se
+  confirmó **no instalar `xlsx`** — el socio carga saldos en CSV, que ya
+  funciona. Queda pendiente para más adelante, con una nota para cuando se
+  retome: el paquete `xlsx` que se instala por `npm install xlsx` es una versión
+  vieja (0.18, sin actualizar desde 2022); SheetJS dejó de publicar ahí y
+  distribuye la versión mantenida desde su propio sitio
+  (`https://cdn.sheetjs.com/`), no desde el registro de npm. Instalarlo a ciegas
+  con `npm install xlsx` trae la versión vieja. PDF (`pdfjs-dist` u otro) sigue
+  sin decisión, tampoco es para mañana.
 - **Cómo se revierte:** no aplica — es un paso pendiente, no un cambio a deshacer.
+
+### 15. Columna lateral oscura de `main` no portada — `NavAdmin` sigue horizontal
+
+**Caso de uso:** navegar entre secciones de Admin se ve igual que en la Sesión 1
+(botones horizontales debajo del encabezado), no como el menú lateral oscuro que
+el socio agregó en `main` entre el 09-sep y el 22-sep.
+
+- **Antes (Sesión 1, y hoy):** `components/admin/NavAdmin.tsx` — fila horizontal de
+  botones, mismo patrón que Residente/Operador.
+- **`main` (socio, 22-sep):** columna lateral fija de 244px, con fondo oscuro
+  (`--lat-fondo`) **en los dos temas** — decisión explícita del socio de separar
+  "dónde estoy" (la columna) de "qué estoy haciendo" (el contenido) con un cambio
+  de superficie en vez de una línea.
+- **Motivo de no portarlo hoy:** decisión de Nicolás (27-sep) — prioridad del día
+  es la carga de datos reales, no un rediseño de navegación. Los tokens `--lat-*`
+  ya están en `app/globals.css` (traídos hoy junto con el resto de la paleta) para
+  que el lateral se pueda construir después sin tener que volver a extraerlos de
+  `main`.
+- **Estado:** pendiente, sin fecha. No bloquea el piloto — la navegación funciona,
+  solo se ve distinto.
+- **Cómo se revierte:** no aplica — todavía no se portó nada que revertir.
+
+### 16. Paleta de colores actualizada a la de `main` (slate frío, 27-sep)
+
+**Caso de uso:** el aspecto visual de toda la app (los tres módulos, no solo
+Admin) cambió de la paleta original (crema `#F4F1EC` / marino `#111144`) a la
+paleta slate que el socio subió a `main` (`#F8FAFC` / `#0A1128`).
+
+- **Antes:** tokens de `app/globals.css` calcados byte a byte de la paleta
+  original de `app.html`/`residente.html` (Fase 2).
+- **Ahora:** tokens actualizados a los valores nuevos de `main:admin.html`
+  (`TEMAS`), en los dos temas — ver el comentario en `app/globals.css`. Un token
+  sin equivalente en `main` (`--lienzo-alt`, usado por `badge-tenue` y el hover de
+  filas de tabla) se derivó a mano manteniendo la misma relación que tenía con
+  `--linea` en la paleta anterior (no viene de ningún archivo de `main`).
+- **Motivo:** decisión de Nicolás (27-sep) — evitar que el socio vea dos paletas
+  distintas entre los HTML que va a usar mañana y la app Next.
+- **Estado:** aplicado en `app/globals.css` y en `lib/admin/imprimir-estado.ts`
+  (el estado de cuenta imprimible, que no puede leer variables CSS porque se abre
+  en una ventana aparte). **Pendiente, fuera de alcance de hoy:**
+  `lib/residente/papel-recibo.ts` (el recibo imprimible de Residente) sigue con
+  los hex de la paleta vieja — Residente ya estaba validado antes de este cambio
+  y no se tocó hoy a propósito.
+- **Cómo se revierte:** los valores viejos quedan en el historial de git de
+  `app/globals.css` y `lib/admin/imprimir-estado.ts` si hiciera falta volver atrás.
+
+### 17. Recibo con la tasa del BCV de HOY, no la congelada del período — no portado
+
+**Caso de uso:** al imprimir un corte de cuenta desde Cortes, el equivalente en
+bolívares seguiría calculándose con la tasa que quedó congelada al cerrar el
+período, no con la de hoy.
+
+- **`main` (socio, 22-sep):** `Cortes` pasa `tasaHoy` (la tasa viva que ya se ve
+  en la pantalla) a `htmlRecibo()`, y el papel usa esa en vez de `r.tasa_bcv`
+  (la del período), con la fecha de la tasa estampada para que el documento
+  "envejezca a la vista". Cambia el pie de página: de "se convierte a la tasa del
+  día en que usted pague" a "la cifra en bolívares vale para el día que dice
+  arriba".
+- **Motivo de no portarlo hoy:** decisión de Nicolás (27-sep) — es un cambio de
+  comportamiento con efecto en dinero (qué tasa ve el propietario al pagar), no
+  una limitación técnica ni un bug. Cortes tampoco se construye hoy (queda para
+  "si hay tiempo", punto 6 de la sesión).
+- **Estado:** sin portar. Pendiente de confirmar con el socio antes de aplicarlo
+  — no alcanza con la aprobación de Nicolás porque cambia lo que ve el propietario
+  al pagar, no solo código.
+- **Cómo se revierte:** no aplica — todavía no se portó nada que revertir.
+
+### 18. `porCobrar`/`aFavor`/`sumaAlicuotas` de Inicio: suma en la app, no en la base
+
+**Caso de uso:** los tres números de la pantalla Inicio de Admin (por cobrar, a
+favor, suma de alícuotas) siguen calculándose sumando en el navegador, igual que
+en `app.html`.
+
+- **Qué hace hoy:** `lib/admin/metricas.ts` — `porCobrar`/`aFavor` suman
+  `saldos_actuales.total` por unidad (con `Math.max`/`Math.min` en 0);
+  `sumaAlicuotas` suma `unidades.alicuota` de las unidades activas. Los tres son
+  sumas de valores que la base ya calculó por fila — no se reinventa ninguna
+  fórmula de negocio, pero sí es aritmética de dinero ejecutada en el cliente.
+  (`conDeuda`, el cuarto número de esa pantalla, sí quedó resuelto del lado de la
+  base — ver caso 11.)
+- **Por qué no se movió a la base:** Inicio es una vista viva del mes en curso,
+  no un período cerrado — `estadisticas_periodo()` (la RPC que sí sirve números
+  ya cerrados sin cálculo en el cliente, ver la sección "Estadísticas" nueva de
+  `main`) no aplica acá. Movería esto a la base requeriría una función nueva que
+  no existe hoy.
+- **Estado:** caso conocido, sin cambios — decisión de Nicolás (27-sep) de dejarlo
+  así por ahora. Si en algún momento se define una función de base para esto, se
+  actualiza `lib/admin/metricas.ts` para leerla en vez de sumar.
+- **Cómo se revierte:** no aplica — no hay nada portado que revertir, es el mismo
+  comportamiento que `app.html` siempre tuvo.
+
+### 19. El alta de administradora queda abierta a cualquier cuenta registrada
+
+**Caso de uso:** con el registro reactivado (caso 6), cualquiera que cree una cuenta
+en `/entrar` y entre a `/admin` ve el formulario de "Nueva administradora". La
+organización que cree es suya, y aparece en la cartera que ve el operador de Vecitap.
+
+- **Antes (y en `main` hoy):** exactamente lo mismo. `app.html:782-820` muestra el
+  alta de organización a cualquier sesión que llegue sin organizaciones, y
+  `crear_organizacion` no exige más que estar autenticado. No es una puerta que
+  abrimos nosotros — es la que el original ya tenía, y que la Sesión 1 había tapado
+  sin querer al no portar el alta.
+- **Ahora:** `app/(admin)/admin/page.tsx` + `components/admin/CrearOrganizacion.tsx`
+  reponen esa pantalla. El registro de `/entrar` (caso 6) la vuelve alcanzable sin
+  que nadie invite a la persona.
+- **Motivo:** es el modelo de autoservicio del producto (quien quiere administrar un
+  condominio se da de alta solo). Lo que cambia respecto a la Sesión 1 no es la
+  política, es que ahora hay camino para llegar.
+- **Estado:** **aceptado para el piloto** (decisión de Nicolás, 27-sep). El riesgo
+  real es bajo mientras el Preview de Vercel esté protegido y el piloto sea de un
+  condominio: lo peor que puede pasar es una organización basura en la cartera del
+  operador. **Pendiente de decisión de producto:** si el lanzamiento comercial
+  requiere que el alta pase por Vecitap (invitación, lista blanca, aprobación del
+  operador) o si se queda en autoservicio. Es conversación con el socio, no un bug.
+- **Cómo se revierte:** sacar `<CrearOrganizacion />` de `app/(admin)/admin/page.tsx`
+  (vuelve el mensaje "sin administradora asociada"), o cerrarlo del lado de la base
+  agregando una verificación dentro de `crear_organizacion`. Lo segundo es lo que
+  corresponde si la decisión de producto es cerrarlo de verdad: mientras la función
+  siga abierta, cualquiera con la clave anon puede llamarla sin pasar por la pantalla.
+
+
+### 20. Enlace "¿Viene a registrar su administradora?" en la pantalla de invitación
+
+**Caso de uso:** alguien que se acaba de registrar para administrar un condominio
+(no para vivir en uno) y cae en "Falta un paso" (la pantalla de aceptar una
+invitación de residente) ahora tiene un enlace visible a `/admin` en vez de quedar
+atascado pegando un código que no tiene.
+
+- **Antes (en `main`):** esta ambigüedad no existía — `admin.html`, `index.html` y
+  `garita.html` son tres archivos separados, cada rol entra por el suyo. Nunca hay
+  una sola pantalla de "sin nada asociado" compartida entre roles.
+- **Ahora:** `components/residente/Invitacion.tsx` — enlace de texto discreto al
+  pie de la tarjeta, `href="/admin"`. Es consecuencia directa de compartir un solo
+  `/entrar` entre los tres roles (decisión ya tomada en Fase 3): con `signUp`
+  reactivado hoy (caso 6), una cuenta recién creada para dar de alta una
+  administradora también tiene cero unidades, y sin este enlace no tenía cómo
+  llegar a `/admin`.
+- **Motivo:** capacidad nueva, necesaria para el piloto de mañana — Nicolás va a
+  crear su propia cuenta desde cero para probar el alta de organización (bloque 1
+  de los casos de validación).
+- **Estado:** aplicado.
+- **Cómo se revierte:** quitar el bloque del enlace en `Invitacion.tsx` — no toca
+  nada más.
+
+### 21. `NuevoEdificio` movido de Ajustes al selector de edificio
+
+**Caso de uso:** una organización que ya tiene al menos un edificio puede crear
+otro sin pasar por Ajustes (que no está portado) — el botón "+ Otro edificio"
+vive junto al selector de edificio, arriba de cada sección.
+
+- **Antes:** `app.html:6033-6067` (`NuevoEdificio`) se abre desde dentro de
+  Ajustes, una pantalla completa que no se portó (fuera de alcance de la Sesión 2,
+  ver `docs/estado-migracion.md`).
+- **Ahora:** `components/admin/NuevoEdificio.tsx`, con los mismos 4 campos que el
+  original (nombre, prefijo, interés de mora, tolerancia de alícuotas — sin RIF ni
+  dirección, así es en `main` también, no es un recorte nuestro). Se engancha en
+  `app/(admin)/admin/[orgId]/[edificioId]/layout.tsx`, siempre visible — antes el
+  selector de edificio (`SelectorEdificio.tsx`) solo aparecía con 2 o más
+  edificios, así que una organización con exactamente uno no tenía ningún punto de
+  la interfaz donde crear el segundo.
+- **Motivo:** decisión de Nicolás (27-sep) — portar solo esta pieza de Ajustes en
+  vez de la pantalla completa, para no ampliar el alcance de hoy. `admin.html` de
+  `main` no sirve como alternativa para producción porque apunta a
+  `vecitap-pruebas`.
+- **Estado:** aplicado. El resto de Ajustes (edición de la organización, logo,
+  módulos, etc.) sigue sin portar.
+- **Cómo se revierte:** quitar `<NuevoEdificio>` del layout — el componente en sí
+  no tiene otro punto de entrada.

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/supabase";
+import { esUuid } from "@/lib/validacion";
 
 const RUTAS_PROTEGIDAS = ["/admin", "/mi", "/operador"];
 const RUTA_OPERADOR = "/operador";
@@ -87,15 +88,19 @@ export async function proxy(request: NextRequest) {
   const enAdmin = user ? request.nextUrl.pathname.match(RUTA_ADMIN_ORG) : null;
   if (enAdmin) {
     const orgId = enAdmin[1];
-    // Mismo fail-closed que /operador: un orgId inválido o ajeno también
-    // cae acá, porque tiene_rol() devuelve false (no error) cuando el
-    // usuario no tiene ninguna membresía visible en esa organización.
+    // Un orgId con formato inválido (typo, URL armada a mano) ni siquiera
+    // llega a tiene_rol(): se corta acá, antes de la consulta.
     let tieneAcceso = false;
-    try {
-      const { data, error } = await supabase.rpc("tiene_rol", { p_org: orgId, p_roles: ROLES_ADMIN });
-      tieneAcceso = !error && data === true;
-    } catch {
-      tieneAcceso = false;
+    if (esUuid(orgId)) {
+      // Mismo fail-closed que /operador: un orgId ajeno también cae acá,
+      // porque tiene_rol() devuelve false (no error) cuando el usuario no
+      // tiene ninguna membresía visible en esa organización.
+      try {
+        const { data, error } = await supabase.rpc("tiene_rol", { p_org: orgId, p_roles: ROLES_ADMIN });
+        tieneAcceso = !error && data === true;
+      } catch {
+        tieneAcceso = false;
+      }
     }
 
     if (!tieneAcceso) {

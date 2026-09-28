@@ -479,6 +479,42 @@ Pendiente, no bloqueante para validar la Sesión 1:
 - Prueba funcional pendiente (fuera de alcance de código): validar con
   `admin.prueba@vecitap.com` contra Administradora Baja.
 
+**Bug real encontrado y corregido en la primera validación manual
+(2026-09-27):** con `admin.prueba@vecitap.com` sobre Baja/Torre Ida, todas
+las secciones daban 404 pese a que el acceso por RLS es correcto (confirmado
+comparando contra `app.html`). Causa:
+`app/(admin)/admin/[orgId]/[edificioId]/layout.tsx:30-31` leía el resultado
+de `edificios_visibles()` como array plano de uuids (`visibles?.includes(edificioId)`),
+siguiendo el tipo generado (`types/supabase.ts:1871`,
+`Returns: string[]`) — pero no hay ningún otro punto del código que ya
+consumiera ese RPC ni los otros 3 con la misma forma (`orgs_del_usuario`,
+`periodos_corrientes`, `unidades_historico`/`unidades_visibles`), así que
+nunca se había verificado en runtime si esa forma es la real. Si la función
+de la base está declarada `RETURNS TABLE(...)` en vez de
+`RETURNS SETOF uuid`/`uuid[]`, PostgREST serializa cada fila como objeto
+(`{"edificio_id": "..."}` o `{"id": "..."}`), no como string — `.includes()`
+contra un string nunca matchea un objeto, así que el gate fallaba cerrado
+para **cualquier** edificio, no solo para accesos ilegítimos. No se pudo
+confirmar la forma exacta sin `pg_get_functiondef` (fuera de este repo).
+**Corrección aplicada en ese momento:** `idsDeEdificiosVisibles()` (mismo
+archivo) toleraba las dos formas — strings sueltos u objetos con
+`edificio_id`/`id` — sin debilitar el chequeo: si no reconocía ningún id,
+la lista quedaba vacía y el gate seguía fallando cerrado igual que antes.
+
+**Actualización 2026-09-27 (tarde):** por decisión de Nicolás,
+`idsDeEdificiosVisibles()` se eliminó y el layout volvió a
+`visibles?.includes(edificioId)` directo — esta sesión no repitió la
+verificación con `pg_get_functiondef`, así que la forma real de
+`edificios_visibles()` sigue sin confirmarse por esa vía; la decisión de
+sacar la tolerancia se toma como dada, no se re-audita acá. De paso se
+sacaron los logs `[DIAG-ADMIN]` (de `proxy.ts` y de los dos layouts, ya
+cumplieron su función de diagnóstico) y se agregó `lib/validacion.ts`
+(`esUuid()`), usada en `proxy.ts` y en cada layout/page que recibe
+orgId/edificioId/unidadId crudo del URL, antes de la primera consulta o
+RPC. Los otros 3 RPCs `string[]` sin consumidor real (`orgs_del_usuario`,
+`periodos_corrientes`, `unidades_historico`/`unidades_visibles`) quedan en
+la misma situación — no bloquea nada hoy porque ninguno se usa todavía.
+
 ### Entorno de pruebas (Admin) — preparado, todavía sin usar (la Sesión 1 no ejecutó ninguna escritura)
 
 - Organización de pruebas: **Administradora Baja**
@@ -675,6 +711,244 @@ un mes entero — la única forma de arreglarlo hoy es corregir
 Como es una decisión de producto (cambia el flujo, no corrige un error
 de paridad con el original), queda para revisar con Nicolás antes de
 tocar el botón — no forma parte de ninguna fase todavía.
+
+---
+
+## Checklist de despliegue — piloto con datos reales (28-sep)
+
+Configuración fuera del código, para Nicolás, antes de que el socio cargue
+datos reales en la base de producción nueva vía el Preview de Vercel:
+
+- [ ] **Migración de membresías** — la base de producción se arma desde un
+  volcado de `vecitap-pruebas`, que **ya incluye** la migración
+  `20260926120000`. **No aplicarla allá.** Al crear la base, correr solo las
+  dos consultas de verificación: ¿existe la restricción
+  `membresias_persona_rol_alcance_key` sobre `membresias`? ¿`crear_invitacion`
+  y `aceptar_invitacion` ya tienen los cambios marcados en el archivo (los
+  comentarios `-- CAMBIO:`)? Si alguna de las dos no está, el volcado no
+  salió de donde se creía — parar y revisar antes de cargar nada.
+- [ ] Variables de entorno del Preview de Vercel apuntando a la base de
+  producción nueva (no a `vecitap-pruebas`).
+- [ ] **Auth del proyecto de producción:**
+  - [ ] Estado de **"Confirm email"**: decidir si queda encendido o apagado.
+    Encendido, `signUp` no abre sesión y el residente tiene que confirmar el
+    correo antes de poder pegar su código; apagado, entra derecho. El
+    formulario de `/entrar` ya maneja los dos casos, pero cambia lo que hay
+    que explicarle al residente al pasarle la invitación.
+  - [ ] **SMTP propio.** El servicio de correo por omisión de Supabase tiene
+    límites bajos y restricciones de destinatarios — con una carga real de
+    residentes se topa. Configurarlo antes de invitar a nadie.
+  - [ ] **Site URL** y **Redirect URLs** con la URL del Preview de Vercel,
+    incluida la ruta de recuperación de clave (punto 5 de la sesión de hoy)
+    y la de confirmación de correo si "Confirm email" queda encendido.
+- [ ] Protección de acceso de los Preview de Vercel.
+- [ ] Cuenta del administrador del socio (y su fila en `operadores` si
+  corresponde) en la base de producción nueva.
+- [ ] Copiar `logo-claro.png` y `logo-oscuro.png` de la raíz de `main` a
+  `public/` en `integracion` **después del merge** — `optimization` nunca
+  tocó esos archivos, así que el merge deja `public/` con los blobs viejos
+  del 09-sep mientras los HTML de raíz sirven los nuevos del socio.
+- [ ] **Saber que el alta de organización queda abierta.** Con el registro
+  (`signUp`) reactivado, cualquiera que cree una cuenta y entre a `/admin`
+  ve el formulario de crear administradora, y la organización que cree
+  aparece en la cartera del operador. Es el mismo comportamiento que
+  `app.html` siempre tuvo, y se acepta para el piloto (Preview protegido,
+  un solo condominio) — pero conviene mirar la cartera antes de la reunión
+  con el socio, por si aparece algo que nadie creó a propósito. Registrado
+  en `docs/casos-de-uso-mejorados.md` (caso 19).
+
+---
+
+## Casos de validación en escritura — carga de datos (Sesión 2, 27-sep)
+
+Lista para que Nicolás la ejecute a mano. **Todo sobre Administradora Baja**
+(`a91054da-5afa-47e1-98b7-028fb26b9f7a`), salvo el bloque 1, que necesita una
+cuenta nueva sin organizaciones. **Nunca sobre Administradora Unión** — la está
+usando el socio.
+
+Cada caso dice si la escritura es **irreversible desde la app**: irreversible
+significa que ninguna pantalla de la app la deshace, no que sea imposible de
+arreglar (con acceso a la base casi todo se arregla). En una base de pruebas eso
+es aceptable; la lista lo marca para que, al repetir esto contra producción, se
+sepa de antemano dónde no hay vuelta atrás.
+
+### Bloque 0 — Revalidación de lo que ya estaba validado y se tocó hoy
+
+Ninguno de estos cambios buscaba cambiar comportamiento, pero todos tocaron
+archivos ya validados.
+
+- [ ] **`/mi/[unidadId]` sigue entrando** (se le agregó `esUuid()`): con
+  `residente.prueba@vecitap.com`, abrir su unidad de Baja y recorrer recibo,
+  reportar pago y mis pagos. Debe verse igual que antes. Probar además un id
+  inventado en la URL (`/mi/no-es-uuid`) — debe dar 404 limpio, no un error de
+  Postgres.
+- [ ] **`/admin/[orgId]/[edificioId]/*` sigue entrando** (mismo cambio, más los
+  logs `[DIAG-ADMIN]` quitados): recorrer Inicio, Propietarios, Cobros y Cierre
+  del mes con `admin.prueba@vecitap.com`. Probar también `/admin/no-es-uuid` y
+  `/admin/<orgId>/no-es-uuid`.
+- [ ] **Paleta nueva en los tres módulos.** Residente, Admin y Operador cambiaron
+  de colores sin que se tocara ningún componente. Revisar que no quedó texto
+  ilegible, sobre todo badges y montos en rojo / verde / ámbar.
+- [ ] **Paleta en tema oscuro, recargando con la preferencia ya guardada** — no
+  solo cambiando el tema en vivo. Es la lección de hidratación que ya dejó un bug
+  real (ver `AGENTS.md`, Sistema de diseño).
+- [ ] **Estado de cuenta imprimible** (Propietarios → una unidad → imprimir): los
+  colores de ese papel se cambiaron a mano en `lib/admin/imprimir-estado.ts`.
+  Comparar contra el mismo papel generado desde `admin.html` de `main`.
+  *(El recibo imprimible del residente, `lib/residente/papel-recibo.ts`, quedó a
+  propósito con la paleta vieja — ver caso 16 de `casos-de-uso-mejorados.md`. Se
+  va a ver distinto del de Admin; no es un error, es un pendiente conocido.)*
+- [ ] **Entrar sigue funcionando para los tres roles** (`FormularioEntrar.tsx`
+  cambió): entrar como admin, como residente y como operador.
+- [ ] **Entrar sin `volver`** (ir a `/entrar` a mano, sin parámetros): cada rol
+  debe terminar en su panel — operador en `/operador`, admin en `/admin`,
+  residente en `/mi`. Antes caían todos en `/`, la página en construcción.
+
+### Bloque 1 — Crear organización · cuenta nueva, no Baja
+
+Necesita una cuenta **sin ninguna organización**: crear una a propósito
+(p. ej. `alta.prueba@vecitap.com`). No sirven `admin.prueba@` ni
+`residente.prueba@`.
+
+- [ ] **Crear la cuenta** desde `/entrar` → "No tengo cuenta todavía".
+  **Irreversible desde la app** (no hay borrado de cuentas).
+  Según cómo esté "Confirm email" en vecitap-pruebas, o entra derecho o pide
+  confirmar el correo — **anotar cuál de las dos pasó**, porque es justo lo que
+  hay que decidir para producción (ver checklist de despliegue).
+- [ ] Esa cuenta recién creada debe caer en **`/mi` → "Falta un paso"** (la
+  pantalla de invitación), no en `/`. Es el destino correcto para el caso que
+  importa mañana (residente invitado); para el caso de esta cuenta (viene a
+  crear una administradora) verificar el enlace nuevo **"¿Viene a registrar su
+  administradora?"** al pie de esa pantalla — debe llevar a `/admin` (caso 20 de
+  `casos-de-uso-mejorados.md`).
+- [ ] **Crear administradora** desde `/admin`: nombre y RIF. Usar un nombre que
+  se reconozca como basura después (p. ej. `ZZZ Prueba Alta 27-sep`).
+  **Irreversible desde la app.** Además **aparece en la cartera del operador**
+  (ver caso 19 de `casos-de-uso-mejorados.md`) — verificar que aparece ahí, y
+  anotarla para limpiarla en Fase 9.
+- [ ] Después de crear, debe llevar sola a `/admin/<orgId>` y de ahí a "Registre
+  su primer edificio".
+
+### Bloque 2 — Crear edificio
+
+**Primer edificio, en la organización nueva del bloque 1:**
+
+- [ ] **Crear el primer edificio**: nombre, prefijo de recibo, interés de mora,
+  tolerancia de alícuotas, RIF, dirección (`PrimerEdificio.tsx`).
+  **Irreversible desde la app** (no hay borrado ni desactivación de edificios).
+- [ ] Verificar que el prefijo de recibo se guarda en mayúsculas y que dejar la
+  tolerancia vacía cae en `0,01`, no en `0`.
+- [ ] Debe llevar solo a `/admin/<orgId>/<edificioId>/inicio`.
+
+**Edificio adicional, sobre Baja (que ya tiene dos):** portado hoy
+(`NuevoEdificio.tsx`, caso 21 de `casos-de-uso-mejorados.md`) — antes de esta
+sesión, una organización con al menos un edificio no tenía ninguna forma de
+crear el segundo desde la app nueva.
+
+- [ ] Botón **"+ Otro edificio"** junto al selector de edificio, en cualquier
+  sección de Baja. Crear uno de prueba: nombre, prefijo, interés de mora,
+  tolerancia. **Irreversible desde la app.**
+- [ ] Con nombre o prefijo vacío, debe avisar sin crear nada.
+- [ ] Debe llevar a `/admin/<orgId>/<edificioId>/inicio` del edificio nuevo, y
+  ese edificio debe aparecer en el selector junto a los otros dos de Baja.
+- [ ] Verificar que el botón sigue visible y funciona igual con un solo edificio
+  visible (no depende de que el selector de edificios esté mostrando pastillas).
+
+### Bloque 3 — Unidades · sobre Baja / Torre Ida
+
+Torre Ida: `f51676d7-80ff-4812-8830-6307267baecf`. Tiene septiembre 2026 abierto
+y agosto 2026 cerrado — **no cerrar ni reabrir períodos en esta tanda**, eso es
+otra validación.
+
+- [ ] **Alta de unidad** (Propietarios → "Nueva unidad"): código, alícuota,
+  saldos iniciales y propietario. **Irreversible desde la app**: una unidad se
+  puede desactivar (Ficha → "Unidad activa"), nunca borrar.
+- [ ] **Código repetido**: intentar dar de alta una unidad con un código que ya
+  existe en Torre Ida. Debe fallar con un mensaje legible, no romper la pantalla.
+- [ ] **Alícuota con 4 decimales**: cargar algo como `1,2345` y verificar que se
+  guarda y se muestra con los 4 decimales en Propietarios y en la Ficha (es la
+  decisión ya tomada, ver caso 12).
+- [ ] **Documento con guion** (`V-12345678`): cargarlo en el propietario y
+  verificar que se guarda tal cual. Es uno de los pendientes que llegaban a
+  Admin.
+- [ ] **Importar unidades** (Propietarios → "Importar unidades") con un CSV de
+  3–4 filas, con y sin nombre de propietario. **Irreversible desde la app**:
+  inserta unidades, personas y vínculos de una vez y no hay deshacer.
+- [ ] En esa importación, revisar la **suma de alícuotas** que muestra la previa
+  antes de aplicar, y que las filas inválidas se señalen en vez de colarse.
+- [ ] **Importar saldos** (Propietarios → "Cargar saldos") con un CSV.
+  **Reversible con trabajo**: pisa `saldo_inicial` unidad por unidad y no guarda
+  el valor anterior; se puede corregir a mano en la Ficha de cada unidad, pero no
+  hay "deshacer la importación".
+  ⚠️ **Solo escribe `saldo_inicial` (condominio), NO `saldo_inicial_hon`
+  (honorarios)** — igual que el original. Si el socio espera cargar los dos por
+  archivo, no se puede todavía: los honorarios van a mano, unidad por unidad.
+- [ ] **Excel**: confirmar que un `.xlsx` muestra el aviso de "todavía no" y no
+  falla en silencio (ver caso 14). **Para mañana el socio carga en CSV** —
+  decisión explícita de Nicolás (27-sep), no instalar `xlsx` para el piloto.
+  Nota para cuando se retome: el paquete `xlsx` de npm es la versión vieja
+  (0.18, sin actualizar desde 2022) — SheetJS dejó de publicar ahí y distribuye
+  la versión mantenida desde `https://cdn.sheetjs.com/`, no desde el registro de
+  npm. Un `npm install xlsx` a ciegas trae la vieja.
+- [ ] **Ficha de unidad · cambio de propietario.** ⚠️ Caveat heredado de
+  `app.html` (verificado: `main` hace exactamente lo mismo, no es un desvío de la
+  migración): editar el nombre del propietario **modifica la misma persona**, no
+  la reemplaza. Si una unidad cambia de dueño, escribir encima del nombre le
+  cambia la identidad a la persona anterior en todos lados donde aparezca.
+  Probar el caso, confirmar que se comporta así, y avisarle al socio antes de que
+  cargue datos reales.
+
+### Bloque 4 — Accesos · sobre Baja / Torre Ida
+
+- [ ] **Invitar a un residente**: elegir unidad, correo y relación
+  (propietario / inquilino). **Reversible desde la app** (botón "Revocar"
+  mientras esté pendiente). Guardar el código: se muestra una sola vez.
+- [ ] **"Copiar el mensaje completo"**: verificar que el enlace apunta a
+  `…/entrar?volver=/mi` y no a la raíz del sitio (se corrigió hoy; en `main`
+  apuntaba a la raíz porque ahí la raíz era el panel del residente).
+- [ ] **Correo inválido y unidad sin elegir**: los dos deben dar aviso, no
+  generar invitación.
+- [ ] **Revocar** una invitación pendiente. **Irreversible desde la app** (no hay
+  "des-revocar"; hay que generar otra invitación).
+- [ ] **Pestaña Invitaciones**: verificar los estados (pendiente / aceptada /
+  vencida) y que el botón Revocar solo salga en las pendientes.
+- [ ] **Visibilidad del inquilino** (pestaña "Quién tiene acceso"): cambiar el
+  nivel entre "solo el recibo del mes" / "el recibo y el saldo total" / "todo".
+  **Reversible desde la app** (se vuelve a cambiar cuando se quiera). Verificar
+  del lado del residente que el nivel se respeta de verdad.
+- [ ] **Dar de baja** a alguien con acceso. **Irreversible desde la app**: la
+  fila desaparece de la lista y no hay botón de reactivar (en `main` tampoco lo
+  hay para residentes, solo para vigilantes). Dejarlo para el final del bloque.
+
+### Bloque 5 — Registro y aceptación de invitación
+
+El flujo son dos pantallas, igual que en `main`: primero la cuenta, después el
+código. No hay un paso único que haga las dos cosas.
+
+- [ ] **Circuito completo**: invitar a un correo nuevo desde Accesos (Baja /
+  Torre Ida, una unidad libre) → crear la cuenta en `/entrar` con **ese mismo
+  correo** → caer en `/mi` → "Falta un paso" → pegar el código → "Usar la
+  invitación" → debe llevar al recibo de esa unidad.
+  **Irreversible desde la app** en los dos tramos: la cuenta no se borra y el
+  código se consume de una sola vez.
+- [ ] **Código equivocado y código ya usado**: los dos deben dar un error legible
+  en pantalla, no una pantalla en blanco.
+- [ ] **Invitación a otro correo**: crear la cuenta con un correo **distinto** al
+  invitado y pegar el código. La base debe rechazarlo — es la garantía de que la
+  invitación está atada al correo, no solo al código.
+- [ ] **Dos unidades para la misma persona** — esto prueba la migración
+  `20260926120000` de verdad: invitar a `residente.prueba@vecitap.com`, que ya es
+  residente de Torre Ida 01A, a **otra** unidad de Baja. Aceptar. Debe quedar con
+  **dos** membresías en la misma organización y el selector de unidad debe
+  ofrecer las dos. Antes de esa migración, la segunda pisaba la primera.
+- [ ] **Junta + residente**: si hay tiempo, el otro caso que la migración
+  habilita — la misma persona con dos roles distintos en la misma organización.
+
+### Al terminar
+
+Anotar en Fase 9 (limpieza) todo lo que quede creado: la cuenta nueva del bloque
+1, su organización `ZZZ Prueba…`, su edificio, las unidades de prueba de Torre
+Ida y las cuentas de residente creadas para el bloque 5.
 
 ---
 

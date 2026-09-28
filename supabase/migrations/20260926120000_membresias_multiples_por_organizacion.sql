@@ -1,4 +1,9 @@
--- PROPUESTA — NO aplicada a ninguna base todavía.
+-- APLICADA en vecitap-pruebas el 2026-09-26; verificada el 2026-09-27
+-- (restricción membresias_persona_rol_alcance_key y las dos funciones en
+-- versión nueva, confirmadas por consulta directa a esa base). Falta
+-- aplicarla en la base de producción nueva — ver checklist de despliegue en
+-- docs/estado-migracion.md: verificar ANTES si ya está en la versión nueva
+-- (misma restricción, mismas funciones); si ya está, no se aplica de nuevo.
 --
 -- Ver docs/casos-de-uso-mejorados.md (casos 8, 9 y 10) y la decisión
 -- registrada en docs/estado-migracion.md: desvío deliberado del plan (esto

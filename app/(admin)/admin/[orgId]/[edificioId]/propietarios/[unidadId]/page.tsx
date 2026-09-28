@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Ficha } from "@/components/admin/Ficha";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { esUuid } from "@/lib/validacion";
 import type { Unidad } from "@/lib/admin/tipos";
 
 /** Portado de Ficha() en app.html:1977-2132 — antes drawer superpuesto, ahora subruta propia (ver docs/inventario-admin.md sección 2). */
@@ -10,6 +11,10 @@ export default async function PaginaFicha({
   params: Promise<{ orgId: string; edificioId: string; unidadId: string }>;
 }) {
   const { orgId, edificioId, unidadId } = await params;
+  // orgId/edificioId ya los validaron los layouts padre. unidadId es nuevo
+  // en este nivel: formato inválido, 404 directo, antes de las consultas.
+  if (!esUuid(unidadId)) notFound();
+
   const supabase = await crearClienteServidor();
 
   const [

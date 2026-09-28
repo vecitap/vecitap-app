@@ -8,21 +8,27 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 type Modo = "entrar" | "crear";
 
 /**
- * El modo "crear" (signUp) queda sin punto de entrada a propósito: registro
- * de residentes está fuera del alcance de la Fase 4 (decisión explícita,
- * ver docs/estado-migracion.md bajo Fase 5 — el modelo de registro todavía
- * se está definiendo). El código de este modo se deja tal cual, solo se
- * quitó el botón que lo activaba, para no perder el trabajo cuando la
- * Fase 5 lo retome.
+ * El modo "crear" (signUp) quedó sin punto de entrada durante la Sesión 1
+ * (registro de residentes fuera del alcance de la Fase 4, ver
+ * docs/estado-migracion.md bajo Fase 5). Se reactiva hoy (27-sep,
+ * adelantado de Fase 5 para el piloto, ver
+ * docs/casos-de-uso-mejorados.md): sin esto, un residente recién invitado
+ * no tiene forma de crear la cuenta antes de aceptar su invitación
+ * (`components/residente/Invitacion.tsx`) — main (`app.html`, `index.html`,
+ * `garita.html`) expone este mismo botón en las tres pantallas de Entrar,
+ * sin distinción por rol, así que reactivarlo acá (compartido entre los
+ * tres) es fiel al original. El registro propio (rate limiting, captcha)
+ * sigue pendiente de Fase 5 — Supabase Auth ya limita intentos por su
+ * cuenta, pero no hay nada adicional de este lado.
  */
 export function FormularioEntrar() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const volver = searchParams.get("volver") || "/";
+  // Sin `volver`, /destino resuelve el rol del lado del servidor. Antes
+  // caía en `/` (la página en construcción), que no lleva a ningún lado
+  // para ninguno de los tres roles.
+  const volver = searchParams.get("volver") || "/destino";
 
-  // setModo queda sin uso: es el gancho que la Fase 5 va a conectar de
-  // nuevo a un botón cuando el modelo de registro esté definido.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [modo, setModo] = useState<Modo>("entrar");
   const [correo, setCorreo] = useState("");
   const [clave, setClave] = useState("");
@@ -38,7 +44,7 @@ export function FormularioEntrar() {
 
     const supabase = crearClienteNavegador();
     const credenciales = { email: correo.trim().toLowerCase(), password: clave };
-    const { error } =
+    const { data, error } =
       modo === "entrar"
         ? await supabase.auth.signInWithPassword(credenciales)
         : await supabase.auth.signUp(credenciales);
@@ -49,8 +55,13 @@ export function FormularioEntrar() {
       return;
     }
 
-    if (modo === "crear") {
-      setAviso("Cuenta creada. Si le pedimos confirmar el correo, revise su bandeja.");
+    // Con "Confirm email" apagado, signUp ya devuelve sesión abierta: hay
+    // que seguir de largo igual que al entrar, o la persona se queda
+    // mirando esta pantalla con la sesión hecha y sin botón que la lleve a
+    // ningún lado. Con la confirmación encendida no hay sesión todavía, y
+    // ahí sí corresponde el aviso de "revise su bandeja".
+    if (modo === "crear" && !data.session) {
+      setAviso("Cuenta creada. Confirme su correo y vuelva a entrar.");
       return;
     }
 
@@ -88,7 +99,7 @@ export function FormularioEntrar() {
             autoComplete={modo === "entrar" ? "current-password" : "new-password"}
             value={clave}
             onChange={(e) => setClave(e.target.value)}
-            minLength={modo === "crear" ? 6 : undefined}
+            minLength={modo === "crear" ? 8 : undefined}
             required
           />
         </Campo>
@@ -96,6 +107,26 @@ export function FormularioEntrar() {
           {enviando ? "Un momento…" : modo === "entrar" ? "Entrar" : "Crear la cuenta"}
         </Button>
       </form>
+      <div style={{ textAlign: "center", marginTop: 14 }}>
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setAviso(null);
+            setModo(modo === "entrar" ? "crear" : "entrar");
+          }}
+          style={{
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            color: "var(--tenue)",
+            fontSize: 13.5,
+            padding: "6px 8px",
+          }}
+        >
+          {modo === "entrar" ? "No tengo cuenta todavía" : "Ya tengo cuenta"}
+        </button>
+      </div>
     </Card>
   );
 }

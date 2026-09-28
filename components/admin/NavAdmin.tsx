@@ -4,17 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * Portado del menú de App() en app.html:1005-1015 — solo las 4 secciones
- * de la Sesión 1 (Inicio, Propietarios, Cobros, Cierre del mes). Pagos,
- * Cortes de cuenta, Accesos y Ajustes se agregan en la Sesión 2: no se
- * listan acá a propósito para no dejar enlaces que todavía no existen
- * (ver docs/estado-migracion.md).
+ * Portado del menú de App() en app.html:1005-1015. Sesión 1: Inicio,
+ * Propietarios, Cobros, Cierre del mes. Sesión 2 (27-sep): + Accesos.
+ * Pagos, Cortes de cuenta y Ajustes siguen sin listarse a propósito, para
+ * no dejar enlaces a rutas que todavía no existen (ver
+ * docs/estado-migracion.md).
  */
 const SECCIONES = [
   { seg: "inicio", etiqueta: "Inicio" },
   { seg: "propietarios", etiqueta: "Propietarios" },
   { seg: "cobros", etiqueta: "Cobros" },
   { seg: "mes", etiqueta: "Cierre del mes" },
+  { seg: "accesos", etiqueta: "Accesos" },
 ];
 
 export function NavAdmin({ orgId, edificioId }: { orgId: string; edificioId: string }) {

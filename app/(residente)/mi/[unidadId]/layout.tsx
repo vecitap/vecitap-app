@@ -5,6 +5,7 @@ import { SelectorUnidad } from "@/components/residente/SelectorUnidad";
 import { TarjetaSaldo } from "@/components/residente/TarjetaSaldo";
 import { PestanasResidente } from "@/components/residente/PestanasResidente";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { esUuid } from "@/lib/validacion";
 
 export default async function LayoutUnidad({
   children,
@@ -14,6 +15,9 @@ export default async function LayoutUnidad({
   params: Promise<{ unidadId: string }>;
 }) {
   const { unidadId } = await params;
+  // Entra crudo del URL: formato inválido, 404 directo, antes de mis_unidades().
+  if (!esUuid(unidadId)) notFound();
+
   const supabase = await crearClienteServidor();
   const {
     data: { user },
