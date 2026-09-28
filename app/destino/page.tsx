@@ -49,5 +49,13 @@ export default async function Destino() {
   const { data: administraAlgo } = await supabase.rpc("administra_algo");
   if (administraAlgo === true) redirect("/admin");
 
+  // El vigilante va antes que /mi: `administra_algo()` no lo cuenta (no es
+  // uno de los cuatro roles de administración), así que sin esta rama caía
+  // en /mi y veía la pantalla de aceptar invitación de un residente. Una
+  // cuenta puede ser las dos cosas; en ese caso manda /admin, igual que
+  // hoy manda sobre /mi.
+  const { data: garitas } = await supabase.rpc("edificios_del_vigilante");
+  if (Array.isArray(garitas) && garitas.length > 0) redirect("/garita");
+
   redirect("/mi");
 }

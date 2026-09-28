@@ -47,6 +47,13 @@
   --lat-texto-on: #F8FAFC;
   --lat-activo: rgba(255,255,255,.09);
 
+  /* Veredicto de la garita: son SUPERFICIES a pantalla completa con letra
+     blanca encima, no colores de texto. Por eso no reusan --verde/--rojo,
+     que en oscuro son claros y quedarían ilegibles bajo texto blanco.
+     Valores de garita.html:35-49. */
+  --veredicto-si: #0E7C6B;
+  --veredicto-no: #9B2C1F;
+
   --sombra: 0 1px 2px rgba(10,17,40,.04), 0 8px 24px -12px rgba(10,17,40,.14);
   --sombra-alta: 0 2px 6px rgba(10,17,40,.07), 0 20px 48px -16px rgba(10,17,40,.24);
 
@@ -90,6 +97,9 @@
   --lat-texto: #B6C0D0;
   --lat-texto-on: #F8FAFC;
   --lat-activo: rgba(255,255,255,.09);
+
+  --veredicto-si: #0E9C86;
+  --veredicto-no: #B03A2A;
 
   --sombra: 0 1px 2px rgba(0,0,0,.30), 0 8px 24px -12px rgba(0,0,0,.55);
   --sombra-alta: 0 2px 6px rgba(0,0,0,.40), 0 20px 48px -16px rgba(0,0,0,.70);

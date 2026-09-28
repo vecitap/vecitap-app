@@ -46,6 +46,10 @@ RESUELTO / PENDIENTE) justo debajo del título, con el motivo en una línea.
 | 23 | `pdfjs-dist` más nuevo que el de `main` | **APROBADO** (seguridad) |
 | 24 | Librerías empaquetadas, no traídas de un CDN | **NUEVO** (seguridad) |
 | 25 | Enlace de la garita a `/garita` | NUEVO (arquitectura) |
+| 26 | La garita comparte la sesión de los otros módulos | NUEVO (arquitectura) |
+| 27 | La garita no tiene login propio | NUEVO (arquitectura) |
+| 28 | Cada vista de la garita es una URL | NUEVO (arquitectura) |
+| 29 | La garita comparte el tema de la app | **APROBADO 29-sep** (revierte el tema propio) |
 
 
 ## Residente
@@ -711,5 +715,101 @@ de la garita de esta app.
 - **Motivo:** equivalencia de arquitectura, igual que el enlace al portal del
   residente (`/entrar?volver=/mi` en vez de la raíz del sitio). No es un cambio de
   comportamiento: es la misma pantalla en la dirección que le corresponde acá.
-- **Estado:** aplicado en `components/admin/Accesos.tsx`. La ruta en sí se
-  construye en el bloque 10.
+- **Estado:** aplicado en `components/admin/Accesos.tsx`. La ruta se construyó en
+  el bloque 10 (29-sep), así que el enlace ya lleva a una pantalla real.
+
+### 26. La garita no tiene sesión propia: comparte la de los otros tres módulos
+
+**Caso de uso:** el vigilante entra por el mismo `/entrar` que todos, y su sesión
+vale para toda la app.
+
+- **`main`:** cada HTML crea su cliente con una `storageKey` propia
+  (`garita.html:231-232` usa `"vecitap-garita"`), a propósito: con la clave por
+  omisión, entrar en una página cerraba la sesión de otra. Eso permite tener
+  abiertas en el mismo navegador una sesión de admin y una de vigilante a la vez.
+- **Ahora:** una sola sesión en cookies para los cuatro módulos (decisión de la
+  Fase 3). Entrar como vigilante en el mismo navegador donde había una sesión de
+  administrador la reemplaza.
+- **Motivo:** consecuencia directa de unificar en una sola app con sesión en
+  cookies — es lo que permite que el proxy y los Server Components autoricen del
+  lado del servidor, que es de donde sale el gate de `/garita/[edificioId]`. En
+  uso real no se cruza: la garita vive en la tableta de la puerta y la
+  administración en otro equipo. Donde sí se nota es **probando**: para ver los
+  dos roles a la vez hace falta una ventana privada o dos navegadores.
+- **Estado:** aplicado (heredado de la Fase 3, se hace visible con la garita).
+- **Cómo se revierte:** no aplica sin deshacer la sesión en cookies de toda la app.
+
+### 27. La garita no tiene pantalla de login propia
+
+**Caso de uso:** el vigilante entra, crea su clave la primera vez y recupera la
+clave olvidada — por las mismas pantallas que el resto del sistema.
+
+- **`main`:** `garita.html:364-450` tiene su propio login con tres modos (entrar ·
+  "Es mi primera vez" · "Olvidé mi clave") y campo con ojo, duplicando el de los
+  otros tres HTML.
+- **Ahora:** `/garita` sin sesión redirige a `/entrar?volver=/garita`. El
+  `/entrar` compartido (bloque 5) ya tiene esos tres modos más `clave-nueva`, y
+  `CampoClave` es el campo con ojo.
+- **Motivo:** mismo criterio que ya se aplicó a Operador (bloque 9) y que fijó el
+  punto 3 del criterio del 28-sep: lo que quedó obsoleto por arquitectura no se
+  porta. Un login por módulo era necesario cuando cada módulo era un archivo
+  suelto con su propia sesión; con `/entrar` compartido, no.
+- **Estado:** aplicado. No hizo falta escribir código en el bloque 10.
+- **Cómo se revierte:** no aplica.
+
+### 28. Cada vista de la garita es una URL, no estado en memoria
+
+**Caso de uso:** el vigilante recarga la tableta y se queda en la vista donde
+estaba; el botón de atrás vuelve a la anterior.
+
+- **`main`:** `garita.html:901-911` cambia de vista con `estado.vista` y vuelve a
+  dibujar. Recargar siempre devuelve a Entrada y el botón de atrás sale de la
+  página.
+- **Ahora:** `/garita/[edificioId]/{entrada,adentro,consultar,bitacora}`. Cambiar
+  de garita con el `<select>` del encabezado además **conserva la vista abierta**,
+  en vez de volver a Entrada.
+- **Motivo:** mismo patrón que ya usan las pestañas de Residente y las secciones
+  de Admin (subrutas, no estado de pestaña). En una tableta que se reinicia sola
+  importa más que en una laptop.
+- **Estado:** aplicado.
+- **Cómo se revierte:** no aplica — es la forma de portar la navegación a Next.
+
+### 29. La garita comparte el tema de la app, en vez de arrancar en oscuro con clave propia
+
+> **29-sep — APROBADO** (Nicolás, confirmado con Gustavo). Revierte la decisión
+> del 28-sep, que sí pedía tema propio. Lo que la garita necesita es legibilidad,
+> y eso son los tamaños, no el color.
+
+**Caso de uso:** el vigilante ve la garita en el mismo tema que el resto del
+sistema, y el botón "Tema" se comporta igual que en los otros módulos. Lo que
+cambia respecto de las demás pantallas es el **tamaño**: letra base de 17 px,
+campos de 56 px y botones de 60-64 px, para tocar de pie, con guantes o con
+lluvia.
+
+- **`main`:** `garita.html:247-255` guarda la preferencia bajo
+  `vecitap-tema-garita` —clave propia, distinta de la `vecitap-tema` que usan los
+  otros tres— y **arranca en oscuro** en vez de claro. Es deliberado: la usa otra
+  persona, en otro equipo, parada en una puerta de noche. Efecto secundario: un
+  vigilante y un administrador en el mismo navegador no se pisan la preferencia.
+- **Ahora:** una sola clave, `vecitap-tema`, y el mismo valor por omisión que el
+  resto. El grupo `(garita)` no lleva proveedor de tema: hereda el del layout
+  raíz. Sí se conservan los tamaños propios (`app/(garita)/garita.css`) y los
+  tokens `--veredicto-si`/`--veredicto-no`, que son legibilidad, no preferencia.
+- **Motivo:** el color no es lo que hace usable una garita; el tamaño sí. Una
+  segunda clave de tema es una preferencia más que mantener, un segundo camino en
+  el script anti-parpadeo y una fuente de confusión al probar, a cambio de una
+  diferencia que a nadie le importa. El vigilante puede poner oscuro con el mismo
+  botón de siempre, y queda guardado.
+- **Qué se pierde:** en el mismo navegador, vigilante y administrador ahora
+  comparten la preferencia de tema. En uso real no se cruza (la garita vive en la
+  tableta de la puerta), y va en la misma línea que el caso 26, donde también
+  comparten la sesión.
+- **Estado:** aplicado. La versión con clave propia llegó a construirse en el
+  bloque 10 y se deshizo el 29-sep: `lib/theme/ThemeProvider.tsx` y
+  `THEME_INIT_SCRIPT` volvieron a como estaban antes de ese bloque.
+- **Cómo se revierte:** volver a parametrizar `ThemeProvider` con
+  `clave`/`porOmision` y envolver el grupo `(garita)`. **Ojo con la trampa que
+  hizo fallar el primer intento en silencio:** las constantes no pueden vivir en
+  `ThemeProvider.tsx`, que es `"use client"` — un Server Component que las importe
+  recibe una referencia de cliente y lee `undefined`. Detalle en
+  `docs/estado-migracion.md`, "Ruta de la garita".

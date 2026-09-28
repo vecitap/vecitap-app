@@ -50,8 +50,9 @@ retira, no es parte del producto.
    curso. **Desde el 28-sep se reescribe contra los HTML actuales de `main`**
    (ver la sección "Reescritura contra `main`" más abajo): Admin, las
    diferencias de Residente (banda oscura, pestañas, Mis visitas) y
-   `PanelModulos` de Operador construidos (bloques 0 a 9); falta Garita
-   completo (bloques 10 a 12). Nada validado todavía.
+   `PanelModulos` de Operador construidos (bloques 0 a 9), **sin validar**. Las
+   fundaciones de Garita (bloque 10) están **validadas en lectura y navegación**
+   (29-sep); faltan sus cuatro vistas (bloques 11 y 12).
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -601,13 +602,13 @@ El inventario nuevo, pantalla por pantalla y acción por acción, está en
 | 7 | `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas |
 | 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) |
 | 9 | Operador · `PanelModulos` + campo de clave con ojo en su login |
+| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón y "falta un paso" — **validado en lectura y navegación** (29-sep, ver abajo) |
 
-**Quedan 3 bloques — frenar acá, el 10 no arranca sin aprobación (pedido explícito):**
+**Quedan 2 bloques — frenar acá, el 11 no arranca sin aprobación (pedido explícito):**
 
 | Bloque | Alcance |
 |---|---|
-| 10 | **Siguiente, sin empezar.** Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón, login y "falta un paso" |
-| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar |
+| 11 | **Siguiente, sin empezar.** Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar |
 | 12 | Garita · **Adentro**, **Consultar** y **Bitácora** |
 
 Garita ocupa tres bloques porque es un módulo propio, del tamaño de Residente, no
@@ -696,6 +697,36 @@ un archivo suelto — ver "Ruta de la garita" más abajo.
   `operador.html` tal cual es en `main`, no lo que ya construyó la
   arquitectura compartida. Verificado también que no hay ningún otro
   `type="password"` suelto en `components/operador/` ni en `app/(interno)/`.
+- **Bloque 10 (Garita · fundaciones), cerrado.** Ruta
+  `app/(garita)/garita/[edificioId]/…` — **sin `orgId`**, por el resultado de la
+  verificación de RLS (ver "Ruta de la garita"). Gate en `proxy.ts` con
+  `edificios_del_vigilante()`, y defensa en profundidad en el layout de
+  `[edificioId]` con `garita_edificios()`, que además es lo que da el nombre del
+  edificio y llena el selector. `esUuid()` antes de cualquier consulta, igual que
+  el resto. `/destino` ganó su rama de vigilante: `administra_algo()` no lo
+  cuenta, así que sin ella un vigilante caía en `/mi` y veía la pantalla de
+  aceptar invitación de un residente.
+
+  **El login resultó ser un pendiente ya resuelto, igual que en el bloque 9.**
+  `garita.html:364-450` tiene su propia pantalla con tres modos (entrar · "Es mi
+  primera vez" · "Olvidé mi clave") y campo con ojo; el `/entrar` compartido del
+  bloque 5 ya tiene los cuatro (esos tres más `clave-nueva`) y `CampoClave`. La
+  garita no necesita pantalla propia — el inventario lo arrastraba porque
+  describía `garita.html` tal cual es en `main`, no lo que ya resolvió la
+  arquitectura compartida.
+
+  **Tema: la garita usa el de toda la app** (revisión del 29-sep, ver abajo).
+  `ThemeProvider` y el script anti-parpadeo quedaron **como estaban antes del
+  bloque 10** — una sola clave, `vecitap-tema`, sin parametrizar. Lo que sí es
+  propio del módulo son los tamaños (`app/(garita)/garita.css`) y los tokens
+  `--veredicto-si`/`--veredicto-no`, agregados a `globals.css` en los dos temas;
+  `--verde`/`--rojo` **no** se pisaron.
+
+  **Andamio temporal, a propósito:** las cuatro vistas son `<EnConstruccion>`
+  (`components/garita/EnConstruccion.tsx`) hasta que los bloques 11 y 12 las
+  construyan. Sin ellas el `<nav>` del armazón llevaría a cuatro 404 y no habría
+  forma de validar el armazón, que es lo que entrega este bloque. Cada bloque
+  siguiente reemplaza el suyo; cuando no quede ninguno, ese archivo se borra.
 
 #### Lo único que falta para igualar a `main` en aspecto
 
@@ -715,8 +746,11 @@ direcciones). Llegaron 564 líneas: las tablas `bitacora`, `invitaciones_visita`
 rompió. Dos detalles para el bloque 10 están anotados en
 `docs/inventario-main.md` sección 5.
 
-**Nada de esto está validado.** Ningún bloque ejecutó una escritura contra la base;
-la validación manual la hace Nicolás.
+**Los bloques 0 a 9 siguen sin validar.** Ninguno ejecutó una escritura contra la
+base; la validación manual la hace Nicolás. **La excepción es el bloque 10**,
+validado el 29-sep en lectura y navegación (ver "Qué quedó verificado del bloque
+10" más abajo) — y, de paso, el `PanelModulos` del bloque 9, que quedó probado en
+escritura al prender el módulo `garita` en Torre Ida.
 
 #### Pendientes concretos que dejan estos bloques
 
@@ -727,11 +761,12 @@ Lo que queda abierto y hay que retomar, además del alcance de los bloques 7 a 1
   los puntos donde hoy no hay ícono son los botones de acción de todas las
   pantallas de Admin, los estados vacíos (`Vacio`) y las flechas de reordenar
   (`components/ui/Flechas.tsx`, que hoy usa ▲▼ Unicode).
-- **El enlace `/garita` de Accesos apunta a una ruta que todavía no existe.**
-  `components/admin/Accesos.tsx` arma el mensaje que se le copia al vigilante con
-  `${location.origin}/garita` (caso 25); esa ruta se construye recién en el
-  bloque 10. Hasta entonces el enlace copiado lleva a un 404 — no romper nada,
-  pero no probarlo con un vigilante real antes de ese bloque.
+- ~~**El enlace `/garita` de Accesos apunta a una ruta que todavía no existe.**~~
+  **Resuelto en el bloque 10:** `/garita` ya existe y resuelve sola (sin garitas
+  asignadas → "Falta un paso", con una o más → entra a la primera). El mensaje
+  que `components/admin/Accesos.tsx` copia para el vigilante (caso 25) ya lleva a
+  una pantalla real. Lo que todavía **no** funciona de punta a punta es lo que hay
+  detrás: las cuatro vistas llegan en los bloques 11 y 12.
 - **Los cuatro módulos comparten la recuperación de clave de `/entrar`.** El
   bloque 5 la construyó ahí (modo `clave-nueva`, detecta `type=recovery` en el
   hash y el evento `PASSWORD_RECOVERY`). Operador y Garita no necesitan una
@@ -1226,21 +1261,29 @@ Ida y las cuentas de residente creadas para el bloque 5.
 
 ---
 
-## Ruta de la garita (decidida el 28-sep)
+## Ruta de la garita (decidida el 28-sep, **resuelta el 29-sep**)
 
 `garita.html` se porta como módulo nuevo en
-**`/garita/[orgId]/[edificioId]/{entrada,adentro,consultar,bitacora}`**, en el
-grupo `app/(garita)/`, con gate de rol `vigilante` sobre `orgId` en `proxy.ts`
-(mismo patrón fail-closed que ya usan `/operador` y `/admin/[orgId]`).
+**`/garita/[edificioId]/{entrada,adentro,consultar,bitacora}`**, en el grupo
+`app/(garita)/`, con gate sobre `edificioId` en `proxy.ts` contra
+`edificios_del_vigilante()`, fail-closed (mismo patrón que ya usan `/operador` y
+`/admin/[orgId]`).
+
+**Sin `orgId` en la URL.** La forma con `/[orgId]/` que decidió el 28-sep quedó
+descartada por la verificación de RLS que ella misma dejaba pendiente — ver
+"Verificación de RLS del vigilante" más abajo. El vigilante **no ve la tabla
+`edificios`**, así que el `org_id` no se puede resolver desde el cliente y un
+segmento de organización en la URL no se podría ni construir ni comprobar.
 
 Dos detalles de los tipos, verificados el 28-sep contra `types/supabase.ts` ya
 regenerado (están también en `docs/inventario-main.md`, sección 5):
 
 - **`garita_edificios()` devuelve `{ edificio_id, nombre, org }`, y `org` es el
-  NOMBRE de la organización, no su id.** Para armar `/garita/[orgId]/[edificioId]`
-  hay que resolver el `org_id` por otro lado: la tabla `edificios`, o
-  `edificios_del_vigilante()` cruzado con `organizaciones`. Conviene confirmar
-  primero que un vigilante ve esas tablas por RLS.
+  NOMBRE de la organización, no su id.** Con la ruta sin `orgId` esto dejó de ser
+  un problema y pasó a ser una ventaja: el nombre es justo lo que la garita
+  necesita mostrar, y no hay ningún id que resolver. `garita_edificios()` es la
+  única fuente de los edificios de la sesión **para pintar**; para **autorizar**
+  se usa `edificios_del_vigilante()`.
 - **A `garita_entrada` hay que pasarle `undefined`, no `null`, en `p_unidad`.**
   El tipo generado dice `p_unidad: string` (el generador nunca marca nullable),
   pero `garita.html:721` manda `null` cuando la visita no dice a qué unidad va.
@@ -1270,39 +1313,49 @@ porque el vigilante se queje. Si llegara a doler de verdad, se ataca con las
 herramientas de Next (esa ruta con poco JavaScript de cliente, Server Components
 donde se pueda), no volviendo a un archivo suelto.
 
-#### Tema propio — DECIDIDO (28-sep, aprobado por Nicolás)
+#### Tema — REVISADO el 29-sep: la garita usa el tema de toda la app
 
-`garita.html` guarda el tema en `localStorage` bajo **`vecitap-tema-garita`**, no
-bajo `vecitap-tema`, y arranca en **oscuro** (los otros tres arrancan en claro).
-Es deliberado: la usa otra persona, en otro equipo, parado en una puerta de noche.
+> La decisión del 28-sep (proveedor y clave propios) **queda sin efecto**.
+> Confirmado con Gustavo: lo que la garita necesita es **legibilidad**, y eso son
+> los tamaños, no el color.
 
-**Decisión:** la garita lleva **su propio proveedor de tema, acotado a su route
-group**, con la clave `vecitap-tema-garita` y arranque en oscuro, igual que
-`main`. Nada de compartir `vecitap-tema` con los otros módulos: un vigilante y
-un administrador no se pisan la preferencia. Es además el mismo principio por el
-que `AGENTS.md` protege `vecitap-tema` — no descartar una preferencia ya
-guardada.
+`garita.html` guarda el tema bajo `vecitap-tema-garita` y arranca en oscuro, y el
+28-sep se decidió replicarlo con un proveedor propio acotado al route group más
+un script anti-parpadeo consciente de la ruta. Eso se construyó en el bloque 10 y
+**se deshizo el 29-sep**.
 
-Cómo encaja con lo que ya existe, para el bloque 10:
+**Decisión vigente:** la garita usa la clave `vecitap-tema` y el mismo valor por
+omisión que el resto. `lib/theme/ThemeProvider.tsx` y `THEME_INIT_SCRIPT`
+volvieron exactamente a como estaban antes del bloque 10 — sin `clave`/
+`porOmision`, sin mirar `location.pathname`. El grupo `(garita)` no lleva
+proveedor: hereda el del layout raíz. Lo propio del módulo son **los tamaños**
+(`app/(garita)/garita.css`: base 17 px, campos 56 px, botones 60-64 px) y los
+tokens `--veredicto-si`/`--veredicto-no`, que también son legibilidad — el
+veredicto es una superficie a pantalla completa con letra blanca encima.
 
-- `lib/theme/ThemeProvider.tsx` hoy tiene la clave y el valor por omisión fijos.
-  Hay que **parametrizarlos** (`clave` y `porOmision`), sin cambiar los valores
-  que usa el resto de la app.
-- El layout del route group de la garita envuelve sus hijos en ese proveedor con
-  `vecitap-tema-garita` / `oscuro`. Queda **anidado** dentro del proveedor raíz, lo
-  cual está bien: `useTema()` en los componentes de la garita resuelve al más
-  cercano, así que escribe en la clave correcta. Los dos escriben `data-theme` en
-  `<html>`, que sigue siendo la única fuente de verdad visual.
-- El script anti-flash (`THEME_INIT_SCRIPT`) corre en el layout raíz para todas
-  las rutas, así que tiene que volverse **consciente de la ruta**: si
-  `location.pathname` empieza con `/garita`, lee `vecitap-tema-garita` con
-  omisión `oscuro`; si no, `vecitap-tema` con omisión `claro`. Un solo script que
-  fija `data-theme` una sola vez antes de pintar. **No** poner un segundo script
-  en el layout de la garita: correría después del primero y produciría justo el
-  parpadeo que ese patrón existe para evitar.
-- Al probarlo, acordarse de la lección de la Fase 2: recargar **con la
-  preferencia ya guardada**, no solo con carga limpia. Es el caso que de verdad
-  ejercita la hidratación, y acá hay dos claves en juego.
+Registrado como desvío aprobado: caso 29 de `docs/casos-de-uso-mejorados.md`.
+
+##### El bug que encontró la prueba, y por qué importa más allá del tema
+
+Nicolás probó el botón "Tema" de la garita: escribía en `vecitap-tema`, y
+`vecitap-tema-garita` **nunca se creaba**. La parametrización no funcionaba, y la
+causa vale la pena guardarla porque no es obvia y puede repetirse.
+
+`TEMA_GARITA` se exportaba desde `lib/theme/ThemeProvider.tsx`, que es un módulo
+`"use client"`. El layout del grupo, que es un **Server Component**, lo importaba
+y hacía `clave={TEMA_GARITA.clave}`. Pero en un Server Component, **todo** lo que
+se importa de un módulo `"use client"` llega como referencia de cliente, no como
+el valor: se comprobó en runtime que del lado del servidor `typeof TEMA_GARITA`
+es `"function"` y `TEMA_GARITA.clave` es `undefined`. Así que el layout pasaba
+`clave={undefined}` y `porOmision={undefined}`, el componente caía en sus valores
+por omisión (`vecitap-tema` / claro) y la garita venía usando el tema de la app
+desde el principio, sin que nada fallara ni avisara.
+
+**Regla para no repetirlo: una constante que un Server Component vaya a leer no
+puede vivir en un módulo `"use client"`.** Va en un módulo aparte sin la
+directiva (como `lib/garita/secciones.ts`), y el módulo de cliente la importa de
+ahí. Ni TypeScript ni el lint lo marcan — `.clave` tipa bien y el fallo es
+silencioso.
 
 #### La paleta — DECIDIDO: tokens compartidos + dos de superficie
 
@@ -1338,35 +1391,138 @@ botones de nav de 56 px de alto, botones de acción de 60 px, botones del veredi
 de 64 px. Eso es para tocar de pie, con guantes o con lluvia — va como clases
 propias del módulo, no tocando los componentes de `components/ui/`.
 
-#### Cómo gatea `proxy.ts` si `garita_edificios()` no devuelve el `org_id`
+#### Verificación de RLS del vigilante — hecha el 29-sep, con evidencia
 
-No hay contradicción: **el gate no usa `garita_edificios()`.** Igual que
-`/admin/[orgId]/*`, `proxy.ts` toma el `orgId` **del segmento de la URL** y llama
-`tiene_rol(orgId, ['vigilante'])`, fail-closed (cualquier error o `!== true`
-redirige). `garita_edificios()` se usa **dentro de la página**, para listar las
-garitas asignadas y llenar el selector — nunca para autorizar.
-
-Donde el `org_id` faltante sí molesta es en **la entrada sin segmentos**: alguien
-que abre `/garita` a secas hay que mandarlo a `/garita/<orgId>/<edificioId>`, y
-para eso hace falta resolver a qué organización pertenece su edificio.
-`garita_edificios()` devuelve `{ edificio_id, nombre, org }` con `org` = **nombre**,
-no id. Dos caminos:
-
-1. Cruzar `edificios_del_vigilante()` (devuelve `uuid[]`) contra la tabla
-   `edificios` para sacar el `org_id`.
-2. Leer `edificios` directo filtrando por los ids de `garita_edificios()`.
-
-**Los dos dependen de algo sin verificar: si un vigilante ve `edificios` por
-RLS.** Un residente sí ve `organizaciones` (lo necesita para su recibo, ver caso
-22), pero de `vigilante` no sabemos nada. Hay que confirmarlo antes de construir
-la ruta — es la primera consulta del bloque de fundaciones:
+La decisión del 28-sep dejaba abierta una pregunta: **¿un vigilante ve la tabla
+`edificios` por RLS?** De ella dependía si el `orgId` se podía resolver desde el
+cliente. Se verificó con una sesión de vigilante real
+(`vigilante.prueba@vecitap.com`, membresía `rol = 'vigilante'` sobre Torre Ida en
+Administradora Baja), impersonando en el SQL Editor:
 
 ```sql
--- Con la sesión de un vigilante real:
-select id, org_id, nombre from edificios;
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"<usuario_id>","role":"authenticated"}';
+
+select
+  (select count(*)            from public.edificios)      as edificios_que_ve,
+  (select array_agg(e.id)     from public.edificios e)    as ids_edificios,
+  (select array_agg(e.org_id) from public.edificios e)    as org_ids,
+  (select count(*)            from public.organizaciones) as orgs_que_ve,
+  public.edificios_del_vigilante()                        as del_vigilante,
+  (select count(*) from public.garita_edificios())        as garitas_asignadas;
+
+rollback;
 ```
 
-Si devuelve vacío, el `orgId` no se puede resolver desde el cliente y la ruta
-tiene que cambiar de forma: `/garita/[edificioId]` gateado con
-`edificios_del_vigilante()`, que alcanza y es más simple. Queda como decisión
-abierta, dependiente de esa verificación.
+Resultado:
+
+| campo | valor |
+|---|---|
+| `edificios_que_ve` | **0** |
+| `ids_edificios` | `null` |
+| `org_ids` | `null` |
+| `orgs_que_ve` | 1 |
+| `del_vigilante` | `f51676d7-80ff-4812-8830-6307267baecf` (Torre Ida) |
+| `garitas_asignadas` | 1 |
+
+**Conclusión: el vigilante no ve `edificios`.** Los dos caminos que el 28-sep
+proponía para resolver el `org_id` desde el cliente dependían de esa tabla, así
+que los dos quedan descartados. La ruta pasa a **`/garita/[edificioId]`**,
+gateada con `edificios_del_vigilante()`, que es además más simple.
+
+Tres cosas que conviene no perder de este resultado:
+
+- **`orgs_que_ve = 1` no rescata la forma con `orgId`.** El vigilante sí ve una
+  fila de `organizaciones`, pero sin `edificios` no hay forma de saber que *esa*
+  organización es la de *ese* edificio. Una sola fila hoy es una coincidencia de
+  la base de prueba, no una garantía: un vigilante con garitas en dos
+  administradoras vería dos filas y ninguna manera de aparearlas.
+- **`edificios_del_vigilante()` devolvió un uuid pelado, no un objeto.** Es la
+  primera confirmación en runtime de la forma de uno de los cuatro RPC
+  `string[]` que arrastraban la duda del bug de `edificios_visibles()` del
+  27-sep (ver más arriba en este documento). Acá el valor llegó sin llaves ni
+  paréntesis, consistente con `SETOF uuid` / `uuid[]`, que es lo que declara
+  `types/supabase.ts`. Por eso el gate usa `.includes()` directo, sin capa de
+  tolerancia — misma decisión que tomó Nicolás el 27-sep al eliminar
+  `idsDeEdificiosVisibles()`. Sigue siendo fail-closed: si la forma no fuera esa,
+  `.includes()` no matchea y el gate niega, nunca deja pasar de más.
+- **El módulo `garita` tiene que estar activo en el edificio.** En la primera
+  corrida `modulo_activo(Baja, 'garita', Torre Ida)` dio `false` y se prendió
+  desde `/operador` con `PanelModulos`. Sin eso no solo falla la garita: la
+  pestaña "Mis visitas" de Residente tampoco aparece, así que no habría QR que
+  leer. **De paso quedó probado en escritura el `PanelModulos` del bloque 9.**
+
+#### Cómo gatea `proxy.ts`
+
+`proxy.ts` toma el `edificioId` **del segmento de la URL**, lo valida con
+`esUuid()` y llama `edificios_del_vigilante()`, comprobando que el id esté en la
+lista. Fail-closed: cualquier error, o un id que no esté, redirige a `/`.
+`garita_edificios()` se usa **dentro de la página**, para el nombre del edificio y
+el selector — nunca para autorizar.
+
+`/garita` a secas no lleva gate de edificio (todavía no hay uno): solo pide
+sesión, y la página resuelve a dónde va según cuántas garitas tenga asignadas —
+ninguna → "Falta un paso"; una o más → entra a la primera, igual que
+`garita.html:973`. Con dos o más aparece además el `<select>` del encabezado,
+que cambia de garita **quedándose en la misma vista**.
+
+### Entorno de pruebas (Garita)
+
+- Cuenta **`vigilante.prueba@vecitap.com`** (Auth, confirmada), creada el 29-sep.
+  Una sola membresía: `rol = 'vigilante'`, `activo = true`, edificio Torre Ida
+  (`f51676d7-80ff-4812-8830-6307267baecf`) en Administradora Baja,
+  `unidad_id`/`relacion` en `NULL`. Se insertó directo en `membresias`
+  reproduciendo la fila que deja `aceptar_invitacion`, porque en el SQL Editor
+  `auth.uid()` es `NULL` y ni `crear_invitacion` ni `aceptar_invitacion`
+  funcionan desde ahí.
+- **El módulo `garita` quedó activo en Torre Ida** (estaba apagado; se prendió
+  desde `/operador` con `PanelModulos`). Hace falta para las dos puntas: sin él
+  las funciones `garita_*` niegan y la pestaña "Mis visitas" de Residente no
+  aparece, así que no habría QR que leer.
+- **Pendiente de Fase 9:** eliminar o desactivar `vigilante.prueba@vecitap.com` y
+  su membresía, junto con las otras tres cuentas de prueba.
+
+#### Bloque 10 — VALIDADO EN LECTURA Y NAVEGACIÓN (29-sep)
+
+Nicolás lo probó en el navegador el 29-sep y **pasó todo**. El alcance de esa
+validación es exactamente lo que el bloque construye: control de acceso, ruteo,
+armazón y tema. **No** cubre escritura contra la base — la única del bloque
+("Falta un paso") queda pendiente, ver el final de esta sección.
+
+Probado a mano en el navegador, todo OK:
+
+- **Control de acceso**, con cuatro situaciones distintas: sin sesión; con una
+  cuenta de residente contra `/garita` y contra `/garita/<Torre Ida>`; con la
+  cuenta de vigilante; y con un edificio ajeno y un id malformado.
+- **Tema:** arranque limpio en claro; los tamaños de la garita se ven más
+  grandes que los de `/mi`; el botón "Tema" escribe solo en `vecitap-tema`;
+  recarga en oscuro **sin parpadeo y sin avisos de hidratación** (la prueba de la
+  Fase 2, sobre una ruta nueva); y la preferencia cruza entre `/mi` y `/garita`
+  en los dos sentidos, que es el comportamiento nuevo del caso 29.
+
+Verificado antes, en la sesión de construcción (`npm run build`, `npm run lint` y
+`npx tsc --noEmit` limpios, más pruebas contra el servidor de desarrollo con la
+sesión real de `vigilante.prueba@vecitap.com`):
+
+- Sin sesión, las cuatro rutas de garita redirigen a `/entrar?volver=…`.
+- Con sesión de vigilante: `/destino` → `/garita` → `/garita/<Torre Ida>/entrada`;
+  las cuatro vistas dan 200; el encabezado muestra "Torre Ida" y el correo; el
+  `<nav>` marca `aria-current="page"` en la vista abierta; el selector **no**
+  aparece (una sola garita), como corresponde.
+- Fail-closed confirmado: un uuid de edificio ajeno y un id malformado redirigen
+  los dos a `/`. `/operador` con esta cuenta también rebota a `/`.
+- El layout del grupo `(garita)` se aplica de verdad: el HTML servido trae
+  `class="garita"` y el chunk de `garita.css`. De eso dependen los tamaños.
+- Tras la revisión del tema (29-sep): en el código de la app la única clave de
+  `localStorage` de tema vuelve a ser `vecitap-tema`. `vecitap-tema-garita` solo
+  aparece en `garita.html`, que es la referencia original y no se toca.
+
+**Único pendiente del bloque 10: "Falta un paso" con un código de invitación
+real.** Es la única escritura que hace el bloque (`aceptar_invitacion`) y la
+única pieza que nadie ejerció todavía. Para probarla hace falta una **segunda
+cuenta de vigilante sin garita asignada** —`vigilante.prueba@vecitap.com` ya
+tiene la suya, así que esa pantalla no le aparece más— y una invitación emitida
+desde Admin → Accesos → Vigilantes sobre Torre Ida. Conviene hacerlo junto con la
+validación de Accesos, que es de donde sale el código, y sumar esa segunda cuenta
+a la limpieza de Fase 9.

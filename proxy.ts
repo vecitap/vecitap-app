@@ -4,9 +4,10 @@ import type { Database } from "@/types/supabase";
 import { esUuid } from "@/lib/validacion";
 import { ROLES_ADMIN } from "@/lib/admin/constantes";
 
-const RUTAS_PROTEGIDAS = ["/admin", "/mi", "/operador"];
+const RUTAS_PROTEGIDAS = ["/admin", "/mi", "/operador", "/garita"];
 const RUTA_OPERADOR = "/operador";
 const RUTA_ADMIN_ORG = /^\/admin\/([^/]+)/;
+const RUTA_GARITA_EDIFICIO = /^\/garita\/([^/]+)/;
 
 /**
  * Se llamaba middleware.ts hasta Next.js 15; en Next 16 el archivo pasó a
@@ -17,12 +18,13 @@ const RUTA_ADMIN_ORG = /^\/admin\/([^/]+)/;
  *    venció, lo renueva y reescribe las cookies) para que Server
  *    Components y Route Handlers siempre vean una sesión válida.
  * 2. Mandar a /entrar a quien no tiene sesión y pide una ruta protegida.
- * 3. Autorización por rol para /operador/* (es_operador(), global) y para
- *    /admin/[orgId]/* (tiene_rol(orgId, roles), por organización — ahora
- *    que la Fase 4 ya definió la estructura de URL con orgId, ver
- *    docs/inventario-admin.md sección 3). /mi/* se queda sin gate de rol
- *    acá: no es un rol, es tener al menos una unidad asociada, y eso lo
- *    resuelve cada Server Component con mis_unidades().
+ * 3. Autorización para /operador/* (es_operador(), global), /admin/[orgId]/*
+ *    (tiene_rol(orgId, roles), por organización — ahora que la Fase 4 ya
+ *    definió la estructura de URL con orgId, ver docs/inventario-admin.md
+ *    sección 3) y /garita/[edificioId]/* (edificios_del_vigilante(), por
+ *    edificio). /mi/* se queda sin gate de rol acá: no es un rol, es tener
+ *    al menos una unidad asociada, y eso lo resuelve cada Server Component
+ *    con mis_unidades().
  *
  * Sin distinción por sección todavía (Session 1 del inventario de Admin):
  * cualquiera de los 4 roles entra a /admin/[orgId]/* completo, igual que
@@ -98,6 +100,33 @@ export async function proxy(request: NextRequest) {
       try {
         const { data, error } = await supabase.rpc("tiene_rol", { p_org: orgId, p_roles: [...ROLES_ADMIN] });
         tieneAcceso = !error && data === true;
+      } catch {
+        tieneAcceso = false;
+      }
+    }
+
+    if (!tieneAcceso) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // La garita gatea por EDIFICIO, no por organización: se verificó el 29-sep
+  // con una sesión de vigilante real que un vigilante no ve la tabla
+  // `edificios` por RLS, así que no hay forma de resolver un orgId desde el
+  // cliente y la URL no lo lleva (ver docs/estado-migracion.md, "Ruta de la
+  // garita"). /garita a secas no cae acá: solo pide sesión, y la página
+  // resuelve a dónde va según cuántas garitas tenga asignadas.
+  const enGarita = user ? request.nextUrl.pathname.match(RUTA_GARITA_EDIFICIO) : null;
+  if (enGarita) {
+    const edificioId = enGarita[1];
+    let tieneAcceso = false;
+    if (esUuid(edificioId)) {
+      try {
+        const { data, error } = await supabase.rpc("edificios_del_vigilante");
+        tieneAcceso = !error && Array.isArray(data) && data.includes(edificioId);
       } catch {
         tieneAcceso = false;
       }

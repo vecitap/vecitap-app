@@ -289,7 +289,7 @@ no estaban en el inventario original y que ahora aplica el cliente:
 
 ---
 
-## 4. Garita (`garita.html`) — módulo nuevo, **falta** completo
+## 4. Garita (`garita.html`) — módulo nuevo · fundaciones validadas, las 4 vistas faltan
 
 **Se construye como un módulo propio**, igual que Residente, Operador y Admin:
 route group en `app/`, componentes en `components/garita/`, lógica en
@@ -304,15 +304,17 @@ vieja. El detalle completo —qué significa eso, el tema propio, los dos roles 
 color del veredicto y cómo gatea `proxy.ts`— está en la sección "Ruta de la
 garita" de [`docs/estado-migracion.md`](estado-migracion.md).
 
-**Ruta elegida:** `/garita/[orgId]/[edificioId]/{entrada,adentro,consultar,bitacora}`,
-grupo `app/(garita)/`, con gate de rol `vigilante` sobre `orgId` en `proxy.ts`
-(mismo patrón fail-closed que `/operador` y `/admin/[orgId]`). **Sujeta a una
-verificación**: si un vigilante no ve `edificios` por RLS, el `orgId` no se puede
-resolver y la ruta pasa a `/garita/[edificioId]` — ver `estado-migracion.md`.
+**Ruta elegida (resuelta el 29-sep):** `/garita/[edificioId]/{entrada,adentro,consultar,bitacora}`,
+grupo `app/(garita)/`, con gate sobre `edificioId` en `proxy.ts` contra
+`edificios_del_vigilante()` (mismo patrón fail-closed que `/operador` y
+`/admin/[orgId]`). **Sin `orgId`**: la verificación de RLS que quedaba pendiente
+se hizo con una sesión de vigilante real y dio `edificios_que_ve = 0` — el
+vigilante no ve esa tabla, así que el `org_id` no se puede resolver desde el
+cliente. Evidencia completa en `estado-migracion.md`, "Ruta de la garita".
 
 | Pieza | `garita.html` | Detalle |
 |---|---|---|
-| Tema propio | 34–49, 247–257 | **Decidido (28-sep):** proveedor de tema propio acotado al route group, clave `vecitap-tema-garita` y arranque en **oscuro**, como `main` — no comparte `vecitap-tema` con los otros módulos. La paleta usa los tokens de `globals.css`; `--verde`/`--rojo` en oscuro **no se pisan**, porque en la garita son **superficies** del veredicto con letra blanca y no colores de texto: van como `--veredicto-si`/`--veredicto-no` nuevos. Los tamaños sí son propios (base 17 px, campos 56 px, botones 60–64 px): es para tocar de pie, con guantes. Detalle en `estado-migracion.md`. |
+| Tema | 34–49, 247–257 | **Revisado (29-sep), confirmado con Gustavo:** la garita usa **el tema de toda la app** (clave `vecitap-tema`, mismo valor por omisión). La decisión del 28-sep —proveedor y clave propios, arranque en oscuro— se construyó y se deshizo: lo que la garita necesita es legibilidad, no color. La paleta usa los tokens de `globals.css`; `--verde`/`--rojo` en oscuro **no se pisan**, porque en la garita son **superficies** del veredicto con letra blanca y no colores de texto: van como `--veredicto-si`/`--veredicto-no` nuevos. Lo propio del módulo son los **tamaños** (base 17 px, campos 56 px, botones 60–64 px): es para tocar de pie, con guantes. Caso 29 de `casos-de-uso-mejorados.md`; detalle en `estado-migracion.md`. |
 | Login | 364–455 | Tres modos: entrar · **"Es mi primera vez"** (signUp) · "Olvidé mi clave". Campo con ojo. |
 | Clave nueva | 457–524 | Igual que los otros módulos, mínimo 8. |
 | "Falta un paso" | 936–981 | Cuenta sin garita asignada: pega el código de invitación → `aceptar_invitacion(p_token)`. |
@@ -410,19 +412,25 @@ El resto de los desvíos quedó marcado uno por uno en
 | 7 | `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas | ✅ construido |
 | 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) | ✅ construido |
 | 9 | Operador · `PanelModulos` + campo de clave con ojo en su login | ✅ construido |
-| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón, login y "falta un paso" | pendiente |
+| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón y "falta un paso" | ✅ **validado en lectura y navegación** (29-sep) |
 | 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar | pendiente |
 | 12 | Garita · **Adentro**, **Consultar** y **Bitácora** | pendiente |
 
-**Quedan 6 bloques.** Garita se abre en tres (10, 11 y 12) porque es un módulo
+**Quedan 2 bloques.** Garita se abre en tres (10, 11 y 12) porque es un módulo
 propio, del tamaño de Residente, no un archivo suelto: ver la sección "Ruta de la
 garita" de `docs/estado-migracion.md`.
 
-**"Construido" no es "validado".** Ningún bloque ejecutó una escritura contra la
-base: no se registró un pago, no se encoló un correo, no se creó una invitación.
-La validación manual la hace Nicolás, y hasta entonces todo lo marcado
-"✅ construido" acá significa solamente que compila, pasa el lint y está escrito
-contra la referencia correcta.
+**"Construido" no es "validado".** Salvo el bloque 10, ningún bloque ejecutó una
+escritura contra la base: no se registró un pago, no se encoló un correo, no se
+creó una invitación. La validación manual la hace Nicolás, y hasta entonces todo
+lo marcado "✅ construido" acá significa solamente que compila, pasa el lint y
+está escrito contra la referencia correcta.
+
+**El bloque 10 sí está validado, pero solo hasta donde llega:** Nicolás lo probó
+en el navegador el 29-sep —control de acceso con cuatro sesiones distintas, y
+tema— y eso es **lectura y navegación**. La única escritura del bloque, "Falta un
+paso" (`aceptar_invitacion` con un código real), sigue sin probarse: hace falta
+una segunda cuenta de vigilante sin garita asignada.
 
 Los pendientes concretos que dejan estos bloques —`lucide-react`, el enlace
 `/garita` que todavía no resuelve, qué probar de la conciliación, y los patrones
