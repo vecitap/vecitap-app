@@ -30,7 +30,9 @@ otra.**
   gestiona pagos)
 - Backend/DB: Supabase — Free durante desarrollo, Pro antes del lanzamiento
   (el plan gratuito pausa el proyecto tras una semana sin actividad)
-- Repo: github.com/vecitap/vecitap-app — rama de trabajo `optimization`
+- Repo: github.com/vecitap/vecitap-app — rama de trabajo `integration` (desde
+  el 27-sep; `optimization` se mergeó ahí junto con `main`. Nunca mergear a
+  `main`: publica mi.vecitap.com — ver `docs/estado-migracion.md`)
 - Dominio vecitap.com vía Cloudflare (DNS apuntando a Vercel)
 
 ## Gobierno del proyecto

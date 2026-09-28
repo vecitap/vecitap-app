@@ -9,6 +9,13 @@ Vecitap-app se está migrando de 4 archivos HTML monolíticos (React 18 +
 Babel standalone vía CDN, sin build step) a un proyecto Next.js (App
 Router) real, en un plan de 9 fases.
 
+**Rama de trabajo, desde el 27-sep: `integration`** (no `optimization` —
+`AGENTS.md` actualizado). `optimization` se mergeó ahí junto con `main`
+(commit `3483ad8`, sin conflictos) para el piloto con datos reales del 28-sep.
+Toda corrección que salga de la validación en escritura va a `integration`.
+**Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
+GitHub Pages.
+
 ## Decisiones de arquitectura ya tomadas
 
 No volver a proponerlas como abiertas:
@@ -744,10 +751,12 @@ datos reales en la base de producción nueva vía el Preview de Vercel:
 - [ ] Protección de acceso de los Preview de Vercel.
 - [ ] Cuenta del administrador del socio (y su fila en `operadores` si
   corresponde) en la base de producción nueva.
-- [ ] Copiar `logo-claro.png` y `logo-oscuro.png` de la raíz de `main` a
-  `public/` en `integracion` **después del merge** — `optimization` nunca
-  tocó esos archivos, así que el merge deja `public/` con los blobs viejos
-  del 09-sep mientras los HTML de raíz sirven los nuevos del socio.
+- [x] **Hecho (27-sep, rama `integration`).** Copiar `logo-claro.png` y
+  `logo-oscuro.png` de la raíz a `public/` — el merge de `main` (commit
+  `3483ad8`) trajo los blobs nuevos del socio a la raíz, pero `public/` (lo que
+  sirve la app Next) seguía con los viejos del 09-sep, porque `optimization`
+  nunca había tocado esos archivos. Verificado por hash (`sha256sum`): los 4
+  archivos quedaron idénticos raíz ↔ `public/`.
 - [ ] **Saber que el alta de organización queda abierta.** Con el registro
   (`signUp`) reactivado, cualquiera que cree una cuenta y entre a `/admin`
   ve el formulario de crear administradora, y la organización que cree
