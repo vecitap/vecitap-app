@@ -7,6 +7,21 @@
  */
 export const ROLES_ADMIN = ["propietario_cuenta", "administrador", "contador", "junta"] as const;
 
+/**
+ * Roles con acceso a la vista de solo lectura de Garita en Admin (bloque
+ * 13, sin empezar) que ven **toda la organización** — `contador` queda
+ * afuera a propósito. `junta` también tiene acceso, pero acotado a su
+ * propio edificio, algo que una lista plana de roles no puede expresar; esa
+ * parte la resuelve `puede_ver_garita(p_edificio)` del lado de la base (ver
+ * `supabase/migrations/20260928120000_puede_ver_garita.sql`, sin aplicar),
+ * no esta constante.
+ *
+ * Igual que `ROLES_ADMIN` de arriba: esta lista es solo para decisiones de
+ * UI (mostrar o no el enlace de navegación) y se puede cambiar sin tocar la
+ * base — la autorización real siempre es la función de Postgres.
+ */
+export const ROLES_GARITA_ADMIN_ORG = ["propietario_cuenta", "administrador"] as const;
+
 /** Portado de MESES/BOLSILLOS/MODOS_COBRO en app.html:131-154. */
 export const MESES = [
   "Enero",

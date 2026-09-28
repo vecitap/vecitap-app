@@ -866,6 +866,109 @@ un archivo suelto — ver "Ruta de la garita" más abajo.
   prohibido, así que el "último valor" de un callback (`onDetectadoRef`) se
   sincroniza en un efecto sin dependencias, no en el cuerpo de la función.
 
+#### Bloque 13 — investigación previa (28-sep), no empieza sin aprobación
+
+Pedido de Nicolás: una vista de solo lectura de Garita dentro de Admin
+(visitas del día + bitácora, selector de fecha limitado a 30 días, exportar
+CSV e imprimible, sin correos), después de validar los bloques 0-9. Roles:
+`propietario_cuenta`/`administrador` ven toda la organización, `junta` solo
+su edificio, `contador` no — lista pensada para poder cambiar después. Esta
+sección es solo la investigación previa; **el bloque no arranca sin
+aprobación explícita**, y no se escribió ningún componente ni ruta todavía.
+
+**Hallazgo central: `puede_garita(p_edificio)` ya existe**, y no es lo que
+parecía. No es algo para crear — es el gate operativo completo del módulo,
+y **no se debe tocar para esto**:
+
+```
+puede_garita(p_edificio) = vigilante de ese edificio (edificios_del_vigilante())
+                           OR puede_operar(org de ese edificio)
+puede_operar(p_org)      = tiene_rol(p_org, ['propietario_cuenta','administrador'])
+tiene_rol(p_org, roles)  = existe membresía activa de ESE org con rol = any(roles)
+                           -- no mira edificio en absoluto
+```
+
+`permitir_garita` (el gate de las 4 funciones de escritura del bloque 11/12
+más `garita_validar`/`garita_visitante`) llama a `puede_garita` para
+autorizar. Editar `puede_garita` para sumar `junta` le daría a junta las
+mismas escrituras que a un vigilante — registrar entradas/salidas, escribir
+notas de bitácora — cuando el pedido es una vista de solo lectura. Por eso
+la propuesta (sin aplicar) es una función **nueva y separada**,
+`puede_ver_garita(p_edificio)`, que ninguna función de escritura llama:
+`supabase/migrations/20260928120000_puede_ver_garita.sql` +
+`supabase/rollbacks/20260928120000_puede_ver_garita_rollback.sql`. El nombre
+es una propuesta, no una decisión — Nicolás la revisa y renombra si hace
+falta antes de correrla.
+
+**Consecuencia útil del hallazgo:** las 4 funciones `garita_*` de lectura
+(`garita_bitacora`, `garita_dentro`, `garita_directorio`, `garita_vehiculos`)
+autorizan vía `permitir_garita` → `puede_garita`, así que
+`propietario_cuenta`/`administrador` **ya pueden llamarlas hoy**, sin ningún
+cambio, para cualquier edificio de su organización — la rama `puede_operar`
+de `puede_garita` ya los deja pasar. `garita_edificios()` es la única
+excepción de forma (no pasa por `permitir_garita`; filtra
+`where puede_garita(e.id) and modulo_activo(...)` directo en su `select`,
+porque enumera varios edificios a la vez en lugar de autorizar uno solo).
+Lo único que falta para completar la regla de roles es `junta`, acotado a su
+edificio — de ahí `puede_ver_garita`.
+
+**`garita_dentro` no sirve para "visitas del día".** Su único parámetro es
+`p_edificio` — sin fecha, solo muestra quién está adentro *ahora mismo*
+(`estado = 'dentro'`), no admite mirar un día de los últimos 30. Ninguna de
+las 11 funciones `garita_*` existentes devuelve un listado de visitas
+histórico y estructurado (nombre/documento/placa/hora entrada/hora salida)
+para una fecha arbitraria — `garita_bitacora` es lo más parecido, pero
+devuelve texto libre (`texto`, `tipo`, `vigilante`, `creado_en`), no
+columnas. Cuando el bloque 13 arranque de verdad, "visitas del día" va a
+necesitar una función nueva (además de `puede_ver_garita`, que es solo el
+gate) — no se diseñó todavía porque no se pidió en esta ronda.
+
+**El dato de `membresias.edificio_id` para `junta` ya existe, no hace falta
+ninguna migración de esquema.** El CHECK `membresia_alcance` (confirmado en
+`esquema_inicial.sql`, el dump local de referencia — ver nota de confianza
+abajo) obliga a que toda fila con `rol='junta'` tenga `edificio_id NOT
+NULL`; la migración `20260926120000_membresias_multiples_por_organizacion.sql`
+ya normalizó esto. La migración propuesta es pura función, cero
+`ALTER TABLE`.
+
+**Nivel de confianza de estos hallazgos:** salieron de `esquema_inicial.sql`
+(dump local con `pg_dump` 17.11, no versionado — está en `.gitignore` —,
+modificado el 27-sep), no de un `pg_get_functiondef` corrido en esta sesión.
+Se cruzó su versión de `garita_entrada` contra el CSV real que Nicolás pasó
+en la sesión anterior y coincide en la parte comparada, así que se usa como
+referencia de alta confianza — pero antes de aplicar la migración conviene
+confirmar con la consulta que trae ese mismo archivo de migración en un
+comentario, sobre `puede_garita`/`permitir_garita`/`puede_operar`/
+`tiene_rol`/`edificios_del_vigilante`.
+
+**De `lib/garita/`/`components/garita/`, casi nada se reutiliza tal cual** —
+son dos contextos visuales distintos: la garita es una tableta táctil en una
+puerta (`garita.css`, botones de 60px, veredicto a pantalla completa,
+cámara), Admin es un dashboard de escritorio con `components/ui/` y las
+convenciones ya establecidas de Cortes/Estadísticas/Pagos. Lo que sí se
+reutiliza:
+- `lib/garita/tipos.ts`: el tipo `NotaBitacora` (fila de `garita_bitacora`)
+  sirve tal cual para la pestaña de bitácora.
+- `lib/formato.ts`: `horaCorta()` y `hoyLocalISO()`, ya genéricas, no
+  específicas de garita.
+- El mapa `ETIQUETA_TIPO` (hoy una constante local dentro de
+  `VistaBitacora.tsx`) convendría subirlo a un archivo compartido cuando el
+  bloque 13 arranque, para no duplicarlo entre las dos pantallas que van a
+  mostrar bitácora (la del vigilante y la nueva de Admin).
+- El patrón de exportar CSV es el de `lib/operador/exportar-cartera.ts`
+  (función pura que arma el string, la descarga la dispara el componente) y
+  el de imprimible es `lib/admin/imprimir-estado.ts` (`window.open` con el
+  HTML armado) — ninguno de los dos vive en `lib/garita/`, son los que ya
+  usa el resto de Admin.
+
+**Ni `garita.html` ni `admin.html` de `main` tienen algo parecido.**
+Confirmado por grep: ninguna de las 11 funciones `garita_*` aparece en
+`admin.html` (ni en `index.html`/`operador.html`). Lo único remotamente
+relacionado es la pestaña **Vigilantes** de Accesos en Admin — pero esa
+administra altas/bajas de cuentas de vigilante, no muestra ninguna actividad
+de la garita. El bloque 13 es terreno nuevo, no un desvío de algo que ya
+existía en `main`.
+
 #### Lo único que falta para igualar a `main` en aspecto
 
 Los **íconos** (caso 13). `main` usa `lucide` 0.469.0 por CDN en decenas de
