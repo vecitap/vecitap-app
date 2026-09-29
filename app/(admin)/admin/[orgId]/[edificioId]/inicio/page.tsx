@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Building2, CalendarClock, ChevronRight, CircleDollarSign, ReceiptText, TrendingDown } from "lucide-react";
 import { Aviso, Card, Vacio } from "@/components/ui";
 import { Edificio } from "@/components/admin/Edificio";
+import { edificiosDeOrganizacion } from "@/lib/admin/edificios-organizacion";
 import { calcularMetricasInicio } from "@/lib/admin/metricas";
 import { usd } from "@/lib/formato";
 import { crearClienteServidor } from "@/lib/supabase/server";
@@ -16,7 +17,11 @@ export default async function PaginaInicio({
   const { orgId, edificioId } = await params;
   const supabase = await crearClienteServidor();
 
-  const [{ data: unidades, error: e1 }, { data: saldos, error: e2 }, { data: conceptos, error: e3 }, { data: periodos, error: e4 }, { data: edificio, error: e5 }] =
+  // edificios va por edificiosDeOrganizacion(orgId) (memoizada por petición,
+  // ver lib/admin/edificios-organizacion.ts) en vez de una consulta propia:
+  // [orgId]/layout.tsx ya la llamó un nivel más arriba, así que esto lee el
+  // resultado ya resuelto en vez de un cuarto viaje de red a la misma tabla.
+  const [{ data: unidades, error: e1 }, { data: saldos, error: e2 }, { data: conceptos, error: e3 }, { data: periodos, error: e4 }, { data: edificios, error: e5 }] =
     await Promise.all([
       supabase
         .from("unidades")
@@ -35,11 +40,12 @@ export default async function PaginaInicio({
         .eq("edificio_id", edificioId)
         .order("anio", { ascending: false })
         .order("mes", { ascending: false }),
-      supabase.from("edificios").select("tolerancia_alicuota").eq("id", edificioId).single(),
+      edificiosDeOrganizacion(orgId),
     ]);
 
   if (e1 || e2 || e3 || e4 || e5) throw e1 || e2 || e3 || e4 || e5;
 
+  const edificio = edificios?.find((e) => e.id === edificioId);
   const unidadesFilas: Unidad[] = unidades ?? [];
   const saldosFilas: SaldoActual[] = saldos ?? [];
 

@@ -6,9 +6,9 @@ import { useDirectorioGarita } from "@/components/garita/DirectorioContexto";
 import { VeredictoPantallaCompleta, type DatosVeredicto } from "@/components/garita/VeredictoPantallaCompleta";
 import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
 import { useLectorQR } from "@/hooks/useLectorQR";
+import { registrarEntradaGarita } from "@/lib/garita/entrada";
 import type { ValidacionCodigo } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
-import type { Database } from "@/types/supabase";
 
 type Veredicto = {
   ok: boolean;
@@ -17,8 +17,6 @@ type Veredicto = {
   /** Solo en el camino válido — lo que hace falta para "Registrar entrada". */
   fila?: ValidacionCodigo;
 };
-
-type ArgsGaritaEntrada = Database["public"]["Functions"]["garita_entrada"]["Args"];
 
 /**
  * Vista 1 · Entrada — garita.html:630-728. Dos caminos para dejar pasar a
@@ -103,23 +101,17 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
 
     const unidad = directorio.find((u) => u.codigo === fila.unidad)?.unidad_id ?? null;
     const supabase = crearClienteNavegador();
-    const args: Omit<ArgsGaritaEntrada, "p_unidad"> & { p_unidad: string | null } = {
-      p_edificio: edificioId,
-      p_unidad: unidad,
-      p_nombre: fila.nombre,
-      p_documento: fila.documento ?? undefined,
-      p_placa: fila.placa ?? undefined,
-      p_invitacion: fila.invitacion_id ?? undefined,
-      p_nota: undefined,
-    };
-    // p_unidad no tiene DEFAULT en la firma SQL (confirmado con
-    // pg_get_functiondef) — a diferencia de p_documento/p_placa/p_invitacion/
-    // p_nota, es obligatorio mandarlo siempre, con null explícito si no hay
-    // unidad. El tipo generado lo declara `string` sin `| null` porque el
-    // generador no marca nullable un parámetro sin DEFAULT, no porque no
-    // acepte NULL — la función lo comprueba ella misma
-    // (`if p_unidad is not null and not exists (...)`).
-    const { data: id, error } = await supabase.rpc("garita_entrada", args as ArgsGaritaEntrada);
+    // `unidadId: null` cuando el código no resuelve a ninguna unidad del
+    // directorio: la firma real de garita_entrada exige el parámetro pero
+    // acepta NULL — el detalle está en lib/garita/entrada.ts.
+    const { data: id, error } = await registrarEntradaGarita(supabase, {
+      edificioId,
+      unidadId: unidad,
+      nombre: fila.nombre,
+      documento: fila.documento ?? undefined,
+      placa: fila.placa ?? undefined,
+      invitacionId: fila.invitacion_id ?? undefined,
+    });
     if (error) return mostrarAviso(error.message, "mal");
     if (!id) return;
 
@@ -164,16 +156,15 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
 
     setEnviandoSinAnunciar(true);
     const supabase = crearClienteNavegador();
-    const args: Omit<ArgsGaritaEntrada, "p_unidad"> & { p_unidad: string | null } = {
-      p_edificio: edificioId,
-      p_unidad: unidadId || null,
-      p_nombre: nombreLimpio,
-      p_documento: documento.trim() || undefined,
-      p_placa: placa.trim() || undefined,
-      p_invitacion: undefined,
-      p_nota: undefined,
-    };
-    const { data: id, error } = await supabase.rpc("garita_entrada", args as ArgsGaritaEntrada);
+    // El <select> vacío ("Elegir…") es el caso de `null` explícito: una
+    // visita sin anunciar que todavía no dice a quién visita.
+    const { data: id, error } = await registrarEntradaGarita(supabase, {
+      edificioId,
+      unidadId: unidadId || null,
+      nombre: nombreLimpio,
+      documento: documento.trim() || undefined,
+      placa: placa.trim() || undefined,
+    });
     setEnviandoSinAnunciar(false);
     if (error) return mostrarAviso(error.message, "mal");
     if (!id) return;

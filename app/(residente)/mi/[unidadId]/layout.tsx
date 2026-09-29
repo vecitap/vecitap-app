@@ -4,7 +4,8 @@ import { EncabezadoResidente } from "@/components/residente/EncabezadoResidente"
 import { SelectorUnidad } from "@/components/residente/SelectorUnidad";
 import { TarjetaSaldo } from "@/components/residente/TarjetaSaldo";
 import { PestanasResidente } from "@/components/residente/PestanasResidente";
-import { crearClienteServidor } from "@/lib/supabase/server";
+import { misUnidadesSesion } from "@/lib/residente/datos";
+import { usuarioActual } from "@/lib/supabase/cache";
 import { esUuid } from "@/lib/validacion";
 
 export default async function LayoutUnidad({
@@ -18,14 +19,14 @@ export default async function LayoutUnidad({
   // Entra crudo del URL: formato inválido, 404 directo, antes de mis_unidades().
   if (!esUuid(unidadId)) notFound();
 
-  const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getUser() y mis_unidades() memoizados por petición (ver
+  // lib/supabase/cache.ts y lib/residente/datos.ts): recibo/reportar/visitas
+  // los vuelven a pedir más abajo y leen el resultado ya resuelto acá.
+  const user = await usuarioActual();
 
   if (!user) redirect(`/entrar?volver=/mi/${unidadId}`);
 
-  const { data: unidades, error } = await supabase.rpc("mis_unidades");
+  const { data: unidades, error } = await misUnidadesSesion();
   if (error || !unidades || unidades.length === 0) redirect("/mi");
 
   const unidad = unidades.find((u) => u.unidad_id === unidadId);

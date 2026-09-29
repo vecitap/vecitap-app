@@ -54,9 +54,24 @@ otra.**
   `lib/` y `hooks/`, no en componentes
 - `proxy.ts` (se llamaba `middleware.ts` hasta Next.js 15 — Next 16 renombró el
   archivo) refresca la sesión de Supabase en cada request y protege navegación/UX:
-  por sesión para `/admin`, `/mi`, `/operador`, y además por rol (`es_operador()`)
-  para `/operador/*` específicamente — **no reemplaza RLS de la base de datos**, son
-  capas complementarias
+  por sesión para `/admin`, `/mi`, `/operador` y `/garita`, y además por rol
+  (`es_operador()` para `/operador/*`, `tiene_rol()` para `/admin/[orgId]/*`,
+  `edificios_del_vigilante()` para `/garita/[edificioId]/*`) — **no reemplaza RLS
+  de la base de datos**, son capas complementarias
+- **La sesión en `proxy.ts` se comprueba con `getClaims()`, no con `getUser()`**
+  (verificación local de la firma del JWT contra la clave asimétrica del proyecto,
+  ECC P-256; sin viaje al servidor de Auth). Falla cerrado: sin claims o sin `sub`
+  se trata como sin sesión. **Las RPC de autorización no cambian** — los roles
+  viven en `membresias`, no en el JWT, así que siguen siendo consultas a la base.
+  Los layouts y pages **sí** usan `getUser()` (vía `usuarioActual()` de
+  `lib/supabase/cache.ts`): ahí está la comprobación fresca contra el servidor de
+  Auth, y es deliberado — es la capa que ve una sesión revocada al instante. No
+  cambiar `proxy.ts` a `getSession()` nunca: ese decodifica sin verificar la firma.
+- **Todo redirect de `proxy.ts` sale por `redirigirConCookies()`**, nunca por un
+  `NextResponse.redirect()` directo: una redirección nace sin cookies y se
+  perdería el refresco de sesión de esa misma petición (el refresh token rotado),
+  dejando al navegador con uno ya consumido. Si se agrega una rama de redirect
+  nueva, usar esa función.
 - Fase 4 (Admin, ~5.318 líneas) es el módulo de mayor riesgo de cronograma —
   tratarlo con buffer extra de planificación
 - Todo desvío de comportamiento frente al HTML original (bug corregido, mejora
@@ -85,6 +100,24 @@ otra.**
   `periodos_corrientes`) usan `SECURITY DEFINER` con `search_path` fijo
   correctamente. Cualquier edición futura a estas funciones merece revisión
   cuidadosa: son el punto único de falla del aislamiento multi-tenant.
+- Garita agrega tres a esa lista, con la **misma** advertencia de revisión
+  cuidadosa — son el punto único de falla del acceso al módulo:
+  - `permitir_garita(p_edificio)` — el gate de las 4 funciones de escritura
+    (`garita_entrada`, `garita_avisar`, `garita_salida`, `garita_nota`) y
+    también de `garita_validar`/`garita_visitante`, que llaman a
+    `permitir_garita` aunque sean de lectura. Autoriza delegando en
+    `puede_garita`.
+  - `puede_garita(p_edificio)` — vigilante de ese edificio
+    (`edificios_del_vigilante()`) **o** `puede_operar(org del edificio)`.
+    Sumarle un rol acá le da de una vez todas las escrituras de la garita:
+    para permisos de solo lectura va una función nueva y separada, no una
+    edición de esta (ver `puede_ver_garita` en `docs/estado-migracion.md`).
+  - `edificios_del_vigilante()` — la lista de edificios de la sesión, y lo
+    único con lo que `proxy.ts` gatea `/garita/[edificioId]`.
+  - En la misma familia, aunque no sean gates del módulo:
+    `crear_invitacion_visita`/`anular_invitacion_visita` deciden quién puede
+    crear o anular un acceso a un edificio (las usa "Mis visitas" de
+    Residente).
 - Tablas bloqueadas intencionalmente al cliente (RLS activo, 0 políticas):
   `operadores`, `secretos`, `tasa_pendiente`. Llamarlas desde el frontend no da
   error — devuelve vacío en silencio.

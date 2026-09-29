@@ -49,7 +49,7 @@ RESUELTO / PENDIENTE) justo debajo del título, con el motivo en una línea.
 | 26 | La garita comparte la sesión de los otros módulos | NUEVO (arquitectura) |
 | 27 | La garita no tiene login propio | NUEVO (arquitectura) |
 | 28 | Cada vista de la garita es una URL | NUEVO (arquitectura) |
-| 29 | La garita comparte el tema de la app | **APROBADO 29-sep** (revierte el tema propio) |
+| 29 | La garita comparte el tema de la app | **APROBADO 28-sep** (revierte el tema propio) |
 
 
 ## Residente
@@ -716,7 +716,7 @@ de la garita de esta app.
   residente (`/entrar?volver=/mi` en vez de la raíz del sitio). No es un cambio de
   comportamiento: es la misma pantalla en la dirección que le corresponde acá.
 - **Estado:** aplicado en `components/admin/Accesos.tsx`. La ruta se construyó en
-  el bloque 10 (29-sep), así que el enlace ya lleva a una pantalla real.
+  el bloque 10 (28-sep), así que el enlace ya lleva a una pantalla real.
 
 ### 26. La garita no tiene sesión propia: comparte la de los otros tres módulos
 
@@ -776,7 +776,7 @@ estaba; el botón de atrás vuelve a la anterior.
 
 ### 29. La garita comparte el tema de la app, en vez de arrancar en oscuro con clave propia
 
-> **29-sep — APROBADO** (Nicolás, confirmado con Gustavo). Revierte la decisión
+> **28-sep — APROBADO** (Nicolás, confirmado con Gustavo). Revierte la decisión
 > del 28-sep, que sí pedía tema propio. Lo que la garita necesita es legibilidad,
 > y eso son los tamaños, no el color.
 
@@ -805,7 +805,7 @@ lluvia.
   tableta de la puerta), y va en la misma línea que el caso 26, donde también
   comparten la sesión.
 - **Estado:** aplicado. La versión con clave propia llegó a construirse en el
-  bloque 10 y se deshizo el 29-sep: `lib/theme/ThemeProvider.tsx` y
+  bloque 10 y se deshizo el 28-sep: `lib/theme/ThemeProvider.tsx` y
   `THEME_INIT_SCRIPT` volvieron a como estaban antes de ese bloque.
 - **Cómo se revierte:** volver a parametrizar `ThemeProvider` con
   `clave`/`porOmision` y envolver el grupo `(garita)`. **Ojo con la trampa que

@@ -2,7 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import { InvitarVisitas } from "@/components/residente/InvitarVisitas";
 import { MisVehiculos } from "@/components/residente/MisVehiculos";
 import { QuienHaEntrado } from "@/components/residente/QuienHaEntrado";
+import { misUnidadesSesion } from "@/lib/residente/datos";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 
 /**
  * Portado de la pestaña "Mis visitas" (`Visitas()`) en index.html:725-1113 —
@@ -27,12 +29,12 @@ export default async function PaginaVisitas({
   const { unidadId } = await params;
   const supabase = await crearClienteServidor();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getUser() y mis_unidades() memoizados por petición: [unidadId]/layout.tsx
+  // ya los llamó (ver lib/supabase/cache.ts y lib/residente/datos.ts).
+  const user = await usuarioActual();
   if (!user) redirect(`/entrar?volver=/mi/${unidadId}/visitas`);
 
-  const { data: unidades } = await supabase.rpc("mis_unidades");
+  const { data: unidades } = await misUnidadesSesion();
   const unidad = unidades?.find((u) => u.unidad_id === unidadId);
   if (!unidad) notFound();
 

@@ -114,8 +114,19 @@ html { height: 100%; }
 
 html, body {
   max-width: 100vw;
-  overflow-x: hidden;
 }
+
+/* El recorte horizontal va SOLO en `html`, nunca en `body`.
+   `overflow-x` en `body` le da a `body` un scrollport propio (el eje que
+   queda `visible` pasa a `auto`), y entonces todo `position: sticky` de
+   adentro se pega a ese scrollport en vez de al viewport — y ese scrollport
+   no scrollea, así que el elemento se va con la página. Es lo que hacía que
+   la columna lateral de Admin se desplazara al scrollear (reportado por
+   Gustavo) pese a tener `position: sticky; top: 0`: `admin.html` de `main`
+   no tiene esta regla (su `body` es solo `margin: 0; background`) y ahí
+   queda fija.
+   En `html` el recorte se propaga al viewport y no rompe nada. */
+html { overflow-x: hidden; }
 
 body {
   min-height: 100%;

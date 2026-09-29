@@ -3,7 +3,7 @@ import "./garita.css";
 
 /**
  * La garita usa el mismo tema que el resto de la app (clave `vecitap-tema`,
- * arranque en claro) — decisión del 29-sep confirmada con el socio
+ * arranque en claro) — decisión del 28-sep confirmada con el socio
  * comercial: lo que la garita necesita de verdad es legibilidad, y eso son
  * los tamaños, no el color. Por eso este layout no lleva proveedor de tema
  * propio: hereda el del layout raíz.

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { Recibo } from "@/components/residente/Recibo";
+import { misUnidadesSesion } from "@/lib/residente/datos";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { tasaDelDia } from "@/lib/tasa";
 import type { CategoriaRecibo, ConceptoRecibo, RegistroRecibo } from "@/lib/residente/tipos";
@@ -19,29 +20,36 @@ export default async function PaginaRecibo({
   const { unidadId } = await params;
   const supabase = await crearClienteServidor();
 
-  const { data: unidades } = await supabase.rpc("mis_unidades");
+  // mis_unidades() memoizado por petición (ver lib/residente/datos.ts):
+  // [unidadId]/layout.tsx ya lo llamó, así que esto lee el resultado ya
+  // resuelto en vez de un segundo viaje de red a la misma función. El
+  // layout ya llamó notFound() si la unidad no es de este usuario; esto es
+  // solo defensa por si algún día esta página se renderiza sola.
+  const { data: unidades } = await misUnidadesSesion();
   const unidad = unidades?.find((u) => u.unidad_id === unidadId);
-  // El layout ya llamó notFound() si la unidad no es de este usuario;
-  // esto es solo defensa por si algún día esta página se renderiza sola.
   if (!unidad) notFound();
 
-  const { data: filas, error } = await supabase
-    .from("recibos")
-    .select(
-      "numero,total,cuota,directos,anterior,a_favor,mora,honorario,servicio,conceptos,detalle,tasa_bcv,vence_el,alicuota,periodos!inner(anio,mes,etiqueta,estado)"
-    )
-    .eq("unidad_id", unidadId)
-    .eq("periodos.estado", "cerrado")
-    .limit(36);
+  // El recibo y la tasa del día (index.html:609-621, la de HOY, no la del
+  // día en que se emitió el recibo) no dependen entre sí: van en paralelo
+  // en vez de uno detrás del otro.
+  const [{ data: filas, error }, viva] = await Promise.all([
+    supabase
+      .from("recibos")
+      .select(
+        "numero,total,cuota,directos,anterior,a_favor,mora,honorario,servicio,conceptos,detalle,tasa_bcv,vence_el,alicuota,periodos!inner(anio,mes,etiqueta,estado)"
+      )
+      .eq("unidad_id", unidadId)
+      .eq("periodos.estado", "cerrado")
+      .limit(36),
+    tasaDelDia(supabase),
+  ]);
 
   if (error) {
     return <Recibo unidad={unidad} recibo={null} falla={error.message} />;
   }
 
-  // La tasa de HOY, no la del día en que se emitió el recibo
-  // (index.html:609-621). Si la base no tiene ninguna, el recibo cae a la
-  // congelada del período y lo dice.
-  const viva = await tasaDelDia(supabase);
+  // Si la base no tiene ninguna tasa viva, el recibo cae a la congelada del
+  // período y lo dice.
   const tasaHoy = viva ? { valor: viva.valor, fecha: viva.actualizada, dias: viva.dias } : null;
 
   // El orden lo pone el calendario del período, nunca la hora en que se

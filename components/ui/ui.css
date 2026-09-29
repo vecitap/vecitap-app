@@ -124,13 +124,23 @@
    una línea.
    ══════════════════════════════════════════════════════════════ */
 
-.admin-marco { display: flex; min-height: 100vh; }
+.admin-marco { display: flex; min-height: 100dvh; }
 
+/* Queda fija a toda la altura mientras scrollea el contenido: `sticky` +
+   `top: 0` + una altura de viewport completa. `100dvh` y no `100vh` porque
+   con la barra del navegador de un teléfono `100vh` se pasa de largo y el
+   pie del lateral (Ajustes / Tema / Salir) queda debajo del borde.
+   `overflow-y: auto` es para el caso contrario, una ventana baja: el menú
+   scrollea dentro de la columna sin arrastrar la página.
+   Ojo: esto depende de que `body` NO tenga `overflow-x` — ver la nota en
+   app/globals.css. */
 .admin-lateral {
   display: flex;
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   width: 244px;
   flex-shrink: 0;
   flex-direction: column;

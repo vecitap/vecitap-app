@@ -52,11 +52,13 @@ retira, no es parte del producto.
    diferencias de Residente (banda oscura, pestañas, Mis visitas) y
    `PanelModulos` de Operador construidos (bloques 0 a 9), **sin validar**. Las
    fundaciones de Garita (bloque 10) están **validadas en lectura y navegación**
-   (29-sep). Las cuatro vistas de Garita (bloques 11 y 12) están
-   **construidas y completas, sin validar** — sus 4 acciones de escritura
+   (28-sep). Las cuatro vistas de Garita (bloques 11 y 12) están
+   **validadas en lectura y escritura** (28-sep): sus 4 acciones de escritura
    (`garita_entrada`, `garita_avisar`, `garita_salida`, `garita_nota`) se
    conectaron el 28-sep, después de confirmar el SQL real de las cuatro con
-   `pg_get_functiondef`.
+   `pg_get_functiondef`, y se ejercieron contra la base. El **bloque 13**
+   (vista de Garita de solo lectura dentro de Admin) queda para después de la
+   validación de Gustavo con datos piloto — **no empezar**.
 5. Endurecimiento multi-tenant y escala — Pendiente (revisión cruzada obligatoria)
 6. Observabilidad y operación — Pendiente
 7. CI/CD — Pendiente
@@ -606,13 +608,15 @@ El inventario nuevo, pantalla por pantalla y acción por acción, está en
 | 7 | `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas |
 | 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) |
 | 9 | Operador · `PanelModulos` + campo de clave con ojo en su login |
-| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón y "falta un paso" — **validado en lectura y navegación** (29-sep, ver abajo) |
-| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar — completo, con escritura (ver abajo) |
-| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** — completo, con escritura (ver abajo) |
+| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón y "falta un paso" — **validado en lectura y navegación** (28-sep, ver abajo) |
+| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar — **validado en lectura y escritura** (28-sep, ver abajo) |
+| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** — **validado en lectura y escritura** (28-sep, ver abajo) |
 
 Los 12 bloques de la reescritura están construidos y completos. Lo que falta
 es validar manualmente los módulos que todavía no se probaron con una cuenta
-real — Garita incluida (ver "Bloques 11 y 12" abajo).
+real — Garita **ya no** está en esa lista: los bloques 10, 11 y 12 quedaron
+validados el 28-sep (10 en lectura y navegación; 11 y 12 en lectura y
+escritura).
 
 Garita ocupa tres bloques porque es un módulo propio, del tamaño de Residente, no
 un archivo suelto — ver "Ruta de la garita" más abajo.
@@ -718,7 +722,7 @@ un archivo suelto — ver "Ruta de la garita" más abajo.
   describía `garita.html` tal cual es en `main`, no lo que ya resolvió la
   arquitectura compartida.
 
-  **Tema: la garita usa el de toda la app** (revisión del 29-sep, ver abajo).
+  **Tema: la garita usa el de toda la app** (revisión del 28-sep, ver abajo).
   `ThemeProvider` y el script anti-parpadeo quedaron **como estaban antes del
   bloque 10** — una sola clave, `vecitap-tema`, sin parametrizar. Lo que sí es
   propio del módulo son los tamaños (`app/(garita)/garita.css`) y los tokens
@@ -730,8 +734,16 @@ un archivo suelto — ver "Ruta de la garita" más abajo.
   reemplazaron — el archivo se borró en el bloque 12, cuando ya no quedaba
   ningún `<nav>` que llevara a él.
 
-- **Bloques 11 y 12 (Garita · las cuatro vistas), construidos y completos
-  (28-sep).** Las cuatro vistas de `garita.html:630-896` están reescritas
+- **Bloques 11 y 12 (Garita · las cuatro vistas) — VALIDADOS EN LECTURA Y
+  ESCRITURA (28-sep).** Construidos el 28-sep y probados a mano por Nicolás
+  con la cuenta `vigilante.prueba@vecitap.com` sobre Torre Ida: las cuatro
+  vistas y las cuatro acciones de escritura (`garita_entrada`,
+  `garita_avisar`, `garita_salida`, `garita_nota`) se ejercieron contra la
+  base. Con esto Garita queda validada de punta a punta salvo el único
+  pendiente que ya arrastraba el bloque 10 ("Falta un paso" con un código de
+  invitación real, que necesita una segunda cuenta de vigilante sin garita
+  asignada — ver el final de este documento). Las cuatro vistas de
+  `garita.html:630-896` están reescritas
   como componentes de cliente propios
   (`components/garita/Vista{Entrada,Adentro,Consultar,Bitacora}.tsx`), una
   por ruta, con sus 10 llamadas a `garita_*` conectadas (6 de lectura + las 4
@@ -987,22 +999,21 @@ direcciones). Llegaron 564 líneas: las tablas `bitacora`, `invitaciones_visita`
 rompió. Dos detalles para el bloque 10 están anotados en
 `docs/inventario-main.md` sección 5.
 
-**Los bloques 0 a 9, 11 y 12 siguen sin validar.** Ninguno ejecutó una escritura
-contra la base con una cuenta real; la validación manual la hace Nicolás — Garita
-incluida, ahora que sus 4 acciones de escritura ya están conectadas (ver
-"Bloques 11 y 12" arriba). **La excepción es el bloque 10**, validado el 29-sep
-en lectura y navegación (ver "Qué quedó verificado del bloque 10" más abajo) —
-y, de paso, el `PanelModulos` del bloque 9, que quedó probado en escritura al
-prender el módulo `garita` en Torre Ida.
+**Los bloques 0 a 9 siguen sin validar.** Ninguno ejecutó una escritura contra
+la base con una cuenta real; la validación manual la hace Nicolás. **Garita ya
+no está en esa lista:** el bloque 10 quedó validado el 28-sep en lectura y
+navegación (ver "Bloque 10" más abajo) y los bloques 11 y 12 el 28-sep en
+lectura y escritura (ver "Bloques 11 y 12" arriba). De paso quedó probado en
+escritura el `PanelModulos` del bloque 9, al prender el módulo `garita` en
+Torre Ida.
 
 #### Pendientes concretos que dejan estos bloques
 
 Lo que queda abierto y hay que retomar, además del alcance de los bloques 7 a 12:
 
-- **Validar manualmente las 4 acciones de escritura de Garita** con una
+- ~~**Validar manualmente las 4 acciones de escritura de Garita** con una
   cuenta de vigilante real (`garita_entrada`, `garita_avisar`, `garita_salida`,
-  `garita_nota`) — conectadas y con build/lint/typecheck verdes, pero sin
-  ejecutar todavía contra la base.
+  `garita_nota`).~~ **Hecho el 28-sep** — ver "Bloques 11 y 12" arriba.
 - **Instalar `lucide-react` y poner los íconos** (caso 13, aprobado). Es lo
   primero del bloque 7. Las citas de `main` están en `docs/inventario-main.md`;
   los puntos donde hoy no hay ícono son los botones de acción de todas las
@@ -1056,6 +1067,577 @@ Va en la misma familia que los avisos de borrado masivo que ya menciona
 
 ---
 
+## Cabos sueltos de Garita cerrados el 28-sep
+
+- **El cast de `p_unidad` salió del componente.** Estaba dos veces en
+  `components/garita/VistaEntrada.tsx` (`registrarEntradaDesdeVeredicto` y
+  `registrarSinAnunciar`), con el comentario del motivo repetido en el
+  primero. Ahora es `registrarEntradaGarita()` en **`lib/garita/entrada.ts`**:
+  recibe el cliente de Supabase y un objeto en los términos de la pantalla
+  (`unidadId: string | null`), y encierra el único `as` del módulo en una
+  línea. El motivo (firma real sin `DEFAULT` en `p_unidad`, el tipo generado
+  no puede expresar "obligatorio pero acepta NULL") quedó escrito completo en
+  el docblock de esa función, que es el lugar donde hay que leerlo si algún
+  día se le pone `DEFAULT NULL` al parámetro y se regenera el tipo. Mismo
+  criterio que el resto: la lógica en `lib/`, no en el componente.
+
+## El lateral de Admin volvió a quedar fijo (28-sep) — paridad, no desvío
+
+Gustavo reportó que la columna lateral oscura se desplaza con el scroll,
+mientras que en `admin.html` de `main` queda fija. No era un olvido:
+`.admin-lateral` ya tenía `position: sticky; top: 0; height: 100vh` desde el
+bloque 5, igual que el original (`admin.html:1231` + el estilo en línea del
+`<aside>`).
+
+**La causa estaba en `app/globals.css`, no en el armazón de Admin:** la regla
+`html, body { max-width: 100vw; overflow-x: hidden }`. `overflow-x` en `body`
+le da a `body` un *scrollport* propio (el eje que queda `visible` se computa
+como `auto`), y entonces todo `position: sticky` de adentro se pega a ese
+scrollport en vez de al viewport — y ese scrollport no scrollea, así que el
+elemento se va con la página. `admin.html` no tiene esa regla (su `body` es
+solo `margin: 0; background`), y por eso ahí sí funciona. Es una de esas
+diferencias que no se ven leyendo el componente: el componente estaba bien.
+
+Corrección, en dos archivos:
+- `app/globals.css`: el recorte horizontal queda **solo en `html`**
+  (`html { overflow-x: hidden }`). En el elemento raíz el recorte se propaga
+  al viewport y no crea un scrollport que rompa `sticky`; el efecto de "sin
+  scroll horizontal", que es para qué estaba la regla, se conserva igual.
+  `max-width: 100vw` sigue en los dos.
+- `components/ui/ui.css`: `.admin-lateral` pasa a `height: 100dvh` (no
+  `100vh`: con la barra del navegador de un teléfono, `100vh` se pasa de
+  largo y el pie del lateral —Ajustes / Tema / Salir— queda debajo del
+  borde) y gana `overflow-y: auto` + `overscroll-behavior: contain`, para
+  que en una ventana baja el menú scrollee **dentro** de la columna sin
+  arrastrar la página. `.admin-marco` pasa a `min-height: 100dvh` por
+  coherencia.
+
+Sigue scrolleando solo el contenido, con el scroll de la página (no se metió
+ningún contenedor de scroll anidado en `.admin-principal`: eso habría roto la
+restauración de scroll de Next al navegar). **Al validar, mirar también las
+otras tres rutas** — el cambio de `globals.css` es global, así que conviene
+confirmar de paso que `/mi`, `/garita` y `/operador` siguen sin scroll
+horizontal en el teléfono.
+
+## Lentitud de la interfaz — diagnóstico (28-sep) + puntos 1, 3 y 6 aplicados
+
+Gustavo reporta que la interfaz "se siente lenta al hacer clic", en general.
+Lo de abajo hasta "Propuestas" es el diagnóstico original, **tal como se
+escribió antes de tocar nada** (no se reescribió con los números de después —
+eso queda en las dos secciones "Hecho el 28-sep", al final). Estado de las
+seis propuestas:
+
+| # | Propuesta | Estado |
+|---|---|---|
+| 1 | `loading.tsx` | ✅ aplicada (3 rutas aprobadas + `pagos` y `cortes`) |
+| 2 | Región de Vercel | ⏳ **pendiente de Nicolás** — mirar el dashboard, no toca código |
+| 3 | Paralelizar lo independiente | ✅ aplicada (`[orgId]/layout`, `[edificioId]/layout`, `recibo/page`) |
+| 4 | `experimental.staleTimes.dynamic` | ⏸ sin tocar, necesita aprobación |
+| 5 | Dedup `getUser()`/`tiene_rol` | ✅ corregida (tenía un error de análisis) y aplicada su mitad viable, con `cache()` |
+| 6 | `getClaims()` en `proxy.ts` | ✅ **aplicada el 28-sep**, con las claves ECC confirmadas |
+
+### Los viajes de red de una navegación de Admin
+
+Ruta de referencia: `/admin/[orgId]/[edificioId]/inicio`. Cada ítem es **un
+viaje de ida y vuelta a Supabase** (PostgREST o el servidor de Auth), medido
+desde la función de Vercel.
+
+**Carga completa (primera entrada, o F5) — 9 en serie + 1 tanda de 5:**
+
+| # | Dónde | Llamada | ¿Serie? |
+|---|---|---|---|
+| 1 | `proxy.ts:58` | `auth.getUser()` → `GET /auth/v1/user` | serie (bloquea todo) |
+| 2 | `proxy.ts:101` | `rpc("tiene_rol")` | serie, después de #1 |
+| 3 | `[orgId]/layout.tsx:33` | `auth.getUser()` — **repite #1** | serie |
+| 4 | `[orgId]/layout.tsx:38` | `rpc("tiene_rol")` — **repite #2** | serie |
+| 5 | `[orgId]/layout.tsx:44` | `from("organizaciones")` | serie |
+| 6 | `[orgId]/layout.tsx:51` | `from("edificios")` (todos los de la org) | serie |
+| 7 | `[orgId]/layout.tsx:57` | `tasaDelDia` → `rpc("tasa_atrasada")` | serie |
+| 8 | `[edificioId]/layout.tsx:33` | `rpc("edificios_visibles")` | serie |
+| 9 | `[edificioId]/layout.tsx:37` | `from("edificios")` (1 fila) — **2.ª vez que se consulta `edificios`** | serie |
+| 10 | `inicio/page.tsx:19` | `Promise.all` de 5: `unidades`, `saldos_actuales`, `conceptos_cobro`, `periodos`, `edificios` (**3.ª vez**) | **paralelo**, 1 tanda |
+
+**Lo que se repite entre layout y page:** `auth.getUser()` ×2 (proxy + layout),
+`tiene_rol` ×2 (proxy + layout), y `edificios` ×3 (layout de org, layout de
+edificio, page). `getUser()` no es gratis ni está cacheado: es un `GET` al
+servidor de Auth en cada llamada.
+
+**Navegación dentro del mismo edificio (Inicio → Cobros, el clic que se
+siente lento) — 2 en serie + lo que pida la página.** Los layouts **no** se
+vuelven a ejecutar: lo dicen los docs de esta versión de Next
+(`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/layout.md:240`,
+"Layouts do not re-render on navigation", y el apartado de *partial
+rendering* de `staleTimes.md`). Lo que sí corre de nuevo, **en cada clic**,
+es `proxy.ts` completo — el `matcher` solo excluye archivos estáticos, así
+que la petición RSC de la navegación también pasa por ahí: `getUser()` +
+`tiene_rol()` en serie, antes de que la página empiece a pedir sus datos.
+Ese es el costo fijo por clic.
+
+**Cambiar de edificio con el selector** vuelve a ejecutar el layout de
+`[edificioId]` (cambia el segmento): #8 y #9 se suman a los dos del proxy.
+
+### Lo mismo, más corto, en los otros dos módulos
+
+**`/mi/[unidadId]/recibo`** — 6 en serie, ninguna tanda paralela:
+`proxy.getUser()` → `proxy` no tiene gate de rol para `/mi` → layout
+`getUser()` (**repite**) → layout `rpc("mis_unidades")` → page
+`rpc("mis_unidades")` (**repite**, `recibo/page.tsx:22`) → page
+`from("recibos")` → page `tasaDelDia`. Las tres de la página están una
+detrás de la otra, sin `Promise.all`. `/mi/.../pagos` es el más liviano
+(una sola consulta propia); `/mi/.../visitas` sí paraleliza sus 5.
+
+**`/garita/[edificioId]/entrada`** — 4 en serie: `proxy.getUser()` →
+`proxy.rpc("edificios_del_vigilante")` → layout `getUser()` (**repite**) →
+layout `rpc("garita_edificios")` → layout `rpc("garita_directorio")` (las
+dos últimas también en serie, `layout.tsx:38` y `:48`). Las cuatro páginas
+de garita no piden nada del lado del servidor (las vistas son de cliente y
+reusan el directorio por contexto), así que el resto ya está bien: cambiar
+de pestaña dentro de la garita solo paga el proxy.
+
+### Ninguna ruta tiene `loading.tsx`
+
+**Cero archivos `loading.tsx` en todo `app/`** (Admin, Residente, Operador,
+Garita y marketing incluidos). Concretamente faltan en:
+
+- Admin: `[orgId]/`, `[orgId]/[edificioId]/` y las 9 secciones
+  (`inicio`, `propietarios`, `propietarios/[unidadId]`, `cobros`, `mes`,
+  `pagos`, `cortes`, `estadisticas`, `accesos`, `ajustes`).
+- Residente: `mi/`, `mi/[unidadId]/` y sus 4 pestañas (`recibo`,
+  `reportar`, `pagos`, `visitas`).
+- Garita: `garita/`, `garita/[edificioId]/` y sus 4 vistas.
+- (Operador: `operador/` — tampoco, aunque no lo pedía la consigna.)
+
+**Por qué importa más de lo que parece, y no es solo cosmético.** Los docs de
+esta versión (`.../02-components/link.md:302`) dicen que para una ruta
+**dinámica** el prefetch de `<Link>` llega "down to the nearest segment with
+a `loading.js` boundary". Sin ninguna frontera de carga, **no hay nada útil
+que prefetchear**: el clic arranca de cero. Y sin frontera tampoco hay
+transición en cuanto se hace clic — el router espera el payload RSC completo
+antes de cambiar de pantalla, así que el botón se siente muerto por todo lo
+que tarden los viajes de arriba. Es exactamente el síntoma que describe
+Gustavo. (Dato aparte, del mismo doc, línea 298: el prefetch **solo funciona
+en producción**, nunca en `npm run dev` — si la prueba fue contra el
+servidor de desarrollo, la sensación es peor que la real.)
+
+### ¿Se puede usar `getClaims()` en el proxy?
+
+> **Resuelto y aplicado el 28-sep.** Nicolás confirmó en el dashboard que **las
+> dos bases** (vecitap-pruebas y producción) tienen **ECC (P-256) como clave
+> actual**, con la HS256 legacy como clave anterior — o sea que sí, la
+> condición de abajo se cumple y `getClaims()` verifica localmente de verdad.
+> El cambio está hecho, solo en `proxy.ts`. Ver "Hecho el 28-sep ·
+> `getClaims()` en el proxy" al final de esta sección, incluida la corrección
+> del análisis de seguridad que traía este apartado.
+
+**Depende de una sola cosa, y no está en el repo: si el proyecto de Supabase
+ya migró a claves de firma asimétricas** (Supabase → Project Settings → JWT
+Keys). Verificado leyendo la implementación en
+`node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:5528-5548`:
+
+- `getClaims()` verifica la firma **localmente** solo si el token trae `alg`
+  que no empieza con `HS` y un `kid` (es decir, firma asimétrica ECC/RSA).
+- Si la clave sigue siendo el secreto compartido HS256 (el modo *legacy*),
+  `getClaims()` **cae a `getUser()` por dentro** — mismo viaje de red, cero
+  ganancia y una capa más de indirección. No falla, no avisa: simplemente no
+  ahorra nada.
+- El JWKS se guarda en `GLOBAL_JWKS`, un módulo global compartido por todos
+  los clientes del mismo proceso, con TTL de 10 minutos
+  (`lib/constants.js:48`). En una función tibia de Vercel es gratis; en un
+  arranque frío es **un** `fetch` extra.
+
+**Lo que implica para la seguridad** (esto es lo que hay que decidir, no el
+rendimiento):
+
+- **No debilita la autenticación como la debilitaría `getSession()`.**
+  `getSession()` decodifica sin verificar y por eso no sirve para autorizar;
+  `getClaims()` **sí verifica la firma** con la clave pública. La identidad
+  que devuelve es confiable.
+- **Lo que se pierde es la revocación inmediata.** `getUser()` le pregunta al
+  servidor de Auth, así que ve al instante una sesión cerrada en todos los
+  dispositivos, un usuario borrado o baneado. `getClaims()` confía en una
+  firma válida hasta el `exp` del token: queda una ventana igual al tiempo de
+  vida del access token (por omisión 1 hora en Supabase, configurable). Para
+  una app que maneja pagos conviene decidirlo a conciencia — una opción
+  intermedia es dejar `getUser()` para `/operador` (el back-office interno) y
+  usar `getClaims()` en el camino común.
+- **No ahorra ni una llamada de autorización.** Los roles de este proyecto
+  viven en `membresias`, no en el JWT (ver `AGENTS.md`: no hay claims de rol),
+  así que `tiene_rol`, `es_operador` y `edificios_del_vigilante` siguen
+  siendo RPC igual. `getClaims()` ahorra el viaje #1, no el #2.
+- **El refresco de sesión se conserva** (era la duda razonable, porque es el
+  trabajo #1 del proxy): `getClaims()` sin argumento llama a `getSession()`
+  por dentro, y `getSession()` renueva el token vencido y dispara la
+  escritura de cookies igual que hoy. Verificado en el mismo archivo
+  (`_useSession`/`__loadSession`, líneas 2537-2565).
+
+### Región de las funciones de Vercel
+
+**El repo no fija ninguna.** No hay `vercel.json`, y no hay ningún
+`export const preferredRegion` ni `runtime` en todo el código (verificado por
+grep sobre `app/`, `lib/`, `components/`, `proxy.ts` y los `.json` del
+repo). Con eso, las funciones corren en la **región por omisión que tenga
+configurado el proyecto en el dashboard de Vercel** (Settings → Functions →
+Function Region), que es un dato que no vive acá.
+
+Importa mucho: los 9 viajes en serie de arriba se pagan uno por uno contra
+Supabase en **East US**. Si la región de Vercel es `iad1` (Washington, el
+default histórico de Vercel para proyectos nuevos) están prácticamente
+pegados y cada viaje cuesta pocos milisegundos; si quedó en otra región, cada
+uno de esos 9 cruza el continente o el Atlántico y ahí sí se explica sola la
+lentitud. **Pendiente para Nicolás: mirar ese valor en el dashboard y
+anotarlo acá.** El `proxy.ts` es aparte: el `matcher` de Next 16 lo corre en
+la red de Vercel, no necesariamente en la región de las funciones.
+
+### Propuestas, por impacto sobre esfuerzo
+
+Ninguna aplicada. Las dos últimas necesitan aprobación separada.
+
+1. **`loading.tsx` en las fronteras que importan** — impacto alto, esfuerzo
+   bajo, riesgo cero. Devuelve el prefetch de `<Link>` (hoy inexistente en
+   rutas dinámicas sin frontera) y, sobre todo, hace que el clic responda al
+   instante en vez de esperar el payload completo. Mínimo: uno en
+   `[orgId]/[edificioId]/`, uno en `mi/[unidadId]/` y uno en
+   `garita/[edificioId]/`; después, los de las secciones que más tardan
+   (`inicio`, `propietarios`, `pagos`). Ojo con lo aprendido en la Fase 2:
+   probar también recargando, no solo navegando.
+2. **Confirmar la región de Vercel** — impacto potencialmente alto, esfuerzo
+   nulo, no toca código. Si no es `iad1`, cambiarla es un clic y puede valer
+   más que todo el resto junto.
+3. **Paralelizar lo que ya no depende de nada** — impacto medio, esfuerzo
+   bajo, sin cambio de semántica:
+   - `[orgId]/layout.tsx`: `organizaciones` + `edificios` + `tasa_atrasada`
+     en un `Promise.all` (hoy son 3 en serie) → 5 viajes en serie pasan a 3.
+   - `[edificioId]/layout.tsx`: `edificios_visibles` + la comprobación de
+     `edificios` en paralelo (las dos tienen que pasar igual) → 2 pasan a 1.
+   - `mi/[unidadId]/recibo/page.tsx`: `from("recibos")` + `tasaDelDia` en
+     paralelo, y **sacar el `mis_unidades()` repetido** (el layout ya lo
+     trajo) → 3 en serie pasan a 1.
+4. **`experimental.staleTimes.dynamic`** en `next.config.ts` — impacto medio
+   (volver a una sección ya visitada, y atrás/adelante, quedan instantáneos),
+   esfuerzo nulo. Por omisión es **0 en Next 15+**, o sea que hoy no se
+   cachea nada del lado del cliente. Contrapartida real: durante esos
+   segundos se ven cifras de hace un momento, y esto es contabilidad — si se
+   pone, un valor chico (10-15 s), no 30.
+5. **Corregido el 28-sep — el punto original conflaba dos cosas distintas.**
+   Lo que decía acá ("dejar de repetir `getUser()`/`tiene_rol` entre
+   `proxy.ts` y el layout de `[orgId]`... con `cache()` de React") mezclaba
+   dos repeticiones que no se resuelven igual:
+   - **`proxy.ts` ↔ el primer layout de cada módulo** (2 viajes: `getUser()`
+     + `tiene_rol`/`edificios_del_vigilante`). `cache()` de React memoiza
+     dentro del árbol de render de Server Components de **una** petición;
+     `proxy.ts` corre **antes**, como Edge Middleware, en un runtime aparte
+     — no hay ningún árbol de render compartido con el que memoizar. `cache()`
+     **no puede** resolver esta repetición. Sigue existiendo a propósito, sin
+     tocar (toca autenticación → se aprueba aparte si se quiere atacar de
+     otra forma, p. ej. pasando el resultado del proxy al layout por header).
+   - **Un layout ↔ una page, dentro del mismo árbol de render** (`edificios`,
+     `mis_unidades`, y `getUser()`/`mis_unidades()` repetidos entre
+     `[unidadId]/layout.tsx` y `recibo`/`reportar`/`visitas`). Esto **sí** es
+     exactamente el caso que `cache()` resuelve, porque layout y page
+     renderizan en la misma petición. **Aprobado y hecho el 28-sep** — ver
+     "Hecho el 28-sep" más abajo.
+6. **`getClaims()` en `proxy.ts`** — impacto alto en frecuencia (es el viaje
+   que se paga en **cada** clic). **Aprobada y aplicada el 28-sep**, una vez
+   confirmadas las claves ECC en las dos bases. El análisis de seguridad que
+   traía este punto ("se pierde la revocación inmediata") estaba mal
+   encuadrado y quedó corregido en "Hecho el 28-sep · `getClaims()` en el
+   proxy", más abajo — junto con la matriz de pruebas.
+
+### Hecho el 28-sep — puntos 1 y 3
+
+`proxy.ts`, `experimental.staleTimes` y `getClaims()` **no se tocaron**, como
+se pidió. Todo lo de abajo es de render (`loading.tsx`, `Promise.all`,
+`cache()` de React) — nada de autenticación ni autorización cambió de forma
+ni de orden, solo de dónde sale cada dato.
+
+**`loading.tsx` (punto 1), con los componentes del sistema de diseño** — las
+tres del mínimo aprobado, más dos elegidas dentro de Admin:
+
+- `admin/[orgId]/[edificioId]/loading.tsx`, `mi/[unidadId]/loading.tsx` y
+  `garita/[edificioId]/loading.tsx` — las tres aprobadas. Las tres renderizan
+  `<Cargando />` (`components/ui/Cargando.tsx`, ya existía, portado de
+  `Cargando()` en `app.html`) sin envoltorio propio: en Admin cae dentro de
+  `.admin-relleno`, que ya trae su padding; en Residente y Garita reemplaza
+  pantalla completa mientras el layout con el "chrome" (encabezado, tarjeta
+  de saldo o el directorio de la garita) todavía no resolvió sus datos —
+  correcto, porque en esos dos módulos el chrome depende de qué unidad/garita
+  es, a diferencia de Admin donde el lateral vive en el layout de `[orgId]`,
+  un nivel por encima, y queda montado sin remontarse.
+- **Elegidas además, dentro de Admin: `pagos/loading.tsx` y
+  `cortes/loading.tsx`.** Motivo, con datos del diagnóstico de arriba: de las
+  9 secciones de Admin, son las **únicas dos** que hacen un viaje de red
+  extra, en serie, más allá de la única tanda paralela que ya usa el resto
+  (verificado leyendo cada `page.tsx`, no a ojo). En `pagos/page.tsx` el
+  extra es real y no un descuido — `pagos`/`comprobantes` se filtran por
+  `.in("unidad_id", ids)`, y `ids` sale de traer `unidades` primero, una
+  dependencia de datos genuina. En `cortes/page.tsx` el extra es
+  `tasaDelDia(supabase)` después de su `Promise.all`, y **ese no es una
+  dependencia real** — no toca los datos del `Promise.all` de al lado — así
+  que queda anotado como el candidato más claro para la próxima ronda de
+  paralelización (no se tocó ahora: no estaba en el alcance aprobado de esta
+  sesión). El resto de las secciones (`inicio`, `propietarios`,
+  `propietarios/[unidadId]`, `cobros`, `mes`, `estadisticas`, `ajustes`,
+  `accesos`) ya resuelve todo en una sola tanda paralela, así que agregarles
+  una frontera propia no habría cambiado nada — la de `[edificioId]/` que ya
+  cubre a todas por herencia alcanza igual.
+
+**Paralelizar (punto 3), en los tres archivos aprobados:**
+
+- **`[orgId]/layout.tsx`** — `organizaciones` + `edificios` + `tasa_atrasada`
+  pasaron de 3 en serie a un `Promise.all`. El gate de acceso
+  (`getUser()` → `tiene_rol()`) se dejó **fuera** de la tanda y sigue en
+  serie, antes que las tres: no se buscó ganar velocidad a costa de pedir
+  datos de la organización antes de confirmar que el usuario puede verlos.
+- **`[edificioId]/layout.tsx`** — la segunda consulta (¿el edificio es de
+  esta organización?) dejó de ser una consulta propia y ahora lee de la lista
+  de `edificios` que ya trajo `[orgId]/layout.tsx` (ver `cache()` abajo): no
+  quedó un `Promise.all` de dos viajes reales, quedó **un viaje menos**,
+  porque el segundo ya está resuelto cuando este layout lo pide.
+  `edificios_visibles()` (la autorización real, RLS-aware) se dejó intacta,
+  sin reordenar ni tocar.
+- **`recibo/page.tsx`** — `from("recibos")` + `tasaDelDia` pasaron a
+  `Promise.all`; `mis_unidades()` dejó de pedirse de nuevo (ver `cache()`
+  abajo). **Efecto secundario aceptado, anotado a propósito:** si
+  `from("recibos")` falla, ahora `tasaDelDia` ya se disparó igual (antes no
+  llegaba a pedirse) — un viaje de más solo en el camino de error, que no
+  cambia el resultado que ve la persona (`Recibo` recibe el mismo
+  `falla={error.message}` de antes, la tasa simplemente no se usa en esa
+  rama). Mismo criterio que ya se aceptó para `[edificioId]/layout.tsx`.
+
+**`cache()` de React, para lo que se repetía entre layout y page dentro del
+mismo árbol de render** (no con `proxy.ts` — ver el punto 5 corregido más
+arriba). Tres archivos nuevos:
+
+- **`lib/supabase/cache.ts`** → `usuarioActual()`, `getUser()` memoizado.
+- **`lib/residente/datos.ts`** → `misUnidadesSesion()`, `mis_unidades()`
+  memoizado.
+- **`lib/admin/edificios-organizacion.ts`** → `edificiosDeOrganizacion(orgId)`,
+  la lista de `edificios` de una organización memoizada — con
+  `tolerancia_alicuota` sumada al `select` de `[orgId]/layout.tsx` (antes
+  `id,nombre,direccion`) para que también sirva al chequeo de
+  `[edificioId]/layout.tsx` y a la tolerancia que pedía `inicio/page.tsx` por
+  su cuenta. Es la única de las tres consultas de "edificios" del diagnóstico
+  original que de verdad se pudo unificar: `ajustes` (`*`), `cortes`/
+  `estadisticas` (`nombre,rif`), `accesos` (`id,nombre`) y
+  `propietarios/[unidadId]` (`id,nombre,rif,direccion`) piden columnas
+  distintas para necesidades distintas de cada sección — no son duplicados
+  del layout, así que no se tocaron.
+- **`lib/admin/acceso.ts`** → `tieneRolOrganizacion(orgId, roles)`, `tiene_rol()`
+  memoizado. Hoy no ahorra ningún viaje real (`[orgId]/layout.tsx` es el
+  único punto de Admin que lo llama dentro de ese árbol) — queda listo para
+  el día que una sección de Admin necesite revalidar el rol por su cuenta,
+  igual que ya hacen `usuarioActual`/`misUnidadesSesion`/
+  `edificiosDeOrganizacion`.
+
+Consumido en: `[orgId]/layout.tsx` y `[edificioId]/layout.tsx` (Admin);
+`inicio/page.tsx` (Admin, solo `edificiosDeOrganizacion`); `[unidadId]/layout.tsx`,
+`recibo/page.tsx`, `reportar/page.tsx` y `visitas/page.tsx` (Residente) — estas
+dos últimas no estaban en el alcance aprobado de "paralelizar" (ese era solo
+`recibo/page.tsx`), pero sí en el de "deduplicar con `cache()` lo que se
+repite entre layout y page": `reportar/page.tsx` y `visitas/page.tsx` volvían
+a llamar a `getUser()`/`mis_unidades()` cada uno por su cuenta, exactamente el
+mismo patrón que `recibo/page.tsx`, así que se corrigieron los cuatro con la
+misma pieza.
+
+**Verificado, no solo asumido, antes de tocar cada archivo:** ninguna
+consulta cambió de columnas seleccionadas salvo la de `edificios` (aditivo,
+un campo más); ningún `if (!user)`/`if (error)`/`notFound()`/`redirect()`
+se movió de orden respecto al resto de sus propias comprobaciones ni se
+sacó; `edificios_visibles()` y la comprobación de rol siguen siendo el
+mismo RPC, llamado con los mismos argumentos. `npx tsc --noEmit`, `npm run
+lint` y `npm run build` quedaron verdes después de cada bloque de cambios.
+
+### Hecho el 28-sep · `getClaims()` en el proxy (propuesta 6, aprobada)
+
+Aprobado por Nicolás con el dato que faltaba: **las dos bases tienen ECC
+(P-256) como clave de firma actual**, con la HS256 legacy como anterior
+(verificado en el dashboard). Sin eso el cambio no habría servido de nada —
+con HS256 `getClaims()` cae a `getUser()` por dentro, en silencio.
+
+**Alcance, tal como se pidió:** solo `proxy.ts`. Los layouts y pages siguen
+con `getUser()` (vía `usuarioActual()`), las RPC de autorización
+(`tiene_rol`, `es_operador`, `edificios_del_vigilante`) no se tocaron, y no
+se tocó nada del proyecto de Supabase ni se revocó nada.
+
+#### Corrección al análisis de seguridad de más arriba
+
+El apartado "¿Se puede usar `getClaims()`?" decía que lo que se pierde es "la
+revocación inmediata". **Eso estaba mal encuadrado, y lo señaló Nicolás:**
+PostgREST valida el JWT localmente (firma + `exp`) y no consulta revocación,
+así que el token de una sesión revocada **ya hoy** sirve para leer y escribir
+datos hasta su `exp`, con o sin este cambio. El `getUser()` del proxy nunca
+fue lo que protegía los datos — protegía la navegación.
+
+Qué **no** cambia:
+
+- **Falsificación:** `getClaims()` verifica la firma con la clave pública. Un
+  token manipulado se rechaza igual. Es lo contrario de `getSession()`, que
+  decodifica sin verificar — esa línea no se cruza.
+- **`exp`:** `getClaims()` lo valida (`validateExp`) y rechaza vencidos.
+- **Autorización:** las tres RPC siguen corriendo contra Postgres como ese
+  mismo JWT. Ya operaban sobre la base de "confiable hasta `exp`".
+- **La ventana de revocación que vale para datos:** acotada por `exp` + el
+  fallo del refresh. No se movió.
+- **El acceso efectivo de una sesión revocada y no vencida:** tampoco cambia,
+  porque **los cuatro módulos tienen un `getUser()` fresco en su layout o
+  page** — `/admin` y `/admin/[orgId]`, `/mi` y `/mi/[unidadId]`, `/operador`,
+  `/garita` y `/garita/[edificioId]` (verificados uno por uno). La rebota el
+  layout en vez del proxy.
+
+Lo único que cambia de verdad: **qué capa** frena una sesión revocada, no
+**si** la frenan. Y como consecuencia, en algún caso el destino del redirect
+puede diferir (lo frena el layout, no el proxy) — eso es UX, no seguridad, y
+está en la matriz de pruebas.
+
+#### Cómo queda garantizado el refresco de sesión
+
+Era la pregunta con más filo, porque refrescar la sesión es el trabajo #1 del
+proxy. **El refresco no lo hace ninguno de los dos métodos: lo hace el paso
+previo de cargar la sesión, que `getUser()` y `getClaims()` comparten.** La
+cadena quedó escrita en el comentario de `proxy.ts`, con las líneas exactas de
+las librerías instaladas:
+
+1. `getClaims()` **sin argumento** llama a `getSession()`
+   (`GoTrueClient.js:5509-5516`). Por eso no se le pasa el token a mano: eso
+   sería justo lo que saltearía el refresco.
+2. `getSession()` → `__loadSession()` renueva si el token venció o está dentro
+   del margen (`_callRefreshToken`, 2537-2565) y guarda la sesión nueva (4265).
+3. Guardarla emite `TOKEN_REFRESHED`; `@supabase/ssr` engancha ese evento y
+   vuelca las cookies con `applyServerStorage`
+   (`createServerClient.js:49-66`).
+4. Eso llama al `setAll` de `proxy.ts:51-57`, que reconstruye `response` y le
+   escribe las cookies.
+5. `return response` (`proxy.ts:190`) devuelve esa respuesta reconstruida.
+
+**Detalle preexistente encontrado acá y corregido después, en el mismo día
+(aprobado aparte):** en los caminos de `redirect`, el proxy devolvía un
+`NextResponse.redirect(url)` nuevo que **no** arrastraba las cookies
+refrescadas de `response`. Ver "Hecho el 28-sep · los redirect del proxy
+conservan las cookies" más abajo.
+
+#### Qué se ahorra
+
+Por request, con la función tibia: **un viaje de red menos, el más frecuente
+de todos** (se pagaba en cada clic, ver la tabla del diagnóstico). Token
+vigente → 0 llamadas de auth (el JWKS vive en un global de módulo con TTL de
+10 min, compartido por todos los clientes del mismo proceso). Token vencido →
+1 (el refresh), donde antes eran 2 (refresh + `getUser()`). En un arranque
+frío de isolate, la primera petición paga un `fetch` del JWKS en lugar del
+`getUser()`: ahí es empate, no pérdida.
+
+#### Falla cerrado, con un detalle del tipo de retorno
+
+`getClaims()` devuelve una **unión de tres formas**, no dos: con claims, con
+error, y **sin ninguno de los dos** cuando simplemente no hay sesión
+(`GoTrueClient.d.ts:2569-2581`, y el `return this._returnResult({ data: null,
+error })` de `GoTrueClient.js:5512` cuando `getSession()` no trae sesión ni
+error). Por eso mirar solo `error` **no alcanzaría** — la comprobación es
+`!errorClaims && typeof sub === "string" && sub.length > 0`, que es
+exactamente lo que pidió Nicolás ("si devuelve error, no trae claims o no
+trae `sub`, se trata como sin sesión").
+
+### Hecho el 28-sep · los redirect del proxy conservan las cookies
+
+Salió de la nota de arriba, y Nicolás lo aprobó como cambio aparte. Es un bug
+**preexistente**, no algo que introdujera `getClaims()`: estaba desde que el
+proxy existe.
+
+**El bug.** `NextResponse.redirect(url)` crea una respuesta nueva y vacía: no
+hereda nada de la `response` que el proxy venía armando. Si en esa misma
+petición el cliente de Supabase refrescó la sesión, las cookies nuevas
+(access token + refresh token rotado) estaban en `response`, puestas por
+`setAll` — y las cuatro ramas de redirect las tiraban a la basura.
+
+**Por qué eso toca el reuso del refresh token.** Un refresco rota el refresh
+token: el servidor emite uno nuevo y deja el anterior consumido. Si la
+respuesta que llega al navegador no trae el nuevo, el navegador sigue con el
+viejo y en la petición siguiente **presenta un token ya usado**. Dentro de la
+ventana de reuso de Supabase eso se tolera (devuelve la misma sesión, para no
+romper peticiones concurrentes), pero pasada la ventana un refresh token
+reusado es indistinguible de un token robado y puede invalidar toda la familia
+de sesiones: al usuario se le cierra la sesión sin motivo aparente. Copiando
+las cookies a la redirección, navegador y servidor siempre coinciden en cuál
+es el refresh token vigente, y el token consumido no se vuelve a presentar.
+
+**Alcanza también al caso inverso**, que es el que se nota como "no me deja
+salir": cuando la sesión se desarma, `applyServerStorage` manda a `setAll` las
+cookies de **borrado** (`value: ""`, `maxAge: 0`) — verificado en
+`@supabase/ssr` `cookies.js:455-490`. Antes también se perdían al redirigir, y
+el navegador se quedaba con cookies inválidas que reintentaba en cada
+petición.
+
+**Cómo quedó.** Una sola función auxiliar, `redirigirConCookies(url, response)`
+(`proxy.ts:40-49`), usada en las **cuatro** ramas de redirect. No queda ningún
+`NextResponse.redirect()` suelto en el archivo fuera de esa función. **No
+cambió a dónde redirige ninguna rama ni la lógica de ningún gate** — solo se
+reemplazó la construcción de la respuesta.
+
+Copia la cookie **entera**, no una lista de campos:
+
+```ts
+for (const cookie of response.cookies.getAll()) {
+  redireccion.cookies.set(cookie);
+}
+```
+
+Esto es a propósito y no es lo mismo que enumerar `path`/`maxAge`/`httpOnly`/
+`sameSite`/`secure` a mano. Verificado en la implementación de Next
+(`node_modules/next/dist/compiled/@edge-runtime/cookies/index.js`): `getAll()`
+devuelve los objetos tal como los guardó `set()` en su `Map` interno
+(línea 279 — **no** los reparsea de la cabecera `Set-Cookie`, así que no hay
+pérdida por round-trip), y `set()` acepta ese mismo objeto completo como único
+argumento (línea 293). Enumerando campos a mano se podrían olvidar `domain`,
+`expires`, `priority` o `partitioned`; pasando el objeto, no.
+
+**Un detalle que conviene saber, sin cambio de comportamiento:** cuando hay
+borrado de cookies con `domain`, `applyServerStorage` manda dos entradas con
+el mismo nombre (una host-only, sin `domain`, y otra con él). `response.cookies`
+es un `Map` por nombre, así que la segunda pisa a la primera — eso ya pasaba
+antes de este cambio, al escribir en `response`. La copia reproduce
+exactamente lo que `response` hubiera enviado, que es lo que se pidió; no
+intenta "mejorarlo".
+
+#### Matriz de pruebas en el navegador
+
+Lo que hay que ejercer a mano, con las cuatro cuentas de prueba. Ninguna de
+estas pruebas escribe en la base salvo donde se aclara.
+
+| # | Caso | Esperado |
+|---|---|---|
+| 1 | Sin sesión → `/admin`, `/mi`, `/operador`, `/garita` (las cuatro) | `/entrar?volver=…` con el `volver` correcto en cada una |
+| 2 | `admin.prueba` entra y navega Inicio → Propietarios → Cobros → Cierre → Pagos → Cortes → Accesos → Ajustes | Todas 200, sin rebotes a `/` ni a `/entrar` |
+| 3 | `admin.prueba` en `/admin/<Baja>/<Torre Ida>/inicio`, **F5** | Carga igual, sesión intacta |
+| 4 | `admin.prueba` → un `orgId` ajeno y un `orgId` malformado | Las dos a `/` (fail-closed del `tiene_rol`, sin cambios) |
+| 5 | `residente.prueba` → `/mi`, cambiar de unidad con el selector, las 4 pestañas | Todas 200; `/mi/no-es-uuid` → 404 limpio |
+| 6 | `residente.prueba` escribiendo `/admin` a mano | "Nueva administradora" sola, sin organizaciones listadas |
+| 7 | `vigilante.prueba` → `/garita`, las 4 vistas, un `edificioId` ajeno y uno malformado | Las 4 vistas 200; los dos últimos a `/` |
+| 8 | `operador.prueba` → `/operador`; y `residente.prueba` → `/operador` | Entra / rebota a `/` (fail-closed del `es_operador`) |
+| 9 | **El refresco, que es el punto delicado.** Dejar una pestaña abierta en `/admin/…` más de una hora (o el `exp` que tenga el proyecto) sin tocarla, y después navegar a otra sección | Navega normal, sin pasar por `/entrar`: el proxy refrescó el token y escribió las cookies |
+| 10 | Igual que el 9 pero con **F5** en vez de navegar | Misma cosa: carga sin volver a pedir clave |
+| 11 | Cerrar sesión ("Salir") y después tocar Atrás en el navegador | No entra: rebota a `/entrar` |
+| 12 | Cerrar sesión en una pestaña y, en otra pestaña ya abierta en `/admin/…`, navegar a otra sección | Rebota a `/entrar` o a `/` — **puede que lo frene el layout en vez del proxy**, que es el cambio de capa esperado. Lo que importa: que **no** muestre datos |
+| 13 | En dos navegadores distintos, `admin.prueba` en uno y `residente.prueba` en el otro, a la vez | Cada uno ve lo suyo; ninguna sesión se filtra a la otra |
+| 14 | Recarga en tema oscuro en `/admin`, `/mi` y `/garita` | Sin parpadeo ni avisos de hidratación (la prueba de la Fase 2, que sigue valiendo) |
+| 15 | Una escritura cualquiera ya validada, para confirmar que la sesión sirve para escribir y no solo para navegar (p. ej. una nota de bitácora en Garita con `vigilante.prueba`) | Se registra igual que antes. **Esta sí escribe en la base** |
+| 16 | **El redirect que refresca.** Dejar vencer el token con una pestaña abierta (como el 9) y entonces pedir una ruta que **rebota**: con `residente.prueba`, escribir a mano `/operador`. Mirar en DevTools → Network la respuesta 307 | El 307 trae `Set-Cookie` con los tokens nuevos, y la sesión sigue viva después del rebote (seguir navegando en `/mi` sin volver a entrar) |
+| 17 | Igual que el 16 pero con `admin.prueba` y un `orgId` ajeno (rebota por `tiene_rol`), y con `vigilante.prueba` y un `edificioId` ajeno (rebota por `edificios_del_vigilante`) | Mismo resultado: rebota a `/`, con `Set-Cookie`, y la sesión sigue viva |
+| 18 | Repetir el 16 **dos o tres veces seguidas**, dejando vencer el token cada vez | No se cierra la sesión sola en ningún momento (es el síntoma del reuso de refresh token que este arreglo evita) |
+| 19 | "Salir" y después pedir una ruta protegida, mirando las cookies en DevTools → Application | Las cookies de sesión quedan borradas, no inválidas-pero-presentes; y el redirect a `/entrar` trae el `Set-Cookie` de borrado |
+
+Los casos **9, 10 y 12 son los específicos de `getClaims()`**; los **16 al 19,
+los específicos del arreglo de cookies en los redirect** (el 16 y el 17 son el
+corazón: antes de este cambio, ese 307 salía **sin** `Set-Cookie`). El resto es
+regresión de los gates que ya estaban validados y que ahora dependen de
+`haySesion` en vez de `user`.
+
+Nota práctica para los casos 9, 10, 16, 17 y 18: en vez de esperar la hora real
+del `exp`, se puede bajar temporalmente la vida del access token en Supabase →
+Authentication → Sessions, o borrar a mano la cookie del access token dejando
+la del refresh token. Lo segundo no toca configuración de la base y es
+reversible cerrando sesión.
+
+---
+
 ## Pendientes para fases futuras
 
 ### Fase 4 — al migrar Admin
@@ -1096,6 +1678,18 @@ Pendiente puntual:
   NULL` a `es_operador()`, igual que ya tiene `correos_malos_borrar` —
   hoy es inconsistente que cualquier usuario logueado pueda ver esa tabla
   si solo el operador puede borrarla.
+  **Migración escrita el 28-sep, sin aplicar** (la aplica Nicolás en las dos
+  bases): `supabase/migrations/20260928130000_correos_malos_ver_solo_operador.sql`
+  + su rollback en `supabase/rollbacks/`, los dos con su consulta de
+  verificación sobre `pg_policies`. Verificado antes de escribirla que el
+  cambio no rompe nada: las tres funciones que tocan la tabla
+  (`encolar_recibos` y `resumen_correos` leen, `despachar_correos` escribe)
+  son `SECURITY DEFINER`, así que no pasan por RLS, y del lado del cliente no
+  hay ninguna consulta directa — `correos_malos` solo aparece en
+  `types/supabase.ts` (grep sobre el código nuevo y los cuatro HTML de
+  `main`). No se toca ningún `GRANT`: un `select` de quien no es operador
+  devuelve 0 filas en silencio, igual que `operadores`/`secretos`/
+  `tasa_pendiente`.
 - Confirmar que ningún componente del frontend llame directo a
   `operadores`, `secretos` o `tasa_pendiente` vía `.from(...)` — están
   intencionalmente bloqueadas (RLS activo sin políticas) y solo deben
@@ -1508,7 +2102,7 @@ Ida y las cuentas de residente creadas para el bloque 5.
 
 ---
 
-## Ruta de la garita (decidida el 28-sep, **resuelta el 29-sep**)
+## Ruta de la garita (decidida y resuelta el 28-sep)
 
 `garita.html` se porta como módulo nuevo en
 **`/garita/[edificioId]/{entrada,adentro,consultar,bitacora}`**, en el grupo
@@ -1574,7 +2168,7 @@ porque el vigilante se queje. Si llegara a doler de verdad, se ataca con las
 herramientas de Next (esa ruta con poco JavaScript de cliente, Server Components
 donde se pueda), no volviendo a un archivo suelto.
 
-#### Tema — REVISADO el 29-sep: la garita usa el tema de toda la app
+#### Tema — REVISADO el 28-sep: la garita usa el tema de toda la app
 
 > La decisión del 28-sep (proveedor y clave propios) **queda sin efecto**.
 > Confirmado con Gustavo: lo que la garita necesita es **legibilidad**, y eso son
@@ -1583,7 +2177,7 @@ donde se pueda), no volviendo a un archivo suelto.
 `garita.html` guarda el tema bajo `vecitap-tema-garita` y arranca en oscuro, y el
 28-sep se decidió replicarlo con un proveedor propio acotado al route group más
 un script anti-parpadeo consciente de la ruta. Eso se construyó en el bloque 10 y
-**se deshizo el 29-sep**.
+**se deshizo el 28-sep**.
 
 **Decisión vigente:** la garita usa la clave `vecitap-tema` y el mismo valor por
 omisión que el resto. `lib/theme/ThemeProvider.tsx` y `THEME_INIT_SCRIPT`
@@ -1652,7 +2246,7 @@ botones de nav de 56 px de alto, botones de acción de 60 px, botones del veredi
 de 64 px. Eso es para tocar de pie, con guantes o con lluvia — va como clases
 propias del módulo, no tocando los componentes de `components/ui/`.
 
-#### Verificación de RLS del vigilante — hecha el 29-sep, con evidencia
+#### Verificación de RLS del vigilante — hecha el 28-sep, con evidencia
 
 La decisión del 28-sep dejaba abierta una pregunta: **¿un vigilante ve la tabla
 `edificios` por RLS?** De ella dependía si el `orgId` se podía resolver desde el
@@ -1730,7 +2324,7 @@ que cambia de garita **quedándose en la misma vista**.
 
 ### Entorno de pruebas (Garita)
 
-- Cuenta **`vigilante.prueba@vecitap.com`** (Auth, confirmada), creada el 29-sep.
+- Cuenta **`vigilante.prueba@vecitap.com`** (Auth, confirmada), creada el 28-sep.
   Una sola membresía: `rol = 'vigilante'`, `activo = true`, edificio Torre Ida
   (`f51676d7-80ff-4812-8830-6307267baecf`) en Administradora Baja,
   `unidad_id`/`relacion` en `NULL`. Se insertó directo en `membresias`
@@ -1744,9 +2338,9 @@ que cambia de garita **quedándose en la misma vista**.
 - **Pendiente de Fase 9:** eliminar o desactivar `vigilante.prueba@vecitap.com` y
   su membresía, junto con las otras tres cuentas de prueba.
 
-#### Bloque 10 — VALIDADO EN LECTURA Y NAVEGACIÓN (29-sep)
+#### Bloque 10 — VALIDADO EN LECTURA Y NAVEGACIÓN (28-sep)
 
-Nicolás lo probó en el navegador el 29-sep y **pasó todo**. El alcance de esa
+Nicolás lo probó en el navegador el 28-sep y **pasó todo**. El alcance de esa
 validación es exactamente lo que el bloque construye: control de acceso, ruteo,
 armazón y tema. **No** cubre escritura contra la base — la única del bloque
 ("Falta un paso") queda pendiente, ver el final de esta sección.
@@ -1775,7 +2369,7 @@ sesión real de `vigilante.prueba@vecitap.com`):
   los dos a `/`. `/operador` con esta cuenta también rebota a `/`.
 - El layout del grupo `(garita)` se aplica de verdad: el HTML servido trae
   `class="garita"` y el chunk de `garita.css`. De eso dependen los tamaños.
-- Tras la revisión del tema (29-sep): en el código de la app la única clave de
+- Tras la revisión del tema (28-sep): en el código de la app la única clave de
   `localStorage` de tema vuelve a ser `vecitap-tema`. `vecitap-tema-garita` solo
   aparece en `garita.html`, que es la referencia original y no se toca.
 

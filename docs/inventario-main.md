@@ -304,7 +304,7 @@ vieja. El detalle completo —qué significa eso, el tema propio, los dos roles 
 color del veredicto y cómo gatea `proxy.ts`— está en la sección "Ruta de la
 garita" de [`docs/estado-migracion.md`](estado-migracion.md).
 
-**Ruta elegida (resuelta el 29-sep):** `/garita/[edificioId]/{entrada,adentro,consultar,bitacora}`,
+**Ruta elegida (resuelta el 28-sep):** `/garita/[edificioId]/{entrada,adentro,consultar,bitacora}`,
 grupo `app/(garita)/`, con gate sobre `edificioId` en `proxy.ts` contra
 `edificios_del_vigilante()` (mismo patrón fail-closed que `/operador` y
 `/admin/[orgId]`). **Sin `orgId`**: la verificación de RLS que quedaba pendiente
@@ -314,7 +314,7 @@ cliente. Evidencia completa en `estado-migracion.md`, "Ruta de la garita".
 
 | Pieza | `garita.html` | Detalle |
 |---|---|---|
-| Tema | 34–49, 247–257 | **Revisado (29-sep), confirmado con Gustavo:** la garita usa **el tema de toda la app** (clave `vecitap-tema`, mismo valor por omisión). La decisión del 28-sep —proveedor y clave propios, arranque en oscuro— se construyó y se deshizo: lo que la garita necesita es legibilidad, no color. La paleta usa los tokens de `globals.css`; `--verde`/`--rojo` en oscuro **no se pisan**, porque en la garita son **superficies** del veredicto con letra blanca y no colores de texto: van como `--veredicto-si`/`--veredicto-no` nuevos. Lo propio del módulo son los **tamaños** (base 17 px, campos 56 px, botones 60–64 px): es para tocar de pie, con guantes. Caso 29 de `casos-de-uso-mejorados.md`; detalle en `estado-migracion.md`. |
+| Tema | 34–49, 247–257 | **Revisado (28-sep), confirmado con Gustavo:** la garita usa **el tema de toda la app** (clave `vecitap-tema`, mismo valor por omisión). La decisión del 28-sep —proveedor y clave propios, arranque en oscuro— se construyó y se deshizo: lo que la garita necesita es legibilidad, no color. La paleta usa los tokens de `globals.css`; `--verde`/`--rojo` en oscuro **no se pisan**, porque en la garita son **superficies** del veredicto con letra blanca y no colores de texto: van como `--veredicto-si`/`--veredicto-no` nuevos. Lo propio del módulo son los **tamaños** (base 17 px, campos 56 px, botones 60–64 px): es para tocar de pie, con guantes. Caso 29 de `casos-de-uso-mejorados.md`; detalle en `estado-migracion.md`. |
 | Login | 364–455 | Tres modos: entrar · **"Es mi primera vez"** (signUp) · "Olvidé mi clave". Campo con ojo. |
 | Clave nueva | 457–524 | Igual que los otros módulos, mínimo 8. |
 | "Falta un paso" | 936–981 | Cuenta sin garita asignada: pega el código de invitación → `aceptar_invitacion(p_token)`. |
@@ -412,25 +412,30 @@ El resto de los desvíos quedó marcado uno por uno en
 | 7 | `lucide-react` (íconos, caso 13) + Residente: banda oscura y pestañas | ✅ construido |
 | 8 | Residente · **Mis visitas** (invitar, QR en canvas, vehículos, quién entró) | ✅ construido |
 | 9 | Operador · `PanelModulos` + campo de clave con ojo en su login | ✅ construido |
-| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón y "falta un paso" | ✅ **validado en lectura y navegación** (29-sep) |
-| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar | pendiente |
-| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** | pendiente |
+| 10 | Garita · fundaciones: ruta, gate en `proxy.ts`, tema, armazón y "falta un paso" | ✅ **validado en lectura y navegación** (28-sep) |
+| 11 | Garita · **Entrada**: cámara, lectura de QR, veredicto a pantalla completa, visita sin anunciar | ✅ **validado en lectura y escritura** (28-sep) |
+| 12 | Garita · **Adentro**, **Consultar** y **Bitácora** | ✅ **validado en lectura y escritura** (28-sep) |
 
-**Quedan 2 bloques.** Garita se abre en tres (10, 11 y 12) porque es un módulo
-propio, del tamaño de Residente, no un archivo suelto: ver la sección "Ruta de la
-garita" de `docs/estado-migracion.md`.
+**Actualizado (28-sep): ya no quedan bloques pendientes de construir.** Los 12
+están construidos; ver `docs/estado-migracion.md` (sección "Bloques 11 y 12")
+para el detalle de qué se probó. Garita se abre en tres (10, 11 y 12) porque es
+un módulo propio, del tamaño de Residente, no un archivo suelto: ver la sección
+"Ruta de la garita" de `docs/estado-migracion.md`.
 
-**"Construido" no es "validado".** Salvo el bloque 10, ningún bloque ejecutó una
-escritura contra la base: no se registró un pago, no se encoló un correo, no se
-creó una invitación. La validación manual la hace Nicolás, y hasta entonces todo
-lo marcado "✅ construido" acá significa solamente que compila, pasa el lint y
-está escrito contra la referencia correcta.
+**"Construido" no es "validado".** Los bloques 0 a 9 no ejecutaron ninguna
+escritura contra la base todavía: no se registró un pago, no se encoló un
+correo, no se creó una invitación. La validación manual la hace Nicolás, y
+hasta entonces todo lo marcado "✅ construido" acá significa solamente que
+compila, pasa el lint y está escrito contra la referencia correcta.
 
-**El bloque 10 sí está validado, pero solo hasta donde llega:** Nicolás lo probó
-en el navegador el 29-sep —control de acceso con cuatro sesiones distintas, y
-tema— y eso es **lectura y navegación**. La única escritura del bloque, "Falta un
-paso" (`aceptar_invitacion` con un código real), sigue sin probarse: hace falta
-una segunda cuenta de vigilante sin garita asignada.
+**Los bloques 10, 11 y 12 sí están validados** (ver `docs/estado-migracion.md`
+para el detalle): 10 en lectura y navegación el 28-sep (control de acceso con
+cuatro sesiones distintas, y tema); 11 y 12 en lectura y escritura, también el
+28-sep, con las cuatro acciones de escritura de la garita
+(`garita_entrada`/`garita_avisar`/`garita_salida`/`garita_nota`) ejercidas
+contra la base. Lo único de Garita que sigue sin probarse es "Falta un paso"
+(`aceptar_invitacion` con un código real, parte del bloque 10): hace falta una
+segunda cuenta de vigilante sin garita asignada.
 
 Los pendientes concretos que dejan estos bloques —`lucide-react`, el enlace
 `/garita` que todavía no resuelve, qué probar de la conciliación, y los patrones

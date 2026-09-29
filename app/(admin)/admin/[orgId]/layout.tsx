@@ -1,8 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { MarcoAdmin } from "@/components/admin/MarcoAdmin";
+import { tieneRolOrganizacion } from "@/lib/admin/acceso";
 import { ROLES_ADMIN } from "@/lib/admin/constantes";
+import { edificiosDeOrganizacion } from "@/lib/admin/edificios-organizacion";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 import { tasaDelDia } from "@/lib/tasa";
 import { esUuid } from "@/lib/validacion";
 
@@ -29,32 +32,30 @@ export default async function LayoutOrg({
   // una consulta ni una llamada RPC en un id que no puede ser real.
   if (!esUuid(orgId)) notFound();
 
-  const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getUser() y tiene_rol() memoizados por petición (ver lib/supabase/cache.ts
+  // y lib/admin/acceso.ts) — quedan como gate en serie, antes de pedir
+  // cualquier dato de la organización: el orden de la comprobación de acceso
+  // no cambió, solo de dónde sale getUser().
+  const user = await usuarioActual();
   if (!user) redirect(`/entrar?volver=/admin/${orgId}`);
 
-  const { data: tieneAcceso, error: errorRol } = await supabase.rpc("tiene_rol", {
-    p_org: orgId,
-    p_roles: [...ROLES_ADMIN],
-  });
+  const { data: tieneAcceso, error: errorRol } = await tieneRolOrganizacion(orgId, ROLES_ADMIN);
   if (errorRol || tieneAcceso !== true) redirect("/");
 
-  const { data: org, error } = await supabase
-    .from("organizaciones")
-    .select("id,nombre,rif,plan,acento,logo_url")
-    .eq("id", orgId)
-    .single();
+  // Ya autorizado: organizaciones, edificios (memoizado — lo reusan
+  // [edificioId]/layout.tsx e inicio/page.tsx) y la tasa del día no dependen
+  // entre sí, así que van en paralelo en vez de una detrás de otra.
+  const supabase = await crearClienteServidor();
+  const [{ data: org, error }, { data: edificios }, tasa] = await Promise.all([
+    supabase
+      .from("organizaciones")
+      .select("id,nombre,rif,plan,acento,logo_url")
+      .eq("id", orgId)
+      .single(),
+    edificiosDeOrganizacion(orgId),
+    tasaDelDia(supabase),
+  ]);
   if (error || !org) notFound();
-
-  const { data: edificios } = await supabase
-    .from("edificios")
-    .select("id,nombre,direccion")
-    .eq("org_id", orgId)
-    .order("nombre");
-
-  const tasa = await tasaDelDia(supabase);
 
   return (
     <MarcoAdmin organizacion={org} edificios={edificios ?? []} tasaInicial={tasa}>

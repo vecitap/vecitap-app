@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { FormularioReportarPago } from "@/components/residente/FormularioReportarPago";
+import { misUnidadesSesion } from "@/lib/residente/datos";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 
 export default async function PaginaReportar({
   params,
@@ -10,12 +12,12 @@ export default async function PaginaReportar({
   const { unidadId } = await params;
   const supabase = await crearClienteServidor();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getUser() y mis_unidades() memoizados por petición: [unidadId]/layout.tsx
+  // ya los llamó (ver lib/supabase/cache.ts y lib/residente/datos.ts).
+  const user = await usuarioActual();
   if (!user) redirect(`/entrar?volver=/mi/${unidadId}/reportar`);
 
-  const { data: unidades } = await supabase.rpc("mis_unidades");
+  const { data: unidades } = await misUnidadesSesion();
   const unidad = unidades?.find((u) => u.unidad_id === unidadId);
   if (!unidad) notFound();
 
