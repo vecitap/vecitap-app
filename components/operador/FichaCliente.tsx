@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button, Campo, Card, Input, Select, Table, Textarea } from "@/components/ui";
-import { hoyISO, nf, num0, usd, usd0 } from "@/lib/formato";
+import { hoyLocalISO, nf, num0, usd, usd0 } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularCuotaPrevista, PLANES, DESCUENTO } from "@/lib/operador/planes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -49,7 +49,7 @@ export function FichaCliente({
     precio: String(c.precio ?? 0),
     descuentoPct: String(c.descuento_pct ?? 0),
     estado: c.estado === "sin suscripción" ? "prueba" : c.estado,
-    inicio: c.inicio || hoyISO(),
+    inicio: c.inicio || hoyLocalISO(),
     proximoCobro: c.proximo_cobro || "",
     contacto: c.contacto || "",
     telefono: c.telefono || "",
@@ -111,7 +111,7 @@ export function FichaCliente({
       precio: num0(s.precio),
       descuento_pct: num0(s.descuentoPct),
       estado: s.estado,
-      inicio: s.inicio || hoyISO(),
+      inicio: s.inicio || hoyLocalISO(),
       proximo_cobro: s.proximoCobro || null,
       contacto: s.contacto || null,
       telefono: s.telefono || null,
@@ -144,7 +144,7 @@ export function FichaCliente({
     const supabase = crearClienteNavegador();
     const { error } = await supabase
       .from("cobros_suscripcion")
-      .update({ estado, fecha_pago: estado === "pagado" ? hoyISO() : null })
+      .update({ estado, fecha_pago: estado === "pagado" ? hoyLocalISO() : null })
       .eq("id", id);
     if (error) return fallo(error);
     notificar(estado === "pagado" ? "Cobro marcado como pagado." : "Cobro anulado.");

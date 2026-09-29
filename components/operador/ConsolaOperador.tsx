@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Campo, Card, Input, Table } from "@/components/ui";
-import { hoyISO, nf, num, usd, usd0 } from "@/lib/formato";
+import { hoyLocalISO, nf, num, usd, usd0 } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularMetricasCartera } from "@/lib/operador/metricas-cartera";
 import { csvCartera } from "@/lib/operador/exportar-cartera";
@@ -108,7 +108,7 @@ export function ConsolaOperador({
     const v = num(tasaManual);
     if (!v || v <= 0) return notificar("Esa tasa no se entiende.", "error");
     const supabase = crearClienteNavegador();
-    const { error } = await supabase.rpc("cargar_tasa", { p_fecha: hoyISO(), p_tasa: v });
+    const { error } = await supabase.rpc("cargar_tasa", { p_fecha: hoyLocalISO(), p_tasa: v });
     if (error) return fallo(error);
     setTasaManual("");
     notificar("Tasa cargada a mano. La tarea automática ya no la va a pisar.");
@@ -120,7 +120,7 @@ export function ConsolaOperador({
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `cartera-${hoyISO()}.csv`;
+    a.download = `cartera-${hoyLocalISO()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -323,7 +323,7 @@ export function ConsolaOperador({
           </thead>
           <tbody>
             {visibles.map((c) => {
-              const vencido = c.proximo_cobro && c.proximo_cobro < hoyISO();
+              const vencido = c.proximo_cobro && c.proximo_cobro < hoyLocalISO();
               const e = estadoSuscripcion(c.estado);
               return (
                 <tr key={c.org_id} style={{ cursor: "pointer" }} onClick={() => setAbierto(c)}>

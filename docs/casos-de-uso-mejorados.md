@@ -50,6 +50,7 @@ RESUELTO / PENDIENTE) justo debajo del título, con el motivo en una línea.
 | 27 | La garita no tiene login propio | NUEVO (arquitectura) |
 | 28 | Cada vista de la garita es una URL | NUEVO (arquitectura) |
 | 29 | La garita comparte el tema de la app | **APROBADO 28-sep** (revierte el tema propio) |
+| 30 | Las fechas se deciden en hora de Venezuela, no en UTC | **MANTENIDO** (riesgo de datos) |
 
 
 ## Residente
@@ -813,3 +814,55 @@ lluvia.
   `ThemeProvider.tsx`, que es `"use client"` — un Server Component que las importe
   recibe una referencia de cliente y lee `undefined`. Detalle en
   `docs/estado-migracion.md`, "Ruta de la garita".
+
+---
+
+### 30. Las fechas se deciden en hora de Venezuela, no en la de Greenwich
+
+> **28-sep — MANTENIDO.** Excepción explícita de riesgo de datos: en `main`, un pago
+> registrado después de las 8 de la noche queda guardado con la fecha del día
+> siguiente. Aprobado por Nicolás el 28-sep.
+
+**Caso de uso:** cuando un residente reporta un pago, o la administración registra uno,
+o el operador exporta la cartera, la fecha que se guarda y se muestra es **el día que
+es en Venezuela** — no el día que ya es en Greenwich. Antes, de 8 de la noche a
+medianoche, todas esas fechas salían con un día de más.
+
+- **Antes:** los cuatro HTML y la primera versión del port usan
+  `new Date().toISOString().slice(0,10)`, que devuelve el día **en UTC**. Venezuela es
+  UTC−4, así que entre las 20:00 y las 00:00 hora local ya es el día siguiente en UTC.
+  Afectaba:
+  - la fecha propuesta al registrar un pago (`components/admin/Pagos.tsx`) y al
+    reportarlo (`components/residente/FormularioReportarPago.tsx`) — **este es el
+    riesgo de datos**: la fecha queda escrita en la tabla `pagos`;
+  - el `max` del input de fecha y la validación "la fecha no puede ser futura" del
+    mismo formulario, que por eso **dejaban pasar el día siguiente**;
+  - la fecha con la que el operador carga la tasa del BCV a mano y el nombre del CSV de
+    cartera (`components/operador/ConsolaOperador.tsx`);
+  - la fecha de inicio de una suscripción y la de pago de un cobro
+    (`components/operador/FichaCliente.tsx`);
+  - la pastilla "vencido" de la cartera, que aparecía hasta 4 horas antes.
+- **Ahora:** `lib/formato.ts` — `hoyLocalISO()` está fijada a `America/Caracas` con
+  `Intl.DateTimeFormat`, y la vieja `hoyISO()` (la de UTC) **se eliminó** en vez de
+  dejarla al lado invitando a elegir la equivocada. La zona vive en **una sola
+  constante** (`ZONA_VECITAP`) de ese archivo.
+- **Motivo:** riesgo de datos. Una fila de `pagos` con la fecha equivocada no se nota
+  en pantalla y desordena la conciliación con el banco, que se hace por fecha. Los
+  demás puntos (CSV, pastilla "vencido") son cosméticos y se corrigen de paso porque
+  salen de la misma función.
+- **Lo encontró la validación de Garita**, por otro camino: una nota de bitácora de las
+  22:59 aparecía en el día siguiente. Esa mitad del problema estaba en la base
+  (`garita_bitacora`) y se corrige con
+  `supabase/migrations/20260928140000_garita_bitacora_dia_local.sql`, que crea
+  `hoy_local()` / `inicio_dia_local()` — el par de `hoyLocalISO()` del lado del
+  servidor. Las dos puntas tienen que decidir el mismo día. Auditoría completa de qué
+  otras funciones de la base deciden un día: `docs/estado-migracion.md`, "Zona horaria".
+- **Estado:** aplicado del lado del cliente. La migración de la base queda **sin
+  aplicar** (la corre Nicolás, avisándole antes a Gustavo: toca una función
+  `SECURITY DEFINER` en la base compartida).
+- **Lo que esto asume, a propósito:** una zona única escrita a mano, correcta mientras
+  todos los clientes estén en Venezuela. El modelo a largo plazo es una zona por
+  organización o edificio; queda anotado como decisión a revisar, no como olvido.
+- **Cómo se revierte:** volver `hoyLocalISO()` a
+  `new Date().toISOString().slice(0,10)`. No recomendado: reintroduce el riesgo de
+  fechas de pago corridas un día.

@@ -924,6 +924,18 @@ porque enumera varios edificios a la vez en lugar de autorizar uno solo).
 Lo único que falta para completar la regla de roles es `junta`, acotado a su
 edificio — de ahí `puede_ver_garita`.
 
+**El día tiene que ser el día LOCAL (`America/Caracas`), no el de UTC.**
+Agregado el 28-sep, después del bug de zona horaria de `garita_bitacora` (ver
+"Zona horaria: el día local vs. el día UTC" más abajo): la Bitácora mostraba en
+el día siguiente todo lo registrado entre las 20:00 y la medianoche. Cuando
+este bloque arranque, las dos piezas que deciden un día —la bitácora y la
+función nueva de "visitas del día"— tienen que usar `hoy_local()` /
+`inicio_dia_local()` (las auxiliares que crea
+`supabase/migrations/20260928140000_garita_bitacora_dia_local.sql`), **nunca**
+`current_date` ni un cast `date::timestamptz`. Si no, Admin y la garita van a
+mostrar bitácoras distintas del mismo día. El selector limitado a 30 días
+también cuenta esos días en zona local.
+
 **`garita_dentro` no sirve para "visitas del día".** Su único parámetro es
 `p_edificio` — sin fecha, solo muestra quién está adentro *ahora mismo*
 (`estado = 'dentro'`), no admite mirar un día de los últimos 30. Ninguna de
@@ -1635,6 +1647,425 @@ del `exp`, se puede bajar temporalmente la vida del access token en Supabase →
 Authentication → Sessions, o borrar a mano la cookie del access token dejando
 la del refresh token. Lo segundo no toca configuración de la base y es
 reversible cerrando sesión.
+
+---
+
+## "Salir" da HTTP 405 en producción — CORREGIDO el 28-sep
+
+Gustavo/Nicolás lo vieron en `vecitap-app.vercel.app`, desde Admin con
+`admin.prueba`: al tocar **Salir** la pantalla queda en `HTTP ERROR 405` y la
+consola muestra
+`POST https://vecitap-app.vercel.app/ … 405 (Method Not Allowed)`.
+
+**La hipótesis de Nicolás es correcta:** un redirect **307** después de un POST
+hace que el navegador **repita el POST** contra el destino, y `/` es una página
+que solo atiende GET.
+
+### El flujo completo de Salir
+
+| Paso | Dónde | Qué pasa |
+|---|---|---|
+| 1 | `components/admin/MarcoAdmin.tsx:195` | `<form action="/api/auth/salir" method="post">` con un `<button type="submit">`. **No es Server Action ni `signOut()` en el cliente**: es un POST de formulario HTML, a propósito (funciona sin JavaScript — ver el comentario de `MarcoGarita.tsx:19`, el criterio es de la tableta vieja de la garita) |
+| 2 | `app/api/auth/salir/route.ts:4` | Route Handler `POST`. Corre `supabase.auth.signOut()` (línea 6) |
+| 3 | `app/api/auth/salir/route.ts:7` | `return NextResponse.redirect(new URL("/", request.url))` — **sin status explícito** |
+| 4 | Next | `NextResponse.redirect()` **usa 307 por omisión** (verificado en `next/dist/esm/server/web/spec-extension/response.js:93`: `?? 307`) |
+| 5 | Navegador | 307 = "repetí la petición igual, con el mismo método" → **vuelve a hacer POST, ahora contra `/`** |
+| 6 | Next | `/` es `app/(marketing)/page.tsx`, una página: no tiene handler de POST → **405** |
+
+Los cuatro módulos usan el **mismo** formulario, así que **no es específico de
+Admin**: `MarcoAdmin.tsx:195` (Admin), `EncabezadoResidente.tsx:74` (Residente),
+`EncabezadoOperador.tsx:47` (Operador) y `MarcoGarita.tsx:57` (Garita) postean
+todos a `/api/auth/salir`. **Confirmado por Nicolás:** pasa igual al salir desde
+`/mi` con `residente.prueba`. Eso descarta cualquier causa propia de Admin (el
+formulario del lateral, el layout de `[orgId]`, el gate de `tiene_rol`) y deja
+al Route Handler compartido como único punto de falla — con la consecuencia
+útil de que **una sola línea arregla los cuatro módulos a la vez**.
+
+### ¿De dónde sale el 307? ¿Es regresión de hoy?
+
+**Sale del Route Handler, no de `redirigirConCookies()`. Y no es regresión: es
+un bug latente desde la Fase 3.**
+
+- `/api/auth/salir` **no está en `RUTAS_PROTEGIDAS`** (`proxy.ts:7`, que es
+  `["/admin", "/mi", "/operador", "/garita"]`), así que el proxy lo deja pasar
+  sin redirigir: `redirigirConCookies()` nunca se ejecuta en este flujo. El
+  POST de rebote contra `/` tampoco es ruta protegida, así que tampoco.
+- `app/api/auth/salir/route.ts` no se tocó hoy (`git status` limpio para ese
+  archivo) y su único commit es `bfb85eb`, "Fase 3 - 2do commit: Auditoría".
+- Por qué no había aparecido antes: **nadie había ejercido Salir**. No está en
+  ninguna de las listas de casos validados, y la corrida de Playwright del
+  bloque 0 fue explícitamente de solo lectura, sin formularios que escriban.
+  El botón existe desde la Fase 3 y arrastra el bug desde entonces.
+
+### ¿Quedó cerrada la sesión? Sí — CONFIRMADO
+
+**Confirmado por Nicolás:** después de Salir, `/admin` redirige a `/entrar`. O
+sea que el 405 pasa *después* de que la sesión ya se cerró: es una pantalla de
+error sobre una acción que igual funcionó. **Severidad: UX, no seguridad.**
+
+Coincide con el mecanismo: en un Route Handler, Next **mezcla las cookies
+escritas vía `cookies()` en la respuesta que devuelve el handler, conservando
+su status** (verificado en
+`next/dist/server/route-modules/app-route/module.js:521-529`, con el comentario
+"It's possible cookies were set in the handler, so we need to merge the
+modified cookies and the returned response here"). El `signOut()` del paso 2
+borra las cookies por ese camino, así que el 307 del paso 3 ya sale con el
+`Set-Cookie` de borrado.
+
+**Lo que este dato descarta**, y por eso importaba preguntarlo: que el borrado
+de cookies se estuviera perdiendo en el redirect. Ese habría sido un bug
+distinto —de la misma familia que el de `redirigirConCookies()` en `proxy.ts`,
+arreglado hoy— y habría necesitado otra corrección (escribir las cookies sobre
+la respuesta a mano). No es el caso: el único defecto es el status code.
+
+De paso, que `/admin` rebote a `/entrar` después de salir **ejercita el caso 11
+de la matriz** de `getClaims()`: el proxy detecta correctamente "no hay sesión"
+con la verificación local.
+
+### Por qué el 26-sep "funcionaba": dev no da 405, producción sí
+
+Nicolás preguntó si el flujo de Salir había cambiado desde el 26-sep, cuando en
+la validación de Operador llevaba a `/` sin error. **No cambió nada.** Lo
+verificado con `git log`:
+
+- `app/api/auth/salir/route.ts` tiene **un solo commit**, `bfb85eb` del 20-sep
+  ("Fase 3 - 2do commit: Auditoría"). Nunca se tocó.
+- `components/operador/EncabezadoOperador.tsx` tiene **un solo commit**,
+  `99f9926` del 25-sep ("Fase 4 - Operador (no validado)"), y ya traía el
+  mismo `<form action="/api/auth/salir" method="post">` — comprobado con
+  `git show 99f9926:…`. O sea que el 26-sep el código era **idéntico** al de
+  hoy.
+
+Entonces la diferencia no está en el código sino en **dónde se probó**, y es
+medible:
+
+| Servidor | `GET /` | `POST /` |
+|---|---|---|
+| `npm run dev` | 200 | **200** |
+| `next start` (build de producción) | 200 | **405** |
+
+Medido en esta sesión contra los dos servidores locales. **En dev, el
+re-POST que dispara el 307 renderiza la página como si nada**; solo el build de
+producción devuelve 405. La validación del 26-sep fue contra `npm run dev`, así
+que el bug estaba ahí y era **invisible**. Apareció ahora porque es la primera
+vez que alguien toca Salir en un build de producción.
+
+**Lección de proceso, de la misma familia que la de la Fase 2** ("probar también
+recargando con la preferencia ya guardada"): **hay una clase de bug que dev no
+muestra.** Todo lo que dependa del método HTTP o del status de una respuesta
+—POST a una página, 405, redirects que preservan método— hay que probarlo
+contra `next start` o contra el Preview de Vercel, no contra `npm run dev`. Para
+Salir en concreto: probarlo en los cuatro módulos sobre un build de producción.
+
+### La corrección aplicada
+
+**Una línea, un archivo, y no toca `proxy.ts`** (`app/api/auth/salir/route.ts`):
+
+```ts
+return NextResponse.redirect(new URL("/", request.url), 303);
+```
+
+`303 See Other` es exactamente el status para el patrón POST → redirect → GET:
+le dice al navegador que siga el `Location` **con GET**, en vez de repetir el
+POST. Verificado que Next lo admite (`303` está en el `REDIRECTS` de
+`response.js:7-13`) y que el merge de cookies del párrafo anterior conserva el
+status que devuelve el handler, así que el borrado de sesión sigue viajando
+igual.
+
+No `302`: en la práctica los navegadores también cambian a GET con 302, pero la
+especificación dice que el método no debería cambiar. `303` declara la
+intención sin ambigüedad.
+
+**Por qué no hay que tocar `proxy.ts`**, como marcó Nicolás: sus cuatro
+redirects son para **navegaciones GET**, donde 307 es lo correcto —preservar el
+método es justo lo que se quiere al rebotar un GET— y además ninguno participa
+de este flujo.
+
+**Verificado end-to-end sobre un build de producción local** (`next start`, no
+`npm run dev`, que es justo lo que no lo hubiera mostrado):
+
+```
+POST /api/auth/salir  →  303 See Other, Location: /
+                      →  GET /  →  200 OK
+```
+
+Antes del cambio esa cadena era `307 → POST / → 405`. Se probó sin cookies, así
+que el `signOut()` no tenía ninguna sesión que revocar y no hubo tráfico contra
+la base.
+
+Un detalle por si alguien repite la prueba: `curl -L -X POST` **no** sirve, da
+un falso negativo. `-X` fuerza el método en toda la cadena de redirecciones y
+tapa justamente lo que se quiere medir. Hay que usar `curl -L --data ""`, que
+es un POST de verdad y deja que curl cambie a GET en el 303, como hace un
+navegador.
+
+**Todavía falta probarlo en el navegador**, en los cuatro módulos y sobre un
+build de producción (Preview de Vercel): que Salir lleve a `/` sin error desde
+Admin, `/mi`, `/operador` y `/garita`.
+
+### Anotado, sin arreglar: el 307 del proxy frente a un POST
+
+Hoy es teórico y por eso no se propone cambiarlo, pero conviene que quede
+escrito. Si el proxy alguna vez rebotara un **POST** a una ruta protegida (una
+sesión que vence justo cuando alguien envía un formulario), el 307 de
+`redirigirConCookies()` repetiría ese POST contra `/entrar` y daría el mismo
+405. Hoy no puede pasar: **no hay ninguna Server Action en el repo**
+(verificado: cero `"use server"`) y el único POST de formulario es el de Salir,
+que va a una ruta no protegida. Si más adelante se adoptan Server Actions,
+`redirigirConCookies()` debería recibir el status y usar `303` cuando el método
+no sea GET.
+
+---
+
+## Zona horaria: el día local vs. el día UTC — auditoría del 28-sep
+
+**Bug confirmado en la validación de Garita:** una nota registrada a las 22:59
+hora de Venezuela del 28-sep (02:59 UTC del 29) no aparece en la Bitácora del
+28 — aparece en la del 29. Migración propuesta, **sin aplicar**:
+`supabase/migrations/20260928140000_garita_bitacora_dia_local.sql` + su
+rollback. Toca una función `SECURITY DEFINER` en la base compartida: la aplica
+Nicolás, avisándole antes a Gustavo.
+
+### La causa, y cuál de las dos expresiones es
+
+`garita_bitacora` tiene **dos** lugares que dependen de la zona, y conviene no
+confundirlos porque solo el segundo explica el caso reportado:
+
+1. `v_f := coalesce(p_fecha, current_date)` — `current_date` es el día en la
+   zona de la sesión. **No es la causa de este caso:** tanto
+   `VistaBitacora.tsx` como `garita.html` mandan siempre `p_fecha`, así que
+   ese default nunca se usa desde la app.
+2. `b.creado_en >= v_f::timestamptz and b.creado_en < (v_f + 1)::timestamptz`
+   — **esta sí.** Castear `date` → `timestamptz` interpreta la medianoche en
+   la zona de la sesión (UTC en PostgREST). Pedir el 2026-09-28 abre la
+   ventana `[28-sep 00:00 UTC, 29-sep 00:00 UTC)`, que en Venezuela es
+   `[27-sep 20:00, 28-sep 20:00)`: el "día" del vigilante arrancaba a las 8 de
+   la noche anterior y se cortaba a las 8 de la noche. **Cuatro horas de cada
+   turno de noche caían en el día equivocado.**
+
+La corrección arregla las dos.
+
+### Auditoría: qué más decide un día, y a qué le afecta la zona
+
+Hecha sobre `esquema_inicial.sql` como mapa. **Nivel de confianza:** el dump
+es del 27-sep, pero para las tres funciones que Nicolás trajo hoy con
+`pg_get_functiondef` (`garita_bitacora`, `garita_dentro`, `garita_vehiculos`)
+se comparó y **coincide** — el arreglo del correo del vigilante de Gustavo ya
+estaba en el dump. Eso sube la confianza en el mapa, pero coincidir en 3 de
+~40 funciones no prueba que coincida en todas: la columna "releer" marca las
+que hay que sacar de la base antes de tocarlas.
+
+| Función / objeto | Criterio de fecha | ¿Le afecta la zona? | ¿Releer antes de tocar? |
+|---|---|---|---|
+| **`garita_bitacora`** | `current_date` + `v_f::timestamptz` (L1875, L1882-83) | **SÍ — bug confirmado.** Ventana corrida 4 h | **No hace falta:** es la versión de hoy, traída con `pg_get_functiondef` |
+| `garita_dentro` | ninguno: filtra `estado = 'dentro'` | No. No mira fechas | Ya releída hoy |
+| `garita_vehiculos` | ninguno: filtra por placa/código | No | Ya releída hoy |
+| `libro_edificio` | `p.cerrado_en::date between p_desde and p_hasta` (L2526, L2531) | **SÍ, y es el de mayor consecuencia:** castea `timestamptz`→`date` con la zona de la sesión. Un mes cerrado después de las 20:00 se asienta en el libro con la fecha del día siguiente — y si cae el último día del mes, **en el mes siguiente** | **Sí**, antes de tocarla |
+| `historial_unidad` | `p.cerrado_en::date` ×4 (L2392-2411) | **SÍ:** mismo cast. El estado de cuenta del residente puede mostrar la cuota con un día de más | **Sí** |
+| `cerrar_periodo` | `current_date` al insertar ajustes (L428, L437) | **SÍ, leve:** la fecha del ajuste generado puede quedar un día adelante | **Sí** (es la que cierra el mes: revisión cuidadosa) |
+| `generar_cobros_vencidos` | `s.proximo_cobro <= current_date` (L2300), `c.desde + s.dias_gracia < current_date` (L2324) | **SÍ, leve:** un cobro puede dispararse hasta 4 h antes de lo previsto. Corre por cron, no por clic | **Sí** |
+| `generar_cobro_interno` | `coalesce(p_desde, …, current_date)` (L2260) | **SÍ, leve:** solo si no se manda `p_desde`. La app siempre lo manda | **Sí** |
+| `cargar_tasa` / `completar_tasa` | `if p_fecha > current_date + 1` (L256, L677) | **No en la práctica:** es una guarda de "no muy futuro" con 1 día de margen, que absorbe el desfase | No, si no se toca |
+| `tasa_atrasada` | `(current_date - t.fecha)::int` (L3770) | **SÍ, cosmético:** el contador de "atrasada N días" puede decir uno más después de las 20:00 | No urgente |
+| `tasa_del_dia` | `p_fecha date DEFAULT CURRENT_DATE` (L3797) | **SÍ, leve:** mismo caso que arriba | No urgente |
+| `traer_tasa_bcv` | `(… ::timestamptz at time zone 'America/Caracas')::date` (L3882-83) y `fecha >= current_date` (L3906) | **Parcial, y es el buen ejemplo:** la fecha que publica el BCV **ya** la convierte bien a Caracas. La guarda de la L3906 sigue en `current_date` | No urgente |
+| `correo_recibo` | `r.nota_hasta < current_date` (L786) | **SÍ, cosmético:** una nota al pie puede dejar de mostrarse 4 h antes | No |
+| `crear_cliente` / `fijar_cliente` | `current_date` como inicio de suscripción (L942, L1675) | **SÍ, leve:** fecha de alta un día adelante si se crea de noche | No |
+| `crear_invitacion_visita`, `garita_validar`, `garita_entrada`, `garita_salida` | `now()` contra `timestamptz` (`desde`/`hasta`) | **NO, y está bien así.** Nunca reducen un instante a un día: comparan instantes contra instantes. El modelo de vigencia de invitaciones es correcto | No |
+| Tablas: `pagos.fecha`, `ajustes.fecha`, `suscripciones.inicio`, `vinculos.desde` | `DEFAULT CURRENT_DATE` | **SÍ, leve:** solo cuando se inserta sin fecha explícita. Los formularios mandan fecha | No (cambiar un default toca DDL de tabla) |
+
+**Del lado del cliente, el mismo patrón — CORREGIDO el 28-sep** (aprobado por
+Nicolás; registrado como **caso 30** de `docs/casos-de-uso-mejorados.md`, desvío
+mantenido por riesgo de datos):
+
+| Dónde | Usaba | Efecto que tenía |
+|---|---|---|
+| `Pagos.tsx:65,199` | `hoyISO()` (**UTC**) | **Riesgo de datos:** después de las 20:00, el pago o la exoneración se guardaba en `pagos`/`ajustes` con la fecha de mañana |
+| `FormularioReportarPago.tsx:50,158,279` | `hoyISO()` | Lo mismo, y además el `max` del input y la validación "no futura" **dejaban pasar el día siguiente** |
+| `ConsolaOperador.tsx:111,123,326` | `hoyISO()` | Tasa cargada con fecha de mañana; nombre del CSV de cartera con el día equivocado; pastilla "vencido" hasta 4 h antes |
+| `FichaCliente.tsx:52,114,147` | `hoyISO()` | Inicio de suscripción y fecha de pago de un cobro, un día adelante |
+| `VistaBitacora.tsx:30,94,146` | `hoyLocalISO()` (zona **del navegador**) | Correcto en una tableta bien configurada; con la zona mal puesta le pedía a la base un día distinto |
+
+**Lo aplicado:** `lib/formato.ts` — `hoyLocalISO()` quedó fijada a
+`America/Caracas` con `Intl.DateTimeFormat`, y **`hoyISO()` (la de UTC) se
+eliminó**, en vez de dejarla al lado invitando a elegir la equivocada. Los 11
+puntos de la tabla pasaron a `hoyLocalISO()`. La zona vive en **una sola
+constante** del cliente (`ZONA_VECITAP`), cuyo par del lado de la base son
+`hoy_local()` / `inicio_dia_local()`.
+
+Dos detalles de implementación que valen la pena:
+
+- Se arma con `formatToParts` y no con `format()`, para no depender del patrón
+  de fecha de ningún locale — el orden y los separadores los pone nuestro
+  código, no ICU.
+- Al no depender ya de dónde corre, `hoyLocalISO()` pasó a ser **segura en un
+  Server Component** (antes no: servidor y navegador podían calcular días
+  distintos y romper la hidratación). Hoy solo la usan Client Components, pero
+  deja de ser una trampa.
+
+**Comprobado en vivo**, y con la suerte de que se hizo dentro de la ventana
+exacta del bug (23:38 del 28-sep en Venezuela, o sea 03:38 del 29 en UTC):
+
+```
+ahora (UTC)            2026-09-29T03:38:07Z
+hoyISO() viejo (UTC)   2026-09-29   ← el bug
+hoyLocalISO() nuevo    2026-09-28   ← correcto
+```
+
+Fuera de esa ventana de cuatro horas las tres versiones dan lo mismo, que es
+justamente por qué el problema pasó desapercibido tanto tiempo: **el 83 % del
+día el código equivocado da el resultado correcto.**
+
+### La corrección propuesta, y la auxiliar
+
+La migración crea dos funciones chicas y arregla `garita_bitacora`:
+
+- **`hoy_local()`** → el día de hoy en `America/Caracas`, para reemplazar
+  `current_date` cuando se quiere decir "hoy".
+- **`inicio_dia_local(p_dia date)`** → el instante en que arranca ese día
+  local, para armar la ventana `>= inicio_dia_local(d)` /
+  `< inicio_dia_local(d + 1)` sin castear `date::timestamptz`.
+
+**Por qué la auxiliar y no todo en línea** (Nicolás pidió evaluarlo): ya hay
+un segundo consumidor planificado (el bloque 13, ver abajo), la auditoría de
+arriba dejó más candidatos, y sobre todo `AT TIME ZONE` significa **dos cosas
+distintas** según el tipo de la izquierda — `timestamptz AT TIME ZONE z` da un
+`timestamp` local, `timestamp AT TIME ZONE z` da un instante absoluto. Ese es
+el pie de banana real, y encerrarlo en una función evita que cada call site lo
+reescriba. Además, el día que haya un cliente fuera de Venezuela hay un solo
+lugar que cambiar.
+
+**La simplificación que esto asume, dicha explícitamente:** zona única escrita
+a mano. Correcto mientras todos los clientes estén en Venezuela (premisa
+confirmada por Nicolás). El modelo correcto a largo plazo es una columna de
+zona por organización o por edificio — **queda como decisión a revisar, no
+como olvido**, y la auxiliar hace que esa migración futura sea más barata, no
+más cara.
+
+Se usa el **nombre** `America/Caracas`, no `-04:00`: Venezuela ya cambió de
+offset una vez (−04:30 entre 2007 y 2016), así que el nombre sobrevive a un
+cambio de política. Hay precedente en la propia base — `traer_tasa_bcv` ya lo
+usa. Las dos auxiliares **no** son `SECURITY DEFINER` a propósito (no leen
+ninguna tabla; `AGENTS.md` advierte no sumar `SECURITY DEFINER` sin
+necesidad) y quedan `STABLE`, que alcanza: se evalúan una vez por consulta y
+el `where` sigue pudiendo usar índice sobre `creado_en`.
+
+### El lado del cliente queda coherente, con una salvedad
+
+`hoyLocalISO()` (`lib/formato.ts:97-101`) calcula hoy en la zona **del
+navegador**, y `VistaBitacora.tsx` **siempre** manda `p_fecha` explícito
+(líneas 50 y 64), nunca deja que la base ponga el default. Con la corrección
+aplicada:
+
+- En una tableta configurada en hora de Venezuela, cliente y base coinciden:
+  el selector abre en el día local y la base devuelve ese mismo día local. ✅
+- **La salvedad:** si la tableta tiene mal la zona (riesgo real en un equipo
+  barato de una garita), el cliente pediría otro día. La base ya no se
+  equivoca, pero el cliente le pide el día equivocado. La solución sería fijar
+  `hoyLocalISO()` a `America/Caracas` con `Intl.DateTimeFormat`, en vez de
+  usar la zona del navegador.
+
+**No se tocó `hoyLocalISO()` en esta sesión, a propósito:** fijarla a Caracas
+es la misma decisión de producto que la zona única de la base (todos los
+clientes en Venezuela), así que conviene decidirla junto con la migración y
+que las dos puntas cambien a la vez. Hoy además replica exactamente lo que
+hace `main`.
+
+### `garita.html` de `main` tiene el mismo comportamiento
+
+Sí, idéntico, y **el port es fiel** — el bug no lo introdujo la migración:
+
+- `garita.html:242-245` define su propio `hoyISO()` con **la misma
+  implementación** que nuestra `hoyLocalISO()` (`setMinutes(... -
+  getTimezoneOffset())`), o sea la zona del navegador.
+- `garita.html:860` lo usa como `value` del `<input type="date">` y
+  `garita.html:866` manda `p_fecha: $("#fecha").value || hoyISO()` — siempre
+  explícito, igual que el port.
+- Llama a **la misma** `garita_bitacora` de la base, así que la ventana se
+  calcula igual de mal.
+
+Conclusión: el bug es de la función de la base, compartida por los dos. Al
+aplicar la migración, **`main` queda arreglado de paso**, sin tocar el HTML.
+
+### Segunda ronda (pendiente): las cinco funciones de la base
+
+Decidido el 28-sep: **no se escribe la migración todavía.** Primero Nicolás
+trae el SQL real de las cinco con `pg_get_functiondef`, y recién con ese CSV se
+propone la corrección usando `hoy_local()` / `inicio_dia_local()`. Es el mismo
+criterio que ya evitó dos errores (el de `edificios_visibles()` en la Sesión 1
+de Admin y el de `p_unidad` en el bloque 11): no asumir la forma de una función
+de la base sin haberla visto.
+
+**La consulta, lista para copiar:**
+
+```sql
+select p.proname,
+       pg_get_functiondef(p.oid) as definicion
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace
+   and p.proname in ('libro_edificio',
+                     'historial_unidad',
+                     'cerrar_periodo',
+                     'generar_cobros_vencidos',
+                     'generar_cobro_interno')
+ order by p.proname;
+```
+
+Qué se espera encontrar en cada una (del mapa del dump, a confirmar con el
+CSV): `libro_edificio` y `historial_unidad` con `cerrado_en::date`;
+`cerrar_periodo` con `current_date` al insertar ajustes;
+`generar_cobros_vencidos` con dos comparaciones contra `current_date`;
+`generar_cobro_interno` con `coalesce(p_desde, …, current_date)`.
+
+**Orden de prioridad sugerido para cuando llegue el CSV:** `libro_edificio`
+primero (es la única donde el desfase puede mover un cierre al **mes**
+equivocado del libro contable), después `historial_unidad` (el estado de cuenta
+del residente), y las tres restantes al final (son de magnitud "un día" y dos
+de ellas corren por cron, no por clic).
+
+### Los `DEFAULT CURRENT_DATE`: solo uno se usa de verdad
+
+Auditado el 28-sep, revisando cada `insert`/`upsert` del cliente. La pregunta
+era si la app manda siempre la fecha explícita o si el default de la columna
+llega a dispararse:
+
+| Columna | ¿La app manda la fecha? | Detalle |
+|---|---|---|
+| `pagos.fecha` | **Sí, siempre** | Admin `Pagos.tsx:162` (`fecha: f.fecha`, del formulario) y Residente `FormularioReportarPago.tsx:190`. El default no se dispara nunca desde la app |
+| `ajustes.fecha` | **Sí, siempre** | `Pagos.tsx:199` (ahora `hoyLocalISO()`). Aparte, `cerrar_periodo` inserta ajustes con `current_date` **explícito** — eso es la función, no el default, y va en la segunda ronda |
+| `suscripciones.inicio` | **Sí, siempre** | `FichaCliente.tsx:114` (`inicio: s.inicio \|\| hoyLocalISO()`). Aparte, `crear_cliente`/`fijar_cliente` lo ponen con `current_date` explícito |
+| **`vinculos.desde`** | **NO — nunca.** El default es el único que se usa | Tres puntos insertan vínculos sin `desde`: `AltaUnidad.tsx:79`, `DatosUnidad.tsx:81` e `ImportarUnidades.tsx:97` |
+
+**La severidad de `vinculos.desde` es baja, y conviene decirlo con precisión
+para no inflarla:** el valor guardado puede quedar un día adelante si se da de
+alta un propietario después de las 20:00, pero **nada en la app filtra por
+`desde`**. `vigente()` (`lib/admin/personas.ts:8-10`) decide quién es el
+propietario actual mirando **solo** `!v.hasta`, así que un `desde` futuro no
+esconde a nadie. El único uso real de la columna es un `order by v.desde desc`
+dentro de `destinatarios_de` (dump L1282), que podría reordenar dos vínculos
+del mismo tipo creados la misma noche. O sea: es un dato de registro
+ligeramente corrido, no un cambio de comportamiento.
+
+Por eso **no** se propone tocar el `DEFAULT` de la columna en esta ronda:
+cambiarlo es DDL de tabla sobre la base compartida por un beneficio cosmético.
+Las dos formas de arreglarlo cuando se decida, para tenerlas escritas:
+mandar `desde: hoyLocalISO()` desde los tres puntos del cliente (sin tocar la
+base), o `ALTER TABLE vinculos ALTER COLUMN desde SET DEFAULT hoy_local()`
+(una sola vez, y cubre cualquier insert futuro que se olvide de mandarla). La
+segunda es más robusta y depende de que la migración de las auxiliares ya esté
+aplicada.
+
+### Bloque 13: tiene que usar el mismo criterio de día local
+
+Anotado también en la sección del bloque 13: cuando arranque la vista de
+Garita de solo lectura dentro de Admin (visitas del día + bitácora, selector
+limitado a 30 días), **tiene que decidir el día con `hoy_local()` /
+`inicio_dia_local()`**, no con `current_date` ni casteando
+`date::timestamptz`. Si no, Admin y la garita van a mostrar bitácoras
+distintas del mismo día, y el desfase de 4 h reaparece en la pantalla nueva.
+Vale para las dos piezas: la bitácora y la función nueva de "visitas del día"
+que ese bloque va a necesitar (ver la investigación previa del bloque 13:
+`garita_dentro` no sirve porque no tiene parámetro de fecha).
 
 ---
 

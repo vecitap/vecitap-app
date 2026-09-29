@@ -29,7 +29,31 @@ export const bs = (valor: number | string | null | undefined) => "Bs " + nf(2).f
  */
 export const pct = (valor: number | string | null | undefined) => nf(4).format(Number(valor) || 0) + " %";
 
-export const hoyISO = () => new Date().toISOString().slice(0, 10);
+/**
+ * **La zona horaria del producto vive acá y en ningún otro lugar del
+ * cliente.** Del lado de la base, su par son `hoy_local()` /
+ * `inicio_dia_local()` (ver
+ * `supabase/migrations/20260928140000_garita_bitacora_dia_local.sql`): las dos
+ * puntas tienen que decidir el mismo día o una pantalla pide un día y la base
+ * le contesta otro.
+ *
+ * Se usa el **nombre** de zona, no el desplazamiento `-04:00`, aunque hoy
+ * sean lo mismo: Venezuela ya cambió de offset una vez (−04:30 entre 2007 y
+ * 2016), así que el nombre sobrevive a un cambio de política y el número no.
+ *
+ * Asume que todos los clientes están en Venezuela. Es cierto hoy y está
+ * registrado como decisión a revisar (ver docs/estado-migracion.md): el
+ * modelo correcto a largo plazo es una zona por organización o edificio.
+ */
+const ZONA_VECITAP = "America/Caracas";
+
+/** Se construye una sola vez: instanciar `Intl.DateTimeFormat` es costoso. */
+const partesDiaVecitap = new Intl.DateTimeFormat("en-US", {
+  timeZone: ZONA_VECITAP,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 /**
  * En Venezuela se escribe 5.630,15. Un input numérico descarta la coma y
@@ -87,15 +111,32 @@ export function horaCorta(iso: string | null | undefined): string {
 }
 
 /**
- * El "hoy" del navegador en su propia zona horaria, no en UTC — a
- * diferencia de `hoyISO()` de arriba. Es `hoyISO()` de garita.html:242-245:
- * el selector de fecha de la Bitácora tiene que abrir en el día del
- * vigilante, no en el de Greenwich (con `hoyISO()` normal, después de las
- * 20:00 hora de Venezuela ya muestra el día siguiente). Solo tiene sentido
- * en un Client Component, igual que `fechaHora`.
+ * El día de hoy en Venezuela (`America/Caracas`), como `YYYY-MM-DD`.
+ *
+ * **Es la única forma correcta de preguntar "qué día es hoy" en esta app.**
+ * `new Date().toISOString().slice(0,10)` da el día de Greenwich: después de
+ * las 20:00 hora de Venezuela ya devuelve el día siguiente. Eso causó dos
+ * bugs reales (la Bitácora de Garita y la fecha de los pagos, ver
+ * docs/estado-migracion.md), así que la versión en UTC —la vieja `hoyISO()`—
+ * se eliminó en vez de dejarla al lado invitando a elegir la equivocada.
+ *
+ * **Fijada a la zona, no a la del navegador** (decisión del 28-sep): la
+ * versión anterior usaba `getTimezoneOffset()`, o sea la zona del equipo. En
+ * una tableta de garita con la zona mal configurada —cosa que pasa— el
+ * cliente le pedía a la base un día distinto del que la base entiende por
+ * "hoy". Con la zona fija, las dos puntas coinciden siempre.
+ *
+ * Efecto secundario bueno: al no depender de dónde corre, ahora también es
+ * segura en un Server Component (antes no: servidor y navegador podían
+ * calcular días distintos y romper la hidratación).
+ *
+ * Se arma con `formatToParts` y no con `format()` para no depender del patrón
+ * de fecha de ningún locale — el orden y los separadores los pone este
+ * código, no ICU.
  */
 export function hoyLocalISO(): string {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
+  const partes = partesDiaVecitap.formatToParts(new Date());
+  const buscar = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((p) => p.type === tipo)?.value ?? "";
+  return `${buscar("year")}-${buscar("month")}-${buscar("day")}`;
 }

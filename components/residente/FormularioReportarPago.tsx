@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Campo, Card, Input, Select } from "@/components/ui";
-import { fechaLarga, hoyISO, nf, num, usd } from "@/lib/formato";
+import { fechaLarga, hoyLocalISO, nf, num, usd } from "@/lib/formato";
 import {
   ACEPTA_COMPROBANTE,
   MAX_BYTES_COMPROBANTE,
@@ -47,7 +47,7 @@ type EstadoFormulario = {
 };
 
 const VACIO: EstadoFormulario = {
-  fecha: hoyISO(),
+  fecha: hoyLocalISO(),
   monto: "",
   moneda: "VES",
   metodo: "Pago móvil",
@@ -155,7 +155,7 @@ export function FormularioReportarPago({
     const errs: Record<string, string> = {};
     const monto = num(f.monto);
     if (monto === null || monto <= 0) errs.monto = "El monto no se entiende.";
-    if (f.fecha > hoyISO()) errs.fecha = "La fecha del pago no puede ser futura.";
+    if (f.fecha > hoyLocalISO()) errs.fecha = "La fecha del pago no puede ser futura.";
     if (f.moneda === "VES" && !tasa)
       errs.tasa = "Todavía no hay tasa del Banco Central para ese día. Avísele a su administración.";
     if (pide.banco && !f.banco) errs.banco = "Elija el banco.";
@@ -276,7 +276,7 @@ export function FormularioReportarPago({
             type="date"
             className="mono"
             value={f.fecha}
-            max={hoyISO()}
+            max={hoyLocalISO()}
             onChange={(e) => setF({ ...f, fecha: e.target.value })}
           />
         </Campo>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Badge, Button, Campo, Card, Input, Select, type TonoBadge } from "@/components/ui";
-import { bs, hoyISO, nf, num, usd } from "@/lib/formato";
+import { bs, hoyLocalISO, nf, num, usd } from "@/lib/formato";
 import { BOLSILLOS, DESTINOS_PAGO, METODOS, PIDE } from "@/lib/admin/constantes";
 import {
   detectarColumnas,
@@ -62,7 +62,7 @@ export function Pagos({
 
   const [f, setF] = useState({
     unidad: "",
-    fecha: hoyISO(),
+    fecha: hoyLocalISO(),
     monto: "",
     moneda: "USD",
     metodo: "Pago móvil",
@@ -196,7 +196,7 @@ export function Pagos({
     const { error } = await supabase.from("ajustes").insert({
       org_id: orgId,
       unidad_id: ex.unidad,
-      fecha: hoyISO(),
+      fecha: hoyLocalISO(),
       monto,
       motivo: ex.motivo.trim(),
       destino: ex.destino,

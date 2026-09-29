@@ -135,6 +135,15 @@ otra.**
   con o sin segmento dinámico), reiniciar `npm run dev` — el watcher de Next
   no siempre recoge una carpeta de ruta creada mientras el servidor ya
   estaba corriendo, y la ruta nueva da 404 hasta reiniciar
+- **Lección de testing: hay una clase de bug que `npm run dev` no muestra.**
+  Medido el 28-sep: un `POST` a una página devuelve **200 en dev y 405 en el
+  build de producción**. Por eso el 405 de "Salir" (un redirect 307 después de
+  un POST, que hace que el navegador repita el POST) pasó una validación
+  entera sin que se viera. Todo lo que dependa del **método HTTP o del status**
+  de una respuesta —POST a una página, 405, redirects que preservan método— se
+  prueba contra `next start` o el Preview de Vercel, nunca solo contra
+  `npm run dev`. Va junto a la lección de hidratación de la Fase 2 (más abajo,
+  en Sistema de diseño): las dos son casos que la prueba obvia no ejercita.
 
 ## Comunicación con el socio comercial
 No es técnico: requiere formatos visuales (gráficos, colores, lenguaje simple) en
