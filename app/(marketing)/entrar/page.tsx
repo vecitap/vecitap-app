@@ -1,12 +1,13 @@
 import { Suspense } from "react";
+import { PantallaMarca } from "@/components/ui";
 import { FormularioEntrar } from "./FormularioEntrar";
 
 export default function EntrarPage() {
   return (
-    <main style={{ maxWidth: 420, margin: "0 auto", padding: 24 }}>
+    <PantallaMarca volverAlSitio>
       <Suspense fallback={null}>
         <FormularioEntrar />
       </Suspense>
-    </main>
+    </PantallaMarca>
   );
 }

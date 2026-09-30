@@ -1,6 +1,16 @@
 @import "../components/ui/ui.css";
 
 /* ══════════════════════════════════════════════════════════════
+   MARCA · CÓMO CAMBIARLA (ver docs/MARCA-como-cambiar.md)
+   - Colores: los valores de este archivo, en :root (tema claro) y en
+     :root[data-theme="oscuro"]. Nada de colores sueltos en componentes.
+   - Tipografías: lib/marca/fuentes.ts.
+   - Logotipo: reemplazar public/logo-claro.png y public/logo-oscuro.png
+     con el mismo nombre (y public/favicon-32.png, apple-touch-icon.png).
+   ══════════════════════════════════════════════════════════════ */
+
+
+/* ══════════════════════════════════════════════════════════════
    TOKENS · fuente única de verdad del tema
    Antes duplicados (y con pequeñas diferencias entre sí) en
    app.html, residente.html y operador.html. Los valores de estado
@@ -69,9 +79,19 @@
   --radio-chico: 10px;
   --radio-pill: 999px;
 
-  --font-texto: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-titulos: var(--font-poppins), var(--font-texto);
-  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  /* Tipografías: se eligen en lib/marca/fuentes.ts (no aquí). */
+  --font-texto: var(--font-marca-texto), system-ui, -apple-system, sans-serif;
+  --font-titulos: var(--font-marca-titulos), var(--font-texto);
+  --font-mono: var(--font-marca-mono), ui-monospace, monospace;
+
+  /* Superficies de marca: las pantallas de entrada comparten el fondo
+     oscuro del sitio de venta (public/inicio.html) para que el paso de
+     vecitap.com a /entrar no parezca otro producto. Iguales en los dos
+     temas: son de marca, no del tema. */
+  --marca-noche: #05091A;
+  --marca-noche-2: #0A1128;
+  --marca-brillo: rgba(249,133,19,.16);
+  --marca-texto-sobre-noche: #BAC5DC;
 }
 
 :root[data-theme="oscuro"] {
