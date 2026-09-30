@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Vecitap · Administración de condominios</title>
+<meta name="description" content="Software para administrar condominios, edificios de oficinas y conjuntos de casas. Cierre el mes en una tarde: recibos con desglose, cobranza al día y transparencia para la asamblea.">
+<meta name="theme-color" content="#05091A">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+<meta property="og:title" content="Vecitap · Administración de condominios">
+<meta property="og:description" content="Cierre el mes en una tarde. Recibos, cobranza y transparencia para administradoras y juntas de condominio.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://vecitap.com">
+<meta property="og:image" content="https://vecitap.com/img/panel.webp">
+<meta property="og:locale" content="es_VE">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   vecitap.com · sitio de presentación
+   Oscuro de punta a punta. El naranja Habañero es la única fuente de
+   luz. Sobre la tinta sí puede ser texto: 7,47:1.
+
+   ── PARA EDITAR LOS TEXTOS ──
+   Todo lo que se puede cambiar lleva un atributo data-t="clave". No
+   hace falta tocar este archivo a mano: abra editor.html, cambie lo
+   que quiera y descargue el index.html ya listo.
+   ═══════════════════════════════════════════════════════════════════ */
+:root{
+  --pozo:#05091A; --base:#0A1128; --sup:#101A36; --sup2:#16264A;
+  --linea:#1D2D5A; --linea2:#23376E;
+  --tinta:#F8FAFC; --tinta2:#BAC5DC; --tenue:#8794B0;
+  --fuego:#F98513; --fuego2:#FBA24A; --sobre-fuego:#0A1128; --aster:#A3B4D4;
+  --verde:#00D1B2; --rojo:#F08A78; --ambar:#F9A94F;
+  --r:16px; --rs:11px; --ancho:1180px;
+}
+*{ box-sizing:border-box }
+html{ scroll-behavior:smooth; -webkit-text-size-adjust:100%; overflow-x:hidden }
+@media (prefers-reduced-motion:reduce){
+  html{ scroll-behavior:auto }
+  *,*::before,*::after{ animation:none !important; transition-duration:.001ms !important }
+}
+body{ margin:0; background:var(--pozo); color:var(--tinta);
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  font-size:16.5px; line-height:1.62; -webkit-font-smoothing:antialiased; overflow-x:hidden }
+/* `height:auto` no es adorno: los <img> traen el atributo height para
+   que el navegador reserve el espacio, y sin esta línea ese atributo
+   se aplica literal y los aparatos salen estirados. */
+img{ max-width:100%; height:auto; display:block }
+
+h1,h2,h3{ font-family:"League Spartan","Inter",sans-serif; font-weight:700;
+  line-height:1.04; letter-spacing:-.022em; text-wrap:balance; margin:0 }
+h1{ font-size:clamp(42px,7.4vw,80px) }
+h2{ font-size:clamp(30px,4.6vw,50px) }
+h3{ font-size:clamp(18px,2.1vw,21px); line-height:1.22; letter-spacing:-.01em }
+p{ margin:0 }
+a{ color:var(--aster); text-underline-offset:3px }
+.num{ font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums }
+
+.env{ width:100%; max-width:var(--ancho); margin-inline:auto; padding-inline:22px; position:relative; z-index:2 }
+@media (max-width:560px){ .env{ padding-inline:16px } }
+section{ padding-block:clamp(64px,9vw,118px); position:relative }
+.alt{ background:var(--base) }
+.brillo{ position:absolute; border-radius:50%; filter:blur(90px); pointer-events:none; z-index:0 }
+
+.ojal{ font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.15em;
+  color:var(--fuego); margin-bottom:16px; display:flex; align-items:center; gap:10px }
+.ojal::before{ content:""; width:24px; height:2px; background:var(--fuego); flex:none;
+  box-shadow:0 0 12px rgba(249,133,19,.8) }
+.ojal.frio{ color:var(--aster) }
+.ojal.frio::before{ background:var(--aster); box-shadow:none }
+.entrada{ font-size:clamp(16.5px,1.8vw,19px); color:var(--tinta2); max-width:56ch; line-height:1.62 }
+
+.b{ display:inline-flex; align-items:center; justify-content:center; gap:9px;
+  font-family:inherit; font-size:15.5px; font-weight:600; padding:15px 26px;
+  border-radius:var(--rs); border:1px solid transparent; cursor:pointer;
+  text-decoration:none; transition:transform .14s, box-shadow .14s;
+  background:linear-gradient(180deg,var(--fuego2),var(--fuego)); color:var(--sobre-fuego);
+  box-shadow:0 2px 0 rgba(0,0,0,.18), 0 14px 34px -12px rgba(249,133,19,.65) }
+.b:hover{ transform:translateY(-1px); box-shadow:0 2px 0 rgba(0,0,0,.18), 0 20px 44px -12px rgba(249,133,19,.8) }
+.b:active{ transform:translateY(1px) }
+.b.linea{ background:rgba(255,255,255,.04); color:var(--tinta); border-color:var(--linea2); box-shadow:none }
+.b.linea:hover{ background:rgba(255,255,255,.08); box-shadow:none }
+.b:focus-visible,a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible{
+  outline:3px solid var(--fuego); outline-offset:3px }
+
+header.barra{ position:sticky; top:env(safe-area-inset-top,0px); z-index:60;
+  background:rgba(5,9,26,.78); backdrop-filter:saturate(1.5) blur(14px);
+  border-bottom:1px solid rgba(29,45,90,.7) }
+.barra .env{ display:flex; align-items:center; gap:20px; height:68px }
+.marca{ display:flex; align-items:center; text-decoration:none; color:inherit; margin-right:auto;
+  font-family:"League Spartan",sans-serif; font-weight:700; font-size:23px; letter-spacing:-.02em }
+.marca img{ height:30px; width:auto; display:block }
+@media (max-width:560px){ .marca img{ height:26px } }
+nav.menu{ display:flex; gap:28px }
+nav.menu a{ color:var(--tinta2); text-decoration:none; font-size:14.5px; font-weight:500 }
+nav.menu a:hover{ color:var(--tinta) }
+@media (max-width:900px){ nav.menu{ display:none } }
+.barra .b{ padding:11px 20px; font-size:14.5px }
+@media (max-width:560px){ .barra .env{ gap:10px } .barra .b{ padding:9px 13px; font-size:13.5px } }
+
+.heroe{ padding-block:clamp(56px,7.5vw,104px) clamp(44px,6vw,78px); overflow:hidden }
+.heroe .brillo.uno{ width:780px; height:780px; top:-320px; left:50%;
+  transform:translateX(-30%); background:rgba(249,133,19,.2) }
+.heroe .brillo.dos{ width:620px; height:620px; top:180px; left:-260px;
+  background:rgba(163,180,212,.11) }
+.sello{ display:inline-flex; align-items:center; gap:9px; font-size:13px; color:var(--tinta2);
+  background:rgba(255,255,255,.05); border:1px solid var(--linea); padding:7px 15px;
+  border-radius:999px; margin-bottom:24px }
+.sello .pt{ width:7px; height:7px; border-radius:50%; background:var(--verde);
+  box-shadow:0 0 0 4px rgba(0,209,178,.18); flex:none }
+.heroe h1{ margin-bottom:22px }
+.heroe h1 em{ font-style:normal; background:linear-gradient(120deg,var(--fuego2),var(--fuego));
+  -webkit-background-clip:text; background-clip:text; color:transparent }
+.heroe .entrada{ margin-bottom:30px }
+.acciones{ display:flex; gap:13px; flex-wrap:wrap; align-items:center }
+
+.escena{ position:relative; perspective:1600px; margin:8px 44px 96px 0 }
+@media (max-width:1000px){ .escena{ margin:8px 0 60px } }
+.laptop{ transform:rotateY(-13deg) rotateX(5deg) rotate(.5deg) scale(.97);
+  transform-style:preserve-3d; transition:transform .5s cubic-bezier(.2,.7,.3,1) }
+.escena:hover .laptop{ transform:rotateY(-8deg) rotateX(3deg) scale(1) }
+.pantalla{ background:#070C1C; border:1px solid var(--linea2); border-radius:12px;
+  padding:9px 9px 0; overflow:hidden;
+  box-shadow:0 2px 0 rgba(255,255,255,.05) inset, 0 40px 90px -30px rgba(0,0,0,.9),
+             0 0 0 1px rgba(249,133,19,.1) }
+.pantalla img{ border-radius:5px; width:100% }
+.pantalla .banda{ display:flex; gap:6px; padding:0 0 9px }
+.pantalla .banda i{ width:9px; height:9px; border-radius:50%; background:var(--linea2); display:block }
+.base-laptop{ height:11px; margin:0 auto; width:86%;
+  background:linear-gradient(180deg,#1C2B57,#0D1428); border-radius:0 0 12px 12px;
+  box-shadow:0 18px 30px -18px rgba(0,0,0,.9) }
+.telefono{ position:absolute; right:-22px; bottom:-74px; width:22%; max-width:146px;
+  transform:rotateY(-13deg) rotateX(5deg) translateZ(90px); background:#070C1C;
+  border:1px solid var(--linea2); border-radius:22px; padding:7px;
+  box-shadow:0 34px 70px -18px rgba(0,0,0,.95); transition:transform .5s cubic-bezier(.2,.7,.3,1) }
+.escena:hover .telefono{ transform:rotateY(-8deg) rotateX(3deg) translateZ(100px) }
+.telefono img{ border-radius:16px; width:100% }
+@media (max-width:1000px){
+  .laptop,.telefono{ transform:none !important }
+  .escena:hover .laptop,.escena:hover .telefono{ transform:none !important }
+  .telefono{ position:static; width:64%; max-width:220px; margin:22px auto 0 }
+}
+.heroe-rejilla{ display:grid; gap:clamp(40px,5vw,58px);
+  grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr); align-items:center }
+@media (max-width:1000px){ .heroe-rejilla{ grid-template-columns:1fr } }
+
+.caminos{ display:flex; gap:10px; flex-wrap:wrap; margin-top:34px }
+.camino{ font-family:inherit; font-size:15px; font-weight:600; cursor:pointer;
+  padding:13px 22px; border-radius:999px; border:1px solid var(--linea2);
+  background:transparent; color:var(--tinta2); transition:all .18s }
+.camino[aria-selected="true"]{ background:var(--sup2); color:var(--tinta);
+  border-color:var(--fuego); box-shadow:0 0 30px -8px rgba(249,133,19,.5) }
+.panel-camino{ margin-top:34px }
+.panel-camino[hidden]{ display:none }
+.dolores{ display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(262px,1fr)) }
+.dolor{ background:var(--sup); border:1px solid var(--linea); border-radius:var(--r); padding:26px 24px }
+.dolor .cita{ font-size:16.5px; line-height:1.46; color:var(--tinta); margin-bottom:13px }
+.dolor .resp{ font-size:14.2px; color:var(--tinta2); display:flex; gap:10px;
+  align-items:flex-start; line-height:1.5 }
+.dolor .resp svg{ flex:none; margin-top:4px; color:var(--verde) }
+
+.bloque{ display:grid; gap:clamp(34px,5vw,64px); align-items:center;
+  grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) }
+.bloque.invertido{ grid-template-columns:minmax(0,1.12fr) minmax(0,1fr) }
+.bloque.invertido .texto{ order:2 }
+@media (max-width:960px){
+  .bloque,.bloque.invertido{ grid-template-columns:1fr }
+  .bloque.invertido .texto{ order:0 }
+}
+.lista-marca{ list-style:none; padding:0; margin:26px 0 0; display:grid; gap:14px }
+.lista-marca li{ display:flex; gap:12px; align-items:flex-start; font-size:15.5px;
+  line-height:1.5; color:var(--tinta2) }
+.lista-marca li b{ color:var(--tinta); font-weight:600 }
+.lista-marca svg{ flex:none; margin-top:4px; color:var(--fuego) }
+.marco{ border-radius:var(--r); overflow:hidden; border:1px solid var(--linea2);
+  background:#070C1C; box-shadow:0 34px 80px -34px rgba(0,0,0,.95);
+  transform:perspective(1400px) rotateY(7deg) rotate(-.5deg);
+  transition:transform .5s cubic-bezier(.2,.7,.3,1) }
+.marco:hover{ transform:perspective(1400px) rotateY(3deg) }
+.marco.izq{ transform:perspective(1400px) rotateY(-7deg) rotate(.5deg) }
+.marco.izq:hover{ transform:perspective(1400px) rotateY(-3deg) }
+@media (max-width:960px){ .marco,.marco.izq,.marco:hover{ transform:none } }
+
+.recibo{ background:var(--sup); border:1px solid var(--linea2); border-radius:var(--r);
+  overflow:hidden; box-shadow:0 30px 70px -30px rgba(0,0,0,.95) }
+.recibo-cab{ padding:20px 22px 16px; border-bottom:1px solid var(--linea) }
+.recibo-cab .org{ font-family:"League Spartan",sans-serif; font-weight:700; font-size:17px }
+.recibo-cab .sub{ font-size:12.5px; color:var(--tenue); margin-top:2px }
+.recibo-cab .folio{ float:right; text-align:right; font-size:11.5px; color:var(--tenue) }
+.recibo-cab .folio b{ display:block; font-family:"IBM Plex Mono",monospace; font-size:13px;
+  color:var(--tinta2); font-weight:500 }
+.mandos{ padding:17px 22px; background:rgba(0,0,0,.18); border-bottom:1px solid var(--linea);
+  display:grid; gap:16px; grid-template-columns:1fr 1fr }
+@media (max-width:430px){ .mandos{ grid-template-columns:1fr } }
+.mando label{ display:block; font-size:11px; font-weight:600; text-transform:uppercase;
+  letter-spacing:.09em; color:var(--tenue); margin-bottom:7px }
+.mando .val{ font-family:"IBM Plex Mono",monospace; font-size:15.5px; font-weight:600;
+  color:var(--fuego); font-variant-numeric:tabular-nums }
+input[type=range]{ width:100%; margin:8px 0 0; accent-color:var(--fuego); height:22px }
+.lineas{ padding:6px 22px 4px }
+.linea-rec{ display:flex; align-items:baseline; gap:12px; padding:12px 0;
+  border-bottom:1px dotted var(--linea) }
+.linea-rec:last-child{ border-bottom:0 }
+.linea-rec .qué{ flex:1; min-width:0; font-size:14.5px }
+.linea-rec .qué small{ display:block; font-size:12px; color:var(--tenue); line-height:1.4 }
+.linea-rec .cuánto{ font-family:"IBM Plex Mono",monospace; font-size:14.5px; font-weight:500;
+  font-variant-numeric:tabular-nums; white-space:nowrap }
+.recibo-total{ padding:18px 22px;
+  background:linear-gradient(135deg,rgba(249,133,19,.16),rgba(249,133,19,.04));
+  border-top:1px solid rgba(249,133,19,.3); display:flex; align-items:baseline;
+  justify-content:space-between; gap:14px; flex-wrap:wrap }
+.recibo-total .rot{ font-size:11px; text-transform:uppercase; letter-spacing:.11em; color:var(--tinta2) }
+.recibo-total .usd{ font-family:"IBM Plex Mono",monospace; font-size:29px; font-weight:600;
+  letter-spacing:-.02em; color:var(--fuego); font-variant-numeric:tabular-nums }
+.recibo-total .bs{ font-family:"IBM Plex Mono",monospace; font-size:13px; color:var(--tinta2);
+  font-variant-numeric:tabular-nums }
+.recibo-nota{ padding:14px 22px; font-size:12.5px; color:var(--tenue); border-top:1px solid var(--linea) }
+
+.piezas{ display:grid; gap:18px; margin-top:44px;
+  grid-template-columns:repeat(auto-fit,minmax(288px,1fr)) }
+.pieza{ background:var(--sup); border:1px solid var(--linea); border-radius:var(--r);
+  padding:26px 24px; display:flex; flex-direction:column; gap:11px;
+  transition:border-color .2s, transform .2s }
+.pieza:hover{ border-color:var(--linea2); transform:translateY(-2px) }
+.pieza .ico{ width:40px; height:40px; border-radius:var(--rs); background:rgba(249,133,19,.14);
+  border:1px solid rgba(249,133,19,.25); display:flex; align-items:center;
+  justify-content:center; color:var(--fuego); margin-bottom:5px }
+.pieza p{ font-size:14.6px; color:var(--tinta2); line-height:1.55 }
+
+.pasos{ margin-top:44px; counter-reset:paso }
+.paso{ display:grid; grid-template-columns:auto 1fr; gap:24px; padding:26px 0;
+  border-top:1px solid var(--linea) }
+.paso:last-child{ border-bottom:1px solid var(--linea) }
+.paso .n{ counter-increment:paso; font-family:"IBM Plex Mono",monospace; font-size:13px;
+  font-weight:600; color:var(--fuego); padding-top:5px; min-width:26px }
+.paso .n::before{ content:counter(paso,decimal-leading-zero) }
+.paso h3{ margin-bottom:8px }
+.paso p{ font-size:15px; color:var(--tinta2); max-width:62ch }
+
+.precio-caja{ border:1px solid var(--linea2); border-radius:var(--r); overflow:hidden;
+  margin-top:40px; display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr) }
+@media (max-width:840px){ .precio-caja{ grid-template-columns:1fr } }
+.precio-izq{ padding:clamp(30px,3.4vw,42px); background:var(--sup2); position:relative; overflow:hidden }
+.precio-izq::after{ content:""; position:absolute; width:320px; height:320px; border-radius:50%;
+  background:rgba(249,133,19,.16); filter:blur(70px); bottom:-160px; left:-80px }
+.precio-der{ padding:clamp(30px,3.4vw,42px); background:var(--sup) }
+.cifra{ display:flex; align-items:baseline; gap:9px; margin:8px 0 6px; position:relative; z-index:1 }
+.cifra .n{ font-family:"IBM Plex Mono",monospace; font-size:clamp(38px,5vw,50px);
+  font-weight:600; letter-spacing:-.035em; color:var(--fuego) }
+.cifra .u{ font-size:15px; color:var(--tinta2) }
+.incluye{ list-style:none; padding:0; margin:22px 0 0; display:grid; gap:12px;
+  position:relative; z-index:1 }
+.incluye li{ display:flex; gap:11px; align-items:flex-start; font-size:14.5px; color:var(--tinta2) }
+.incluye svg{ flex:none; margin-top:4px; color:var(--verde) }
+
+.preguntas{ margin-top:44px; border-top:1px solid var(--linea) }
+details{ border-bottom:1px solid var(--linea) }
+summary{ cursor:pointer; padding:20px 42px 20px 0; font-size:16.5px; font-weight:500;
+  list-style:none; position:relative }
+summary::-webkit-details-marker{ display:none }
+summary::after{ content:""; position:absolute; right:8px; top:50%; width:9px; height:9px;
+  border-right:2px solid var(--fuego); border-bottom:2px solid var(--fuego);
+  transform:translateY(-70%) rotate(45deg); transition:transform .2s }
+details[open] summary::after{ transform:translateY(-30%) rotate(225deg) }
+details p{ padding:0 44px 22px 0; font-size:15px; color:var(--tinta2); max-width:72ch }
+
+.cierre{ position:relative; overflow:hidden }
+.cierre .brillo{ width:900px; height:560px; bottom:-330px; left:50%;
+  transform:translateX(-50%); background:rgba(249,133,19,.2) }
+.cierre-rejilla{ display:grid; gap:36px; grid-template-columns:minmax(0,1fr) auto; align-items:end }
+@media (max-width:800px){ .cierre-rejilla{ grid-template-columns:1fr; align-items:start } }
+.vias{ display:grid; gap:12px }
+.via{ display:flex; align-items:center; gap:12px; color:var(--tinta); text-decoration:none;
+  font-size:15px; background:var(--sup); border:1px solid var(--linea2); border-radius:var(--rs);
+  padding:15px 20px; transition:border-color .18s, background .18s }
+.via:hover{ border-color:var(--fuego); background:var(--sup2) }
+.via svg{ color:var(--fuego); flex:none }
+
+footer{ padding-block:34px; font-size:13.5px; color:var(--tenue); border-top:1px solid var(--linea) }
+footer .env{ display:flex; gap:20px; flex-wrap:wrap; align-items:center }
+footer a{ color:var(--tinta2); text-decoration:none }
+footer a:hover{ color:var(--tinta) }
+footer .sep{ margin-left:auto }
+</style>
+</head>
+<body>
+
+<header class="barra">
+  <div class="env">
+    <a class="marca" href="#top" aria-label="Vecitap, inicio">
+      <img src="logo-oscuro.png" alt="Vecitap" width="420" height="121"></a>
+    <nav class="menu">
+      <a href="#quien" data-t="nav1">Para quién</a>
+      <a href="#hace" data-t="nav2">Qué hace</a>
+      <a href="#empezar" data-t="nav3">Cómo empezar</a>
+      <a href="#precio" data-t="nav4">Precio</a>
+    </nav>
+    <a class="b linea entrar" href="/entrar" data-t="nav_entrar">Iniciar sesión</a>
+    <a class="b" href="#hablar" data-t="nav_cta">Conversemos</a>
+  </div>
+</header>
+
+<!-- ══ HÉROE ═════════════════════════════════════════════════ -->
+<section class="heroe" id="top">
+  <span class="brillo uno"></span>
+  <span class="brillo dos"></span>
+  <div class="env heroe-rejilla">
+    <div>
+      <span class="sello"><span class="pt"></span><span data-t="sello">Hecho en Venezuela</span></span>
+      <h1><span data-t="h1a">Cierre el mes</span><br><em data-t="h1b">en una tarde.</em></h1>
+      <p class="entrada" data-t="hero_p">
+        Vecitap reparte los gastos, calcula la mora, arma el recibo de cada
+        unidad con su desglose y se lo envía al propietario. Usted revisa y
+        aprueba.
+      </p>
+      <div class="acciones">
+        <a class="b" href="#hablar" data-t="cta1">Conversemos sobre su edificio</a>
+        <a class="b linea" href="#empezar" data-t="cta2">Cómo empezar</a>
+      </div>
+    </div>
+
+    <div class="escena">
+      <div class="laptop">
+        <div class="pantalla">
+          <div class="banda"><i></i><i></i><i></i></div>
+          <img src="img/panel.webp" width="1500" height="922"
+               alt="Panel de la administradora: estadísticas del edificio con el gasto del mes, lo facturado, lo cobrado y la morosidad por tramos.">
+        </div>
+        <div class="base-laptop"></div>
+      </div>
+      <div class="telefono">
+        <img src="img/telefono.webp" width="560" height="1120"
+             alt="Portal del propietario en el teléfono: su unidad, su alícuota y su saldo.">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ PARA QUIÉN ════════════════════════════════════════════ -->
+<section class="alt" id="quien">
+  <div class="env">
+    <p class="ojal" data-t="quien_ojal">Para quién es</p>
+    <h2 data-t="quien_h2">Edificios, oficinas y conjuntos de casas.</h2>
+    <p class="entrada" style="margin-top:18px" data-t="quien_p">
+      Vecitap se configura distinto según quién lo use: una administradora con
+      varios inmuebles, o una junta que lleva el suyo.
+    </p>
+
+    <div class="caminos" role="tablist" aria-label="Elija su caso">
+      <button class="camino" role="tab" id="t-admin" aria-controls="p-admin"
+              aria-selected="true" type="button" data-t="tab1">Administro inmuebles</button>
+      <button class="camino" role="tab" id="t-junta" aria-controls="p-junta"
+              aria-selected="false" type="button" data-t="tab2">Somos la junta</button>
+    </div>
+
+    <div class="panel-camino" id="p-admin" role="tabpanel" aria-labelledby="t-admin">
+      <div class="dolores">
+        <div class="dolor">
+          <p class="cita" data-t="ad1t">Los recibos salen el mismo día que cierra el mes.</p>
+          <p class="resp"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="ad1d">Cierra, revisa y envía. Sin rehacer tablas.</span></p>
+        </div>
+        <div class="dolor">
+          <p class="cita" data-t="ad2t">La tasa del día entra sola.</p>
+          <p class="resp"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="ad2d">Cada recibo guarda la tasa con la que se emitió.</span></p>
+        </div>
+        <div class="dolor">
+          <p class="cita" data-t="ad3t">El propietario consulta su historial solo.</p>
+          <p class="resp"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="ad3d">Mes por mes, desde su teléfono.</span></p>
+        </div>
+        <div class="dolor">
+          <p class="cita" data-t="ad4t">Todos sus inmuebles en un solo sitio.</p>
+          <p class="resp"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="ad4d">Cada uno con sus cuentas separadas.</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-camino" id="p-junta" role="tabpanel" aria-labelledby="t-junta" hidden>
+      <div class="dolores">
+        <div class="dolor">
+          <p class="cita" data-t="ju1t">El año completo, en una página.</p>
+          <p class="resp"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="ju1d">Listo para imprimir y repartir en la asamblea.</span></p>
+        </div>
+        <div class="dolor">
+          <p class="cita" data-t="ju2t">La morosidad, con criterio.</p>
+          <p class="resp"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="ju2d">En meses de atraso, sin nombres.</span></p>
+        </div>
+        <div class="dolor">
+          <p class="cita" data-t="ju3t">El historial sobrevive al cambio de junta.</p>
+          <p class="resp"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="ju3d">Un mes cerrado queda cerrado.</span></p>
+        </div>
+        <div class="dolor">
+          <p class="cita" data-t="ju4t">Si se administran ustedes, también.</p>
+          <p class="resp"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="ju4d">La cuenta viene armada para un solo inmueble.</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ EL RECIBO ═════════════════════════════════════════════ -->
+<section>
+  <div class="env bloque">
+    <div class="texto">
+      <p class="ojal" data-t="rec_ojal">El recibo</p>
+      <h2 data-t="rec_h2">La alícuota manda. Todo sale de ahí.</h2>
+      <p class="entrada" style="margin-top:18px" data-t="rec_p">
+        Mueva las barras y vea cómo cambia el recibo de una unidad. Es la misma
+        cuenta que hace el sistema al cerrar el mes.
+      </p>
+      <ul class="lista-marca">
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="rec_l1"><b>Partida por partida.</b> El propietario ve en qué se gastó, no solo cuánto debe.</span></li>
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="rec_l2"><b>En dólares y en bolívares</b>, con la tasa del día.</span></li>
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="rec_l3"><b>En PDF y por correo</b>, a todas las unidades con un botón.</span></li>
+      </ul>
+    </div>
+
+    <div class="recibo" id="demo">
+      <div class="recibo-cab">
+        <div class="folio">Recibo<b>RD-04B-1026</b></div>
+        <div class="org">Residencias Demo</div>
+        <div class="sub">Octubre 2026 · vence el 15 de noviembre</div>
+      </div>
+      <div class="mandos">
+        <div class="mando">
+          <label for="m-presupuesto">Gastos del mes</label>
+          <span class="val">$ <span id="v-presupuesto">4.800</span></span>
+          <input type="range" id="m-presupuesto" min="1500" max="12000" step="100" value="4800"
+                 aria-label="Gastos del mes del inmueble, en dólares">
+        </div>
+        <div class="mando">
+          <label for="m-alicuota">Alícuota de la unidad</label>
+          <span class="val"><span id="v-alicuota">1,85</span> %</span>
+          <input type="range" id="m-alicuota" min="40" max="420" step="5" value="185"
+                 aria-label="Alícuota de la unidad, en porcentaje">
+        </div>
+      </div>
+      <div class="lineas">
+        <div class="linea-rec">
+          <span class="qué">Gastos comunes del mes<small>Su parte, por alícuota</small></span>
+          <span class="cuánto num" id="r-comunes">$ 88,80</span>
+        </div>
+        <div class="linea-rec">
+          <span class="qué">Honorario de administración<small>5 % sobre lo facturado</small></span>
+          <span class="cuánto num" id="r-honorario">$ 4,44</span>
+        </div>
+        <div class="linea-rec">
+          <span class="qué">Saldo del mes anterior<small>Al día</small></span>
+          <span class="cuánto num">$ 0,00</span>
+        </div>
+      </div>
+      <div class="recibo-total">
+        <div>
+          <div class="rot">Total a pagar</div>
+          <div class="usd" id="r-total">$ 93,24</div>
+        </div>
+        <div class="bs" id="r-bs">Bs. 8.618,70 · tasa 92,44</div>
+      </div>
+      <p class="recibo-nota" data-t="rec_nota">Cifras de ejemplo. La cuenta es la de verdad.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ ASAMBLEA ══════════════════════════════════════════════ -->
+<section class="alt">
+  <div class="env bloque invertido">
+    <div class="texto">
+      <p class="ojal frio" data-t="asa_ojal">Para la asamblea</p>
+      <h2 data-t="asa_h2">Los números, a la vista de todos.</h2>
+      <p class="entrada" style="margin-top:18px" data-t="asa_p">
+        Cuánto entró, en qué se fue y cómo va la cobranza. Proyectado en la
+        pared, la conversación cambia de tono.
+      </p>
+      <ul class="lista-marca">
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="asa_l1"><b>Todo sale de lo que quedó congelado</b> al cerrar cada mes.</span></li>
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="asa_l2"><b>Morosidad en meses de atraso</b>, sin exponer a nadie.</span></li>
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="asa_l3"><b>Cabe en una página.</b> Se imprime y se reparte.</span></li>
+      </ul>
+    </div>
+    <div class="marco izq">
+      <img src="img/panel.webp" width="1500" height="922"
+           alt="Pantalla de estadísticas: gasto del mes, facturado, cobrado, en qué se gastó por categoría y morosidad por tramos.">
+    </div>
+  </div>
+</section>
+
+<!-- ══ QUÉ HACE ══════════════════════════════════════════════ -->
+<section id="hace">
+  <div class="env">
+    <p class="ojal" data-t="hace_ojal">Qué hace</p>
+    <h2 data-t="hace_h2">El mes completo, de principio a fin.</h2>
+
+    <div class="piezas">
+      <div class="pieza">
+        <span class="ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg></span>
+        <h3 data-t="p1t">Recibos con desglose</h3>
+        <p data-t="p1d">Qué se gastó, cuánto le toca por su alícuota y qué paga hoy. En PDF y por correo.</p>
+      </div>
+      <div class="pieza">
+        <span class="ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+        <h3 data-t="p2t">Cobranza al día</h3>
+        <p data-t="p2d">El propietario reporta su pago con la referencia; usted lo confirma. La deuda se actualiza sola.</p>
+      </div>
+      <div class="pieza">
+        <span class="ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg></span>
+        <h3 data-t="p3t">Mora conforme a la ley</h3>
+        <p data-t="p3d">El recargo corre solo sobre el capital, y se configura inmueble por inmueble.</p>
+      </div>
+      <div class="pieza">
+        <span class="ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></span>
+        <h3 data-t="p4t">Portal del propietario</h3>
+        <p data-t="p4d">Su recibo, su saldo y su historial desde el teléfono. Sin instalar nada.</p>
+      </div>
+      <div class="pieza">
+        <span class="ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/></svg></span>
+        <h3 data-t="p5t">Informe de asamblea</h3>
+        <p data-t="p5d">El año en una página: gastos, cobranza y morosidad, listo para proyectar.</p>
+      </div>
+      <div class="pieza">
+        <span class="ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+        <h3 data-t="p6t">Control de acceso</h3>
+        <p data-t="p6d">El residente genera el QR de su visita y la entrada queda asentada en bitácora.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ GARITA ════════════════════════════════════════════════ -->
+<section class="alt">
+  <div class="env bloque">
+    <div class="texto">
+      <p class="ojal" data-t="gar_ojal">Control de acceso</p>
+      <h2 data-t="gar_h2">Verde pasa. Rojo no.</h2>
+      <p class="entrada" style="margin-top:18px" data-t="gar_p">
+        El vigilante escanea el código de la visita y la pantalla completa
+        responde. Se lee de reojo y a un metro de distancia.
+      </p>
+      <ul class="lista-marca">
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="gar_l1"><b>El QR lleva solo un código al azar.</b> Uno perdido no revela a quién iban a visitar.</span></li>
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="gar_l2"><b>La bitácora es inalterable.</b> Si pasa algo, ese registro sirve como prueba.</span></li>
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span data-t="gar_l3"><b>El vigilante ve lo justo:</b> quién entra y a qué unidad.</span></li>
+      </ul>
+    </div>
+    <div class="marco">
+      <img src="img/garita.webp" width="1000" height="700"
+           alt="Pantalla de la garita: fondo verde con un visto grande, Puede pasar, el nombre de la visita, la unidad y la placa del vehículo.">
+    </div>
+  </div>
+</section>
+
+<!-- ══ CÓMO EMPEZAR ══════════════════════════════════════════ -->
+<section id="empezar">
+  <div class="env">
+    <p class="ojal" data-t="emp_ojal">Cómo empezar</p>
+    <h2 data-t="emp_h2">Acompañados desde el primer mes.</h2>
+    <p class="entrada" style="margin-top:18px" data-t="emp_p">
+      La carga inicial la hacemos nosotros. Usted ve el sistema funcionando con
+      los datos de su propio inmueble antes de cambiar nada.
+    </p>
+
+    <div class="pasos">
+      <div class="paso">
+        <span class="n" aria-hidden="true"></span>
+        <div>
+          <h3 data-t="e1t">Conversamos</h3>
+          <p data-t="e1d">Media hora para conocer su inmueble: cómo cobra, qué partidas usa y cómo calcula la mora.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <span class="n" aria-hidden="true"></span>
+        <div>
+          <h3 data-t="e2t">Cargamos su inmueble</h3>
+          <p data-t="e2d">Unidades, alícuotas, propietarios y saldos. Usted nos envía su hoja de cálculo como la tenga. Sin costo.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <span class="n" aria-hidden="true"></span>
+        <div>
+          <h3 data-t="e3t">Un mes en paralelo</h3>
+          <p data-t="e3d">Cerramos el mes en Vecitap mientras usted cierra como siempre, y comparamos recibo por recibo.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <span class="n" aria-hidden="true"></span>
+        <div>
+          <h3 data-t="e4t">El cambio, cuando usted lo diga</h3>
+          <p data-t="e4d">Con los dos cierres cuadrados delante, el mes siguiente ya sale de Vecitap.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ PRECIO ════════════════════════════════════════════════ -->
+<section class="alt" id="precio">
+  <div class="env">
+    <p class="ojal" data-t="pre_ojal">Precio</p>
+    <h2 data-t="pre_h2">Por unidad, y usted decide quién lo paga.</h2>
+
+    <div class="precio-caja">
+      <div class="precio-izq">
+        <p style="font-size:12px;color:var(--tinta2);font-weight:600;text-transform:uppercase;letter-spacing:.1em;position:relative;z-index:1"
+           data-t="pre_rot">Plan único · todo incluido</p>
+        <div class="cifra"><span class="n" data-t="pre_n">$1,20</span><span class="u" data-t="pre_u">por unidad, al mes</span></div>
+        <p style="font-size:14.5px;color:var(--tinta2);position:relative;z-index:1" data-t="pre_sub">
+          Un inmueble de 50 unidades son 60 dólares al mes. Mínimo 35 dólares.</p>
+        <ul class="incluye">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="pre_i1">Todas las funciones, sin versión recortada.</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="pre_i2">Usuarios sin límite: junta, contador, conserje.</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="pre_i3">La carga inicial y el mes en paralelo, sin costo.</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span data-t="pre_i4">Sus datos son suyos y se exportan cuando quiera.</span></li>
+        </ul>
+      </div>
+      <div class="precio-der">
+        <h3 style="font-size:17px;margin-bottom:12px" data-t="pre_qt">¿Quién paga?</h3>
+        <p style="font-size:14.8px;color:var(--tinta2);margin-bottom:18px" data-t="pre_qp">
+          Las dos formas son legítimas y el sistema las maneja distinto:</p>
+        <p style="font-size:14.5px;color:var(--tinta2);margin-bottom:15px" data-t="pre_q1">
+          <strong style="color:var(--tinta)">La administradora.</strong> Lo paga como
+          herramienta de trabajo. No toca el recibo de los propietarios.</p>
+        <p style="font-size:14.5px;color:var(--tinta2)" data-t="pre_q2">
+          <strong style="color:var(--tinta)">El condominio.</strong> Entra como gasto
+          común repartido por alícuota, con el acta de asamblea que lo aprueba.</p>
+      </div>
+    </div>
+
+    <div class="preguntas">
+      <details>
+        <summary data-t="f1p">¿Tengo que instalar algo?</summary>
+        <p data-t="f1r">No. Se abre en el navegador, en la computadora o en el teléfono. El
+          propietario tampoco instala nada: entra a una dirección y ve su recibo.</p>
+      </details>
+      <details>
+        <summary data-t="f2p">¿Sirve para oficinas o conjuntos de casas?</summary>
+        <p data-t="f2r">Sí. La lógica es la misma: unidades con alícuota, gastos comunes que se
+          reparten y un recibo por unidad. Cambia el vocabulario, no la cuenta.</p>
+      </details>
+      <details>
+        <summary data-t="f3p">¿Puedo llevar varios inmuebles con una sola cuenta?</summary>
+        <p data-t="f3r">Sí. Una administradora maneja todos los suyos desde el mismo sitio, y los
+          datos de uno nunca se cruzan con los de otro.</p>
+      </details>
+      <details>
+        <summary data-t="f4p">¿Qué pasa con mis datos si me voy?</summary>
+        <p data-t="f4r">Se los entregamos completos, en formato abierto, dentro de los 30 días
+          siguientes. Está por escrito en el contrato.</p>
+      </details>
+      <details>
+        <summary data-t="f5p">¿Vecitap administra el inmueble?</summary>
+        <p data-t="f5r">No. Vecitap es la herramienta; el que administra es usted. El sistema no
+          custodia ni recibe fondos del condominio en ningún momento.</p>
+      </details>
+      <details>
+        <summary data-t="f6p">¿Necesitan la clave de mi banco para conciliar los pagos?</summary>
+        <p data-t="f6r">Nunca. Para conciliar, usted sube el archivo o la foto del estado de cuenta.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══ CIERRE ════════════════════════════════════════════════ -->
+<section class="cierre" id="hablar">
+  <span class="brillo"></span>
+  <div class="env cierre-rejilla">
+    <div>
+      <p class="ojal" data-t="cie_ojal">Conversemos</p>
+      <h2 data-t="cie_h2">Cuéntenos de su inmueble.</h2>
+      <p class="entrada" style="margin-top:16px" data-t="cie_p">
+        Media hora para ver su caso y mostrarle el sistema funcionando.
+      </p>
+    </div>
+    <div class="vias">
+      <a class="via" id="wa" href="https://wa.me/584122348595?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20de%20Vecitap">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2m0 1.67c2.2 0 4.27.86 5.83 2.41a8.2 8.2 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.25 8.24a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24m-3.2 4.2c-.15 0-.39.06-.6.28-.2.22-.78.77-.78 1.87s.8 2.17.91 2.32c.11.15 1.55 2.37 3.76 3.32.53.23.94.36 1.26.46.53.17 1.01.15 1.39.09.42-.06 1.31-.53 1.49-1.05.19-.52.19-.97.13-1.06-.06-.09-.2-.15-.42-.26-.22-.11-1.31-.65-1.51-.72-.2-.08-.35-.11-.5.11-.15.22-.57.72-.7.87-.13.15-.26.17-.48.06-.22-.11-.93-.34-1.77-1.09-.65-.58-1.1-1.3-1.22-1.52-.13-.22-.01-.34.1-.45.1-.1.22-.26.33-.39.11-.13.15-.22.22-.37.07-.15.04-.28-.02-.39-.06-.11-.5-1.2-.68-1.65-.18-.43-.36-.37-.5-.38-.13 0-.28-.01-.42-.01"/></svg>
+        <span data-t="via_wa">Escribir por WhatsApp</span>
+      </a>
+      <a class="via" id="correo" href="mailto:hola@vecitap.com?subject=Quiero%20saber%20m%C3%A1s%20de%20Vecitap">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+        <span data-t="via_correo">hola@vecitap.com</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="env">
+    <span data-t="pie1">© 2026 Vecitap · Caracas, Venezuela</span>
+    <a href="mailto:privacidad@vecitap.com" class="sep" data-t="pie2">privacidad@vecitap.com</a>
+    <a href="/entrar" data-t="pie3">Entrar al sistema</a>
+  </div>
+</footer>
+
+<script>
+/* El recibo que se mueve. Misma cuenta que hace el sistema al cerrar:
+   la alícuota reparte los gastos y el honorario es un porcentaje de lo
+   facturado. */
+(function () {
+  var TASA = 92.44, HONORARIO = 0.05;
+  var mp = document.getElementById("m-presupuesto");
+  var ma = document.getElementById("m-alicuota");
+  if (!mp || !ma) return;
+  /* En Venezuela el punto separa los miles y la coma los decimales. */
+  function ve(n, d) {
+    return n.toLocaleString("es-VE", { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function pintar() {
+    var pre = Number(mp.value), ali = Number(ma.value) / 100;
+    var com = pre * ali / 100, hon = com * HONORARIO, tot = com + hon;
+    document.getElementById("v-presupuesto").textContent = ve(pre, 0);
+    document.getElementById("v-alicuota").textContent = ve(ali, 2);
+    document.getElementById("r-comunes").textContent = "$ " + ve(com, 2);
+    document.getElementById("r-honorario").textContent = "$ " + ve(hon, 2);
+    document.getElementById("r-total").textContent = "$ " + ve(tot, 2);
+    document.getElementById("r-bs").textContent = "Bs. " + ve(tot * TASA, 2) + " · tasa " + ve(TASA, 2);
+  }
+  mp.addEventListener("input", pintar);
+  ma.addEventListener("input", pintar);
+  pintar();
+})();
+
+/* Dos públicos, dos listas. Mostrarlas juntas hace que cada uno lea
+   cuatro cosas que no son suyas. */
+(function () {
+  var pares = [["t-admin", "p-admin"], ["t-junta", "p-junta"]];
+  function elegir(cual) {
+    pares.forEach(function (par) {
+      var pestana = document.getElementById(par[0]);
+      var panel = document.getElementById(par[1]);
+      if (!pestana || !panel) return;
+      var activa = par[0] === cual;
+      pestana.setAttribute("aria-selected", activa ? "true" : "false");
+      panel.hidden = !activa;
+    });
+  }
+  pares.forEach(function (par) {
+    var p = document.getElementById(par[0]);
+    if (p) p.addEventListener("click", function () { elegir(par[0]); });
+  });
+})();
+</script>
+
+</body>
+</html>
