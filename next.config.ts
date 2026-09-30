@@ -1,13 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* Sin configuración propia.
+  /* La portada pública (vecitap.com) es el sitio de venta, que antes vivía
+     en GitHub Pages (repo vecitap-sitio). Se sirve tal cual desde
+     `public/inicio.html` para no reescribirlo en React: es HTML estático y
+     el equipo comercial lo edita aparte.
 
-     Hubo un momento con redirecciones de `/index.html`, `/admin.html` y
-     compañía hacia las rutas nuevas. Se sacaron: esas direcciones nunca
-     existieron en vecitap.com —vivían en mi.vecitap.com, que sigue en pie
-     como respaldo y no se toca—, así que no había nadie a quien redirigir.
-     Eran una respuesta a un problema que no existe. */
+     `beforeFiles` hace que la raíz responda con ese archivo antes de mirar
+     `app/(marketing)/page.tsx`, que queda sin uso hasta que la portada se
+     migre. La URL que ve el visitante sigue siendo `/`. */
+  async rewrites() {
+    return {
+      beforeFiles: [{ source: "/", destination: "/inicio.html" }],
+    };
+  },
 };
 
 export default nextConfig;
