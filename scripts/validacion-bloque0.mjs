@@ -21,19 +21,35 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BASE = "http://localhost:3000";
+const BASE = process.env.VALIDACION_BASE_URL || "http://localhost:3000";
 const CAPTURAS = path.join(__dirname, "capturas-bloque0");
 mkdirSync(CAPTURAS, { recursive: true });
 
+// Las claves de las cuentas de prueba NO se escriben acá: el repo es público
+// (ver AGENTS.md, sección "Producción"). Se pasan por entorno al invocar:
+//   $env:VALIDACION_ADMIN_CLAVE="…"; node scripts/validacion-bloque0.mjs
 const CREDS = {
-  admin: { email: "admin.prueba@vecitap.com", password: "temporal.1234" },
-  residente: { email: "residente.prueba@vecitap.com", password: "12345678" },
-  operador: { email: "operador.prueba@vecitap.com", password: "temporal.1234" },
+  admin: { email: "admin.prueba@vecitap.com", password: process.env.VALIDACION_ADMIN_CLAVE },
+  residente: { email: "residente.prueba@vecitap.com", password: process.env.VALIDACION_RESIDENTE_CLAVE },
+  operador: { email: "operador.prueba@vecitap.com", password: process.env.VALIDACION_OPERADOR_CLAVE },
 };
 
-// Hashes conocidos de los logos ya sincronizados (raíz -> public/, sesión
-// anterior) — si estos no coinciden, public/ no está sirviendo lo mismo que
-// la raíz del repo.
+const sinClave = Object.entries(CREDS)
+  .filter(([, c]) => !c.password)
+  .map(([rol]) => `VALIDACION_${rol.toUpperCase()}_CLAVE`);
+if (sinClave.length > 0) {
+  console.error(`Faltan variables de entorno con las claves de prueba: ${sinClave.join(", ")}`);
+  process.exit(1);
+}
+
+// Hashes conocidos de los logos de `public/`. Comprueban que lo que sirve
+// Next sea el archivo del repo y no una versión vieja cacheada.
+//
+// Antes estos hashes se describían como "los de la raíz del repo": había una
+// copia de cada logo en la raíz, para los HTML, y otra en public/, para la
+// app. Desde el 29-sep la copia de la raíz no existe —los HTML salieron de
+// esta rama— y `public/` es el único origen. Los valores no cambiaron: las
+// dos copias eran idénticas byte a byte.
 const HASH_LOGO_CLARO = "4cbdbf9df235f85a2ac3d1d5f7998d0be170b7f763fd7a414e943c9b46e01e0b";
 const HASH_LOGO_OSCURO = "8243090df555148b15b9f45bf219de0db3b576cee3d8cfb9c59835baaee2766c";
 
@@ -242,13 +258,13 @@ const MARCADORES_ADMIN = ['a:has-text("Inicio")', "text=Nueva administradora", "
     const hc = createHash("sha256").update(await rc.body()).digest("hex");
     const ho = createHash("sha256").update(await ro.body()).digest("hex");
     registrar(
-      "logo-claro.png servido == raíz del repo",
+      "logo-claro.png servido == public/ del repo",
       HASH_LOGO_CLARO,
       hc,
       hc === HASH_LOGO_CLARO
     );
     registrar(
-      "logo-oscuro.png servido == raíz del repo",
+      "logo-oscuro.png servido == public/ del repo",
       HASH_LOGO_OSCURO,
       ho,
       ho === HASH_LOGO_OSCURO

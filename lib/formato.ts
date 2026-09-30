@@ -1,13 +1,16 @@
 /**
- * Antes duplicado byte a byte en app.html, residente.html y operador.html,
- * y redeclarado una vez más dentro de htmlRecibo() en app.html/residente.html
- * (generan el HTML del recibo fuera del árbol de React, por eso no podían
- * cerrar sobre el de arriba).
+ * Ésta es **la única** copia de `nf`/`usd` del proyecto.
  *
- * Esas copias en los HTML son intencionales y NO deben eliminarse: los
- * HTML originales quedan intactos como línea base de validación de la
- * Fase 4 (decisión de la Fase 1). Esta es la versión nueva para el
- * código de Next.js, no un reemplazo de las copias viejas.
+ * En los HTML originales estaba duplicada byte a byte en los tres módulos, y
+ * redeclarada una vez más dentro de `htmlRecibo()` (que arma el HTML del
+ * recibo fuera del árbol de React, así que no podía cerrar sobre la de
+ * arriba). Esa duplicación era inevitable ahí: sin bundler, los HTML no
+ * podían importar nada.
+ *
+ * Aquella nota decía que las copias de los HTML no se tocaban porque los
+ * archivos quedaban en la raíz como línea base de la Fase 4. **Ya no están
+ * en esta rama**: la referencia de paridad es `main`, congelada, y se lee
+ * con `git show main:index.html`. Acá no queda nada que desduplicar.
  */
 export const nf = (decimales = 2) =>
   new Intl.NumberFormat("es-VE", {

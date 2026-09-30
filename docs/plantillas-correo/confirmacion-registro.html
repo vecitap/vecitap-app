@@ -1,0 +1,112 @@
+<!--
+  Vecitap · Auth → Confirm signup
+  Asunto sugerido: Confirme su cuenta de Vecitap
+
+  El enlace va a /auth/confirmar con token_hash (NO con {{ .ConfirmationURL }}),
+  para que funcione aunque el correo se abra en otro dispositivo. Ver
+  docs/plantillas-correo/README.md.
+-->
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Confirme su cuenta de Vecitap</title>
+  </head>
+  <body style="margin:0; padding:0; background-color:#F8FAFC; -webkit-text-size-adjust:100%;">
+
+    <!-- Preencabezado: lo que se lee en la lista del buzón, antes de abrir. -->
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent; height:0; width:0;">
+      Confirme su correo para empezar a usar Vecitap.
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F8FAFC;">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; background-color:#FFFFFF; border:1px solid #E4E9F0; border-radius:14px;">
+
+            <!-- Banda de marca -->
+            <tr>
+              <td style="background-color:#0A1128; border-radius:14px 14px 0 0; padding:22px 28px;">
+                <span style="font-family:Helvetica,Arial,sans-serif; font-size:19px; font-weight:bold; color:#FFFFFF; letter-spacing:.02em;">Vecitap</span>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:30px 28px 8px 28px; font-family:Helvetica,Arial,sans-serif;">
+                <h1 style="margin:0 0 14px 0; font-size:21px; line-height:1.35; color:#0A1128; font-weight:bold;">
+                  Confirme su cuenta
+                </h1>
+                <p style="margin:0 0 18px 0; font-size:15px; line-height:1.65; color:#2A3654;">
+                  Alguien creó una cuenta en Vecitap con esta dirección. Para poder entrar,
+                  confirme que el correo es suyo.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Botón. Va en su propia tabla con el color de fondo en el <td>:
+                 es la forma que respetan Outlook y los clientes viejos. -->
+            <tr>
+              <td style="padding:6px 28px 24px 28px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center" bgcolor="#F98513" style="background-color:#F98513; border-radius:10px;">
+                      <a href="{{ .SiteURL }}/auth/confirmar?token_hash={{ .TokenHash }}&amp;type=signup&amp;de=registro&amp;siguiente=%2Fdestino"
+                         style="display:inline-block; padding:14px 30px; font-family:Helvetica,Arial,sans-serif; font-size:16px; font-weight:bold; color:#0A1128; text-decoration:none; border-radius:10px;">
+                        Confirmar mi cuenta
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- El enlace en texto: hay gente que no toca botones en un correo,
+                 y hay clientes que no los muestran. -->
+            <tr>
+              <td style="padding:0 28px 26px 28px; font-family:Helvetica,Arial,sans-serif;">
+                <p style="margin:0 0 6px 0; font-size:13px; line-height:1.6; color:#64748B;">
+                  Si el botón no funciona, copie esta dirección y péguela en su navegador:
+                </p>
+                <p style="margin:0; font-size:12.5px; line-height:1.6; color:#2A3654; word-break:break-all;">
+                  {{ .SiteURL }}/auth/confirmar?token_hash={{ .TokenHash }}&amp;type=signup&amp;de=registro&amp;siguiente=%2Fdestino
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:0 28px;">
+                <div style="height:1px; background-color:#E4E9F0; font-size:0; line-height:0;">&nbsp;</div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:18px 28px 28px 28px; font-family:Helvetica,Arial,sans-serif;">
+                <p style="margin:0 0 10px 0; font-size:13px; line-height:1.65; color:#64748B;">
+                  El enlace vence y sirve una sola vez.
+                </p>
+                <p style="margin:0; font-size:13px; line-height:1.65; color:#64748B;">
+                  <strong style="color:#2A3654;">¿No creó ninguna cuenta?</strong>
+                  No haga nada: sin esta confirmación la cuenta no se activa.
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px;">
+            <tr>
+              <td align="center" style="padding:16px 12px 4px 12px; font-family:Helvetica,Arial,sans-serif; font-size:12px; line-height:1.6; color:#64748B;">
+                Vecitap · administración de condominios<br />
+                Este correo se envía automáticamente. No responda a esta dirección.
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

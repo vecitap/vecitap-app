@@ -5,6 +5,7 @@ import { Aviso, Badge, Button, Campo, Input, Select, type TonoBadge } from "@/co
 import { correoValido } from "@/lib/admin/personas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { fechaCorta } from "@/lib/formato";
+import { urlDelSitio } from "@/lib/url-sitio";
 import type { InvitacionAdmin, ResidenteAcceso, VigilanteAcceso } from "@/lib/admin/tipos";
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
@@ -294,7 +295,11 @@ export function Accesos({
                         // apunta directo a /entrar con el destino puesto: el
                         // residente cae en /mi y, sin unidades todavía, en la
                         // pantalla de aceptar la invitación.
-                        `${location.origin}/entrar?volver=/mi\n\n` +
+                        // `urlDelSitio()` y no `location.origin`: este texto se
+                        // le manda a un residente de verdad, así que tiene que
+                        // llevar el dominio público aunque quien lo copie esté
+                        // mirando un Preview de Vercel.
+                        `${urlDelSitio("/entrar?volver=/mi")}\n\n` +
                         `Cree su cuenta con el correo ${codigo.correo} y pegue este código:\n${codigo.token}`
                     )
                   }
@@ -497,7 +502,7 @@ export function Accesos({
                       `Hola. Para entrar al panel de seguridad de la garita, abra ` +
                         // El original manda a `garita.html`, que en main es un
                         // archivo suelto. Acá la garita es una ruta de la app.
-                        `${location.origin}/garita\n\n` +
+                        `${urlDelSitio("/garita")}\n\n` +
                         `Toque "Es mi primera vez", cree su clave con el correo ` +
                         `${codigoVig.correo} y pegue este código:\n${codigoVig.token}`
                     )

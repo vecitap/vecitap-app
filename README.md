@@ -1,9 +1,16 @@
 # Vecitap
 
 Sistema de administración de condominios. En migración de HTML+React vía CDN
-(`app.html`, `residente.html`, `operador.html`, `vecitap.html` — se mantienen
-en la raíz sin tocar mientras dura la migración) a un proyecto Next.js real,
-en fases:
+a un proyecto Next.js real, en fases.
+
+> **Los HTML originales no están en esta rama.** Viven en `main`, que está
+> congelada y es la referencia de paridad. Se leen sin cambiar de rama:
+> `git show main:admin.html`, `git show main:index.html`,
+> `git show main:operador.html`, `git show main:garita.html`. Cuando un
+> comentario del código dice `admin.html:3899`, se refiere a ese archivo en
+> `main`. Ver [`AGENTS.md`](AGENTS.md).
+
+Las fases:
 
 1. Fundaciones (este scaffold)
 2. Sistema de diseño compartido
@@ -17,14 +24,20 @@ en fases:
 
 ## Estructura
 
-- `app/(marketing)` — sitio público
+- `app/(marketing)` — sitio público y `/entrar` (compartido por los 4 roles)
 - `app/(admin)/admin` — módulo del administrador de condominio
 - `app/(residente)/mi` — módulo del residente
 - `app/(interno)/operador` — back-office interno de Vecitap (acceso restringido)
+- `app/(garita)/garita` — módulo de la garita (vigilantes)
+- `app/auth/confirmar` — aterrizaje de los enlaces de correo de Supabase Auth
 - `components/ui` — componentes de interfaz compartidos
-- `components/{admin,residente,operador}` — componentes específicos por módulo
-- `lib/supabase`, `lib/theme`, `lib/auth` — cliente de datos, tokens de tema, helpers de sesión
+- `components/{admin,residente,operador,garita}` — componentes por módulo
+- `lib/` — cliente de datos, tokens de tema y toda la lógica de negocio
+- `proxy.ts` — sesión y gates de rol (se llamaba `middleware.ts` hasta Next 15)
+- `public/` — los únicos estáticos que sirve la app (logos)
 - `hooks`, `types`, `tests`
+- `docs/` — estado del plan, inventarios, consultas de producción, respaldo
+- `supabase/migrations` y `supabase/rollbacks` — cambios de base, como archivo
 
 ## Desarrollo
 

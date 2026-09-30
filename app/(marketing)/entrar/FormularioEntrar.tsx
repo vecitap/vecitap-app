@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Campo, CampoClave, Card, Input } from "@/components/ui";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { urlDelSitio } from "@/lib/url-sitio";
 
 type Modo = "entrar" | "crear" | "olvide" | "clave-nueva";
 
@@ -28,6 +29,14 @@ type Modo = "entrar" | "crear" | "olvide" | "clave-nueva";
  * (ver docs/casos-de-uso-mejorados.md, caso 6). El rate limiting propio
  * sigue pendiente de Fase 5 — Supabase Auth ya limita intentos por su
  * cuenta, pero no hay nada adicional de este lado.
+ *
+ * **Los dos enlaces por correo salen por `/auth/confirmar`** (ver esa ruta):
+ * el de confirmar la cuenta (`emailRedirectTo`) y el de recuperar la clave
+ * (`redirectTo`). La URL absoluta la arma `urlDelSitio()`, que acierta sola
+ * en local, en cada Preview y en https://vecitap.com — no hay ningún dominio
+ * escrito acá. El canje del `?code=` pasó a hacerse del lado del servidor, y
+ * esta pantalla se entera por la URL: `?clave=nueva` abre el formulario de
+ * clave nueva, `?error=enlace` avisa que el enlace ya no sirve.
  */
 export function FormularioEntrar() {
   const router = useRouter();
@@ -36,8 +45,13 @@ export function FormularioEntrar() {
   // caía en `/` (la página en construcción), que no lleva a ningún lado
   // para ninguno de los tres roles.
   const volver = searchParams.get("volver") || "/destino";
+  // Puestos por /auth/confirmar después de canjear el enlace del correo.
+  const vieneDeRecuperacion = searchParams.get("clave") === "nueva";
+  const enlaceRoto = searchParams.get("error") === "enlace";
+  // Para qué era el enlace que falló: cambia solo el consejo del mensaje.
+  const enlaceEraDe = searchParams.get("de");
 
-  const [modo, setModo] = useState<Modo>("entrar");
+  const [modo, setModo] = useState<Modo>(vieneDeRecuperacion ? "clave-nueva" : "entrar");
   const [correo, setCorreo] = useState("");
   const [clave, setClave] = useState("");
   const [otra, setOtra] = useState("");
@@ -46,13 +60,19 @@ export function FormularioEntrar() {
   const [enviando, setEnviando] = useState(false);
   const [correoSesion, setCorreoSesion] = useState("");
 
-  /* Volvió del correo de recuperación. Se mira el `#` además del evento
-     porque el evento puede llegar antes de que este efecto se suscriba. */
+  /* Volvió del correo de recuperación.
+     · El camino normal hoy es `?clave=nueva`, que pone /auth/confirmar después
+       de canjear el `?code=` del lado del servidor. Ahí la sesión ya está en
+       las cookies y solo falta traer el correo para mostrarlo.
+     · El `#type=recovery` y el evento `PASSWORD_RECOVERY` se conservan como
+       red de seguridad para un enlace del flujo viejo (implícito) que siga
+       vivo en la bandeja de alguien. */
   useEffect(() => {
     const supabase = crearClienteNavegador();
     let vivo = true;
 
-    const esRecuperacion = /type=recovery/.test(window.location.hash || "");
+    const esRecuperacion =
+      vieneDeRecuperacion || /type=recovery/.test(window.location.hash || "");
     if (esRecuperacion) {
       supabase.auth.getUser().then(({ data }) => {
         if (!vivo) return;
@@ -70,7 +90,7 @@ export function FormularioEntrar() {
       vivo = false;
       sub?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [vieneDeRecuperacion]);
 
   function cambiarModo(siguiente: Modo) {
     setError(null);
@@ -87,9 +107,13 @@ export function FormularioEntrar() {
 
     if (modo === "olvide") {
       /* El enlace vuelve a ESTA página, no a otra: si la persona terminara
-         en otro panel con una sesión a medio hacer, no entendería nada. */
+         en otro panel con una sesión a medio hacer, no entendería nada. Pasa
+         primero por /auth/confirmar, que canjea el código y la deja acá con
+         la sesión ya abierta y el formulario en "clave nueva". */
       const { error: e } = await supabase.auth.resetPasswordForEmail(correo.trim().toLowerCase(), {
-        redirectTo: window.location.href.split("#")[0].split("?")[0],
+        redirectTo: urlDelSitio(
+          `/auth/confirmar?de=clave&siguiente=${encodeURIComponent("/entrar?clave=nueva")}`
+        ),
       });
       setEnviando(false);
       if (e) return setError(e.message);
@@ -124,7 +148,20 @@ export function FormularioEntrar() {
     const { data, error: e } =
       modo === "entrar"
         ? await supabase.auth.signInWithPassword(credenciales)
-        : await supabase.auth.signUp(credenciales);
+        : await supabase.auth.signUp({
+            ...credenciales,
+            options: {
+              /* Con "Confirm email" encendido (producción) el enlace del
+                 correo tiene que traer a la persona de vuelta a ESTE sitio y
+                 dejarla adentro. Pasa por /auth/confirmar, que canjea el
+                 código y la manda a donde iba (`volver`); esa ruta sanea el
+                 valor, así que un `volver` armado a mano no puede convertir
+                 el enlace en un redirector a otro dominio. */
+              emailRedirectTo: urlDelSitio(
+                `/auth/confirmar?de=registro&siguiente=${encodeURIComponent(volver)}`
+              ),
+            },
+          });
 
     setEnviando(false);
     if (e) {
@@ -180,6 +217,17 @@ export function FormularioEntrar() {
         <p style={{ fontSize: 13.5, color: "var(--tinta-2)", lineHeight: 1.6, margin: "0 0 14px" }}>
           Le mandamos un enlace para poner una clave nueva. Va al correo con el que entra, y solo
           sirve una vez.
+        </p>
+      )}
+
+      {enlaceRoto && modo !== "clave-nueva" && (
+        <p style={{ color: "var(--rojo)", fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px" }}>
+          Ese enlace ya no sirve: vence y se usa una sola vez.{" "}
+          {enlaceEraDe === "registro"
+            ? "Entre con su correo y su clave; si le dice que falta confirmar la cuenta, cree la cuenta otra vez con el mismo correo y le llega un enlace nuevo."
+            : enlaceEraDe === "correo"
+              ? "Su correo sigue siendo el de antes. Entre con él y vuelva a pedir el cambio desde su perfil."
+              : "Pida uno nuevo con “Olvidé mi contraseña”."}
         </p>
       )}
 

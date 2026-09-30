@@ -23,6 +23,129 @@ concretos de cada fase) vive en [`docs/estado-migracion.md`](docs/estado-migraci
 stack, convenciones de arquitectura y reglas de gobierno que no cambian de una fase a
 otra.**
 
+## Producción
+
+**Léelo antes de tocar nada. Esta app está en vivo.**
+
+### `integration` publica vecitap.com. Cada push llega a usuarios reales.
+
+No hay rama de staging entre medio: lo que se empuja a `integration` se
+despliega en https://vecitap.com y lo usan administradores de condominio y
+residentes de verdad, con su dinero y sus datos. No es un entorno de pruebas
+con datos bonitos.
+
+De eso salen tres reglas, sin excepción:
+
+1. **`npm run build`, `npm run lint` y `npx tsc --noEmit` en verde antes de
+   cada push.** Los tres, no uno. Un error de tipos no rompe `npm run dev`
+   pero sí rompe el build de Vercel, y un build roto deja el sitio servido
+   por la versión anterior sin avisar a nadie.
+2. **Lo que dependa del método HTTP o del status de una respuesta se prueba
+   contra `next start` o contra el Preview de Vercel, nunca solo contra
+   `npm run dev`** — ver "Flujo de trabajo" más abajo: un `POST` a una página
+   devuelve 200 en dev y 405 en el build de producción, y así pasó un bug
+   entero una validación completa.
+3. **Ante la duda, abrí un Preview.** Cada rama que no sea `integration`
+   genera uno en Vercel con su propia URL; eso es gratis y no toca a nadie.
+
+Contexto que conviene tener presente: `main` está **congelada** y publica
+`mi.vecitap.com` (GitHub Pages, contra la base de **pruebas**), que queda como
+respaldo. Nunca se mergea a `main`.
+
+### En esta rama no hay HTML. La referencia de paridad es `main`.
+
+**No busques `admin.html`, `index.html`, `operador.html` ni `garita.html` en
+el árbol de trabajo: no están.** Se borraron de `integration` el 29-sep. Si un
+comentario del código o un documento dice `admin.html:3899`, se refiere al
+archivo **en `main`**, no a un archivo de esta rama.
+
+Para leerlos, **sin cambiar de rama y sin restaurarlos**:
+
+```bash
+git show main:admin.html | less          # el archivo entero
+git show main:index.html                 # Residente
+git show main:operador.html              # Operador
+git show main:garita.html                # Garita
+git show main:admin.html | sed -n '3899,3960p'   # un rango concreto
+git show main:index.html | grep -n "papelRecibo" # buscar algo
+```
+
+`main` está congelada, así que esas líneas no se mueven: una referencia
+`archivo.html:N` escrita hace semanas sigue apuntando a lo mismo.
+
+Dos reglas que salen de esto:
+
+1. **Los HTML son de solo lectura, y de otra rama.** Se consultan para
+   comparar comportamiento o texto. No se editan, no se restauran a esta
+   rama, no se copian a `public/`.
+2. **Todo cambio va en la app de Next.** Si algo no coincide con `main`, lo
+   que se corrige es el componente, nunca el HTML. Y si el desvío es
+   deliberado, se registra en
+   [`docs/casos-de-uso-mejorados.md`](docs/casos-de-uso-mejorados.md).
+
+Los estáticos que sí necesita la app viven en **`public/`**
+(`logo-claro.png`, `logo-oscuro.png`) y el favicon en `app/favicon.ico`. La
+raíz ya no sirve archivos: en esta rama la sirve Next, y Next solo publica
+`public/`.
+
+### Los cambios de base van como archivo, nunca a mano en el dashboard
+
+Todo cambio de esquema, función, política de RLS, trigger o cron **se escribe
+como archivo**:
+
+- La migración en `supabase/migrations/AAAAMMDDHHMMSS_nombre.sql`.
+- Su reverso en `supabase/rollbacks/AAAAMMDDHHMMSS_nombre_rollback.sql`.
+  **Sin rollback la migración no está terminada**, aunque el SQL de ida
+  funcione.
+- Los pasos de verificación (qué consultar y qué tiene que devolver) al final
+  del propio archivo de migración, no en el mensaje del commit ni en el chat.
+
+Y se aplican **en este orden, siempre**:
+
+1. Primero en **vecitap-pruebas**.
+2. Después, y solo si lo anterior salió bien, en **vecitap-produccion**.
+
+**Nunca se edita nada directo en el dashboard de producción** — ni el SQL
+Editor "para probar rápido", ni el editor de tablas, ni el de políticas. Un
+cambio hecho ahí no queda en el repo, no tiene rollback, no está en
+pruebas, y la próxima migración que asuma el estado anterior se va a romper o,
+peor, va a pisar el cambio en silencio. Si hace falta corregir algo en
+producción, se escribe la migración y se aplica.
+
+Quien corre el SQL es **Nicolás**: un asistente entrega la consulta lista para
+copiar, más una de verificación, y no ejecuta nada contra ninguna base.
+
+### Respaldo antes de cualquier migración en producción
+
+**Respaldo primero, migración después.** Sin excepciones por "es un cambio
+chiquito": las migraciones chiquitas son justamente las que se aplican sin
+pensarlas. El procedimiento completo (Supabase CLI con `--db-url`, roles /
+esquema / datos por separado, y cómo restaurar) está en
+[`docs/respaldo.md`](docs/respaldo.md).
+
+### Ninguna clave en el repo: es público
+
+`github.com/vecitap/vecitap-app` es un **repositorio público**. Cualquiera lee
+cada archivo y todo el historial de commits, así que una clave commiteada está
+comprometida desde el momento del push — borrarla después no la borra del
+historial, solo hay que rotarla.
+
+- **Nunca** en un archivo del repo, ni en `docs/`, ni en un comentario, ni
+  como "valor de ejemplo" en `.env.example`, ni en un script de pruebas:
+  la clave de **Resend**, la **service_role** de Supabase, la **contraseña de
+  la base**, ni las claves de las cuentas de prueba.
+- Los valores reales van en `.env.local` (gitignored) y en las variables de
+  entorno de Vercel. Qué variable va en qué entorno está documentado en
+  [`.env.example`](.env.example), que es plantilla: nombres y explicaciones,
+  cero valores.
+- La única excepción es la clave **anon/publishable** de Supabase, que es
+  pública por diseño (la seguridad la dan las políticas de RLS, no el secreto
+  de esa clave). Aun así vive en variables de entorno, para poder apuntar a
+  distintos proyectos sin tocar código.
+- Tampoco se escriben a mano en el código las URLs ni los refs de los
+  proyectos de Supabase: van por variables de entorno, y la URL pública del
+  sitio se resuelve en un solo lugar, `lib/url-sitio.ts`.
+
 ## Stack
 - Next.js 16 (App Router) + React 19 + TypeScript
 - Hosting: Vercel — plan Hobby durante desarrollo, Pro obligatorio antes del
@@ -30,10 +153,24 @@ otra.**
   gestiona pagos)
 - Backend/DB: Supabase — Free durante desarrollo, Pro antes del lanzamiento
   (el plan gratuito pausa el proyecto tras una semana sin actividad)
-- Repo: github.com/vecitap/vecitap-app — rama de trabajo `integration` (desde
-  el 27-sep; `optimization` se mergeó ahí junto con `main`. Nunca mergear a
-  `main`: publica mi.vecitap.com — ver `docs/estado-migracion.md`)
-- Dominio vecitap.com vía Cloudflare (DNS apuntando a Vercel)
+- **Piloto del 30-sep: se sale a producción con los dos planes Free.**
+  Decisión tomada por Nicolás, no un olvido. Los dos límites de arriba
+  siguen en pie y hay que resolverlos antes del lanzamiento comercial
+  abierto — no volver a proponerlo como pregunta, sí tenerlo presente
+- Repo: github.com/vecitap/vecitap-app — **público**. Rama de trabajo
+  `integration` (desde el 27-sep; `optimization` se mergeó ahí junto con
+  `main`), que además **publica producción** — ver la sección "Producción"
+  más arriba. Nunca mergear a `main`: está congelada y publica
+  mi.vecitap.com contra la base de pruebas
+- Dominio vecitap.com vía Cloudflare (DNS apuntando a Vercel). La raíz sirve
+  toda la app (`/mi`, `/admin`, `/operador`, `/garita`); `www` redirige a la
+  raíz
+- Bases: **vecitap-produccion** (`sudghmerriewjmmnlcrf`) y **vecitap-pruebas**
+  (`hdivffuorclzulijkyry`). Los refs no se escriben en el código: van por
+  variables de entorno
+- Correo transaccional: Resend, dominio verificado `envios.vecitap.com`,
+  remitente `no-reply@envios.vecitap.com`. Lo despacha la base (`cola_correo`),
+  no la app Next
 
 ## Gobierno del proyecto
 - **No avanzar de fase sin aprobación explícita de Nicolás.**

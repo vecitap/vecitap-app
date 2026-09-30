@@ -67,6 +67,68 @@ retira, no es parte del producto.
 
 ---
 
+## Dónde quedó todo — corte del 28-sep
+
+Índice de lo que está esperando una acción, con el enlace a la sección que
+tiene el detalle. **Esto es un índice, no la fuente de verdad:** cada punto se
+explica en su sección, y cuando uno se cierra se marca acá y allá. Existe
+porque la sesión del 28-sep dejó pendientes repartidos en seis secciones y
+reconstruirlos leyendo el documento entero es caro.
+
+### Lo que tiene que correr Nicolás en la base (nada aplicado todavía)
+
+| # | Qué | Archivo | Antes de correrlo |
+|---|---|---|---|
+| 1 | `puede_ver_garita()` — gate de solo lectura para el bloque 13 | `supabase/migrations/20260928120000_puede_ver_garita.sql` | **No correr todavía:** es del bloque 13, que no arranca hasta la validación de Gustavo con datos piloto |
+| 2 | `correos_malos_ver` → `es_operador()` | `supabase/migrations/20260928130000_correos_malos_ver_solo_operador.sql` | Correr en **las dos bases** (vecitap-pruebas y producción). Sin dependencias |
+| 3 | Día local de la Bitácora + `hoy_local()` / `inicio_dia_local()` | `supabase/migrations/20260928140000_garita_bitacora_dia_local.sql` | **Avisarle a Gustavo antes:** toca una función `SECURITY DEFINER` de la base compartida. El cliente ya está corregido, así que hasta que esto corra la Bitácora sigue mostrando la ventana corrida |
+| 4 | Segunda ronda de fechas: las 5 funciones (`libro_edificio`, `historial_unidad`, `cerrar_periodo`, `generar_cobros_vencidos`, `generar_cobro_interno`) + `dia_local()` + default de `vinculos.desde` | `supabase/migrations/20260929120000_segunda_ronda_dia_local.sql` | **Va después del #3** (la guarda 1 aborta si faltan las auxiliares). **Respaldo antes de correrla en producción.** La guarda 2 aborta sola si alguna función cambió desde el volcado del 27-sep, así que es seguro intentarla. Ver "Punto 3" en "Salida a producción — 29-sep" |
+
+Los tres tienen su rollback en `supabase/rollbacks/` y su consulta de
+verificación dentro del propio archivo.
+
+### Lo que falta probar en el navegador
+
+- **`getClaims()` en `proxy.ts`** — matriz de 19 casos en "Hecho el 28-sep ·
+  `getClaims()` en el proxy". Los específicos son el **9, 10 y 12** (refresco de
+  sesión) y el **16 al 19** (cookies en los redirect). El caso 11 ya quedó
+  ejercido de rebote.
+- **"Salir" en los cuatro módulos, sobre un build de producción** (no
+  `npm run dev`: ahí el bug era invisible). Ver "Salir da HTTP 405".
+- **El lateral de Admin fijo**, y de paso que `/mi`, `/garita` y `/operador`
+  sigan sin scroll horizontal en el teléfono — el cambio de `globals.css` es
+  global. Ver "El lateral de Admin volvió a quedar fijo".
+- **Los `loading.tsx`**, recargando y navegando (lección de la Fase 2: probar
+  también con recarga).
+- **Los bloques 0 a 9**, que siguen sin validar — es el pendiente más grande y
+  es anterior a esta sesión.
+
+### Decisiones abiertas, sin código escrito
+
+- **Región de las funciones de Vercel** (propuesta 2 de "Lentitud de la
+  interfaz"): mirar Settings → Functions → Function Region y anotarlo. No toca
+  código y puede valer más que todo el resto junto.
+- **`experimental.staleTimes.dynamic`** (propuesta 4): sin aprobar. Contrapartida
+  de datos algo viejos en una app de contabilidad.
+- ~~**Segunda ronda de zona horaria**~~ — **CERRADA el 29-sep.** La migración
+  está escrita (`20260929120000_segunda_ronda_dia_local.sql`), sin aplicar. No
+  hizo falta el CSV de `pg_get_functiondef`: la migración se escribió sobre el
+  volcado y lleva adentro una guarda que compara el cuerpo actual de las cinco
+  contra el del volcado y **aborta sola** si alguno cambió, que es la misma
+  protección con menos pasos. Ver "Punto 3" en "Salida a producción — 29-sep".
+- ~~**`vinculos.desde`**~~ — **CERRADA el 29-sep**, revirtiendo la decisión del
+  28-sep: la misma migración le pone `default hoy_local()`. El motivo está en
+  "Punto 3" (resumen: `hoy_local()` va a existir igual, es una línea, y
+  cambiar un DEFAULT no reescribe la tabla).
+- **`proxy.ts` ↔ layouts**: la repetición de `getUser()`/`tiene_rol` entre el
+  proxy y el primer layout de cada módulo **sigue en pie a propósito**.
+  `cache()` no puede resolverla (runtimes distintos) y tocarla es autenticación.
+- **Zona única vs. zona por organización**: hoy `America/Caracas` está escrita
+  a mano en dos lugares (`ZONA_VECITAP` en `lib/formato.ts` y las auxiliares de
+  la base). Correcto mientras todos los clientes estén en Venezuela.
+
+---
+
 ## Fase 1 — Fundaciones (✅ completa)
 
 Node.js instalado (v24, npm 11) y scaffolding hecho: Next.js 16 (App
@@ -78,6 +140,10 @@ diferida a la Fase 2). Estructura creada: `app/(marketing)`,
 (commiteable) y `.env.local` (gitignored) creados. Los 4 HTML originales
 quedaron intactos en la raíz. Validado con `npm install`, `npm run build`
 y `npm run lint`.
+
+> **Al 29-sep esto ya no es así:** los HTML se borraron de `integration` (ver
+> "Limpieza de `integration`" al final). La referencia es `main`, congelada, y
+> se lee con `git show main:<archivo>`.
 
 `create-next-app` (Next 16) generó automáticamente `AGENTS.md` y
 `CLAUDE.md` con reglas de framework para agentes de IA — son parte del
@@ -164,6 +230,11 @@ módulos con alias), así que no pueden hacer `import` de `lib/`. Quedan
 intactos a propósito como línea base de validación visual/funcional de la
 Fase 4 — la duplicación desaparece sola cuando cada HTML se reemplace en
 su migración, no antes.
+
+> **Cerrado el 29-sep:** pasó exactamente eso. Con los cuatro módulos
+> migrados, los HTML salieron de `integration` y con ellos la duplicación.
+> `lib/formato.ts` es ahora la única copia de `nf`/`usd` en esta rama; las de
+> `main` siguen donde estaban, y `main` está congelada.
 
 ## Fase 4 — Migración vertical por módulo (⏳ en curso)
 
@@ -386,8 +457,8 @@ dentro del recibo":
   desactivar el cobro) sin que nadie editara nada a propósito. Es un
   riesgo de pérdida de datos, no solo un problema visual.
 - **Corrección aplicada (solo en el archivo migrado, `operador.html` NO
-  se tocó — sigue intacto como línea base de la Fase 4, decisión de la
-  Fase 1):**
+  se tocó — su versión de referencia vive en `main`, congelada, y se lee
+  con `git show main:operador.html`):**
   1. El campo pasa a ser un input controlado, sincronizado con `servicio`
      apenas llega del fetch — mismo patrón que ya usan todos los demás
      campos de esta ficha.
@@ -2812,3 +2883,920 @@ tiene la suya, así que esa pantalla no le aparece más— y una invitación emi
 desde Admin → Accesos → Vigilantes sobre Torre Ida. Conviene hacerlo junto con la
 validación de Accesos, que es de donde sale el código, y sumar esa segunda cuenta
 a la limpieza de Fase 9.
+
+---
+
+## Salida a producción — 29-sep (vecitap.com)
+
+Objetivo: dejar la app lista para producción el **miércoles 30-sep** en
+**vecitap.com** (raíz, con `/mi`, `/admin`, `/operador` y `/garita`), contra la
+base **vecitap-produccion**, con los planes Free de Vercel y Supabase.
+
+**Decisiones tomadas (no se reabren):**
+
+- Dominio: `vecitap.com`. `www.vecitap.com` redirige a la raíz.
+- `mi.vecitap.com` (GitHub Pages desde `main`, contra **vecitap-pruebas**) queda
+  como **respaldo**. No se toca. `main` queda **congelada**.
+- `integration` sigue siendo la rama de trabajo durante el piloto **y publica
+  producción**. Gustavo trabaja con su propio Claude sobre esta misma rama.
+- Repo **público**.
+- Refs de Supabase: **vecitap-produccion `sudghmerriewjmmnlcrf`**,
+  **vecitap-pruebas `hdivffuorclzulijkyry`**.
+- Correo: **Resend**, dominio verificado `envios.vecitap.com`, remitente
+  `no-reply@envios.vecitap.com` con nombre visible "Vecitap". **Confirm email
+  activado** en producción.
+- En producción se aplican todas las migraciones del repo que falten. Las corre
+  Nicolás en el SQL Editor.
+
+Estado de los 5 puntos de esa sesión:
+
+| # | Punto | Estado |
+|---|---|---|
+| 1 | Código (URLs por entorno, redirects de correo, `/design-system`, `.env.example`) | ✅ Hecho |
+| 2 | Sección "Producción" en `AGENTS.md` | ✅ Hecho |
+| 3 | Migración: segunda ronda de fechas | ✅ Hecho (escrita, sin aplicar) |
+| 4 | `docs/consultas-produccion.sql` | ✅ Hecho (las corre Nicolás) |
+| 5 | `docs/respaldo.md` | ✅ Hecho |
+
+**Los 5 puntos cerrados.** Lo que queda en manos de Nicolás, en orden:
+correr `docs/consultas-produccion.sql` en las dos bases (bloque h primero);
+cargar las variables de Vercel (`.env.example` dice cuál va en qué entorno);
+cargar la lista blanca de Authentication en vecitap-produccion; respaldar;
+aplicar las migraciones pendientes en el orden del bloque (z); y revisar que
+`secretos.correo_enlace` y los `ajustes_correo.enlace_base` apunten a
+`https://vecitap.com` (bloque g.2) **antes de que salga el primer recibo**.
+
+### Punto 1 — Código ✅ (29-sep)
+
+**a) Ninguna URL ni ref escrita a mano en el código de la app.** La auditoría
+(grep de `vercel.app`, `mi.vecitap.com`, `github.io` y los dos refs sobre todo
+el repo, excluyendo `node_modules/` y `.next/`) encontró que **el proyecto Next
+ya estaba limpio**: las dos variables de Supabase salen de `process.env` desde
+la Fase 1 y no había ningún dominio escrito. Los únicos aciertos quedan a
+propósito, y conviene que esté dicho para que nadie los "arregle" después:
+
+- `admin.html`, `index.html`, `operador.html`, `garita.html` y `CNAME` traen el
+  ref de **vecitap-pruebas** y `mi.vecitap.com` escritos a mano. **Son el
+  respaldo de `main`**, que apunta a pruebas a propósito y está congelado; y
+  además no tienen build step, así que no pueden leer variables de entorno.
+  Vercel no los sirve (no están en `public/`), así que en producción son
+  inertes. **No se tocaron.**
+  > **Superado el 29-sep:** se borraron de `integration` en la limpieza (ver
+  > la última sección). Siguen intactos en `main`, que es donde importan.
+- `scripts/validacion-bloque0.mjs` tenía **las claves de las tres cuentas de
+  prueba escritas en el archivo**. Con el repo público eso es una clave en el
+  repo: pasaron a `VALIDACION_{ADMIN,RESIDENTE,OPERADOR}_CLAVE` por entorno, y
+  el script aborta con un mensaje claro si falta alguna. La URL base también
+  quedó parametrizable (`VALIDACION_BASE_URL`).
+
+Lo que sí se agregó es **`lib/url-sitio.ts`**, el único lugar donde se decide
+cuál es la URL pública del sitio:
+
+1. `NEXT_PUBLIC_SITE_URL` si está definida — **en Vercel solo en Production**,
+   con `https://vecitap.com`.
+2. Si no, el origen real del navegador. Es lo único que acierta en local y en un
+   Preview, porque la URL de un Preview cambia en cada deploy.
+3. Si no hay `window` (servidor), `VERCEL_URL` / `NEXT_PUBLIC_VERCEL_URL`.
+4. Último recurso, `http://localhost:3000`.
+
+**Por eso `NEXT_PUBLIC_SITE_URL` NO se define en Preview ni en `.env.local`:**
+definirla ahí mandaría los correos de un Preview al dominio de producción.
+
+`components/admin/Accesos.tsx` pasó de `location.origin` a `urlDelSitio()` en
+los dos mensajes que se copian al portapapeles (invitar residente, invitar
+vigilante): son textos que se le mandan a una persona real, así que tienen que
+llevar el dominio público aunque quien los copie esté mirando un Preview.
+
+**b) `emailRedirectTo` y `redirectTo`, con una ruta de aterrizaje propia.**
+
+Al revisarlo apareció algo que no estaba anotado y que importa: **`@supabase/ssr`
+fija el flujo PKCE** (`createBrowserClient.js:44`, no es configurable), así que
+el enlace del correo **no** vuelve con `#access_token=…&type=recovery` sino con
+`?code=…`, que hay que canjear. El código viejo solo miraba
+`window.location.hash`, y el canje quedaba en manos de `detectSessionInUrl` del
+cliente del navegador — que avisa por el evento `PASSWORD_RECOVERY`, y ese
+evento puede dispararse **antes** de que el componente alcance a suscribirse
+(el cliente del navegador es un singleton que ya puede estar creado por otra
+parte de la página). Carrera real, invisible en la prueba feliz.
+
+Se resolvió con **`app/auth/confirmar/route.ts`**, que canjea del lado del
+servidor y recién entonces redirige. Cuando la pantalla aparece, la sesión ya
+está en las cookies y la URL dice sin ambigüedad en qué modo abrir el
+formulario. Detalles que valen:
+
+- Acepta **los dos formatos**: `?code=…` (plantillas por defecto,
+  `{{ .ConfirmationURL }}`, exige el mismo navegador porque el verificador PKCE
+  vive en una cookie) y `?token_hash=…&type=…` (`{{ .TokenHash }}`, que **no**
+  depende de esa cookie y por eso funciona si alguien pide el enlace en la
+  computadora y abre el correo en el teléfono). El segundo queda soportado de
+  antemano para poder cambiar las plantillas de Supabase sin tocar código.
+- La respuesta de redirección se **arma antes** del canje, para que las cookies
+  de la sesión nueva se escriban sobre ella — mismo motivo por el que `proxy.ts`
+  redirige siempre con `redirigirConCookies()`.
+- `siguiente` viaja dentro del enlace del correo y vuelve por la URL, así que se
+  trata como entrada ajena: `rutaInterna()` (en `lib/url-sitio.ts`) solo acepta
+  rutas internas. Sin eso, el enlace de confirmación de Vecitap sería un
+  redirector abierto a cualquier dominio.
+- Falla cerrado: enlace vencido, ya usado o abierto en otro navegador →
+  `/entrar?error=enlace`, con un mensaje en castellano y sin detalle técnico.
+
+En `FormularioEntrar.tsx`: `signUp` lleva
+`emailRedirectTo: urlDelSitio("/auth/confirmar?siguiente=<volver>")` y
+`resetPasswordForEmail` lleva
+`redirectTo: urlDelSitio("/auth/confirmar?siguiente=/entrar?clave=nueva")`. La
+detección por `#type=recovery` y el evento `PASSWORD_RECOVERY` **se
+conservaron** como red de seguridad para enlaces del flujo viejo que sigan
+vivos en la bandeja de alguien.
+
+**Para que esto funcione hay que cargar la lista blanca de Supabase**
+(Authentication → URL Configuration), en **vecitap-produccion**:
+
+- Site URL: `https://vecitap.com`
+- Redirect URLs: `https://vecitap.com/**`, `http://localhost:3000/**`,
+  `https://*.vercel.app/**`
+
+**c) `/design-system` cerrado en producción.** `app/(marketing)/design-system/layout.tsx`
+llama a `notFound()` salvo que el build no sea de producción (`npm run dev`) o
+que Vercel diga que el deploy es un **Preview** (`VERCEL_ENV === "preview"`).
+Falla cerrado: `next start` local, producción de Vercel y cualquier otro
+hosting dan **404 de verdad**, no un redirect ni un "no autorizado" — desde
+afuera la ruta no existe. Va en el layout y no en la página para que cubra
+cualquier subruta futura. **Verificado sobre el build**: el prerender
+`.next/server/app/design-system.html` es la página de 404.
+
+**d) `.env.example` reescrito**, con todas las variables y en qué entorno de
+Vercel va cada una (Production / Preview / ninguna), incluidas las que inyecta
+Vercel sola y, sobre todo, una sección **"Nunca acá"** con el porqué:
+`SUPABASE_SERVICE_ROLE_KEY` (saltea RLS; hoy la app no la usa),
+`RESEND_API_KEY` (el correo lo despacha la base, no esta app) y la contraseña
+de la base (solo para respaldos, se pide en el momento).
+
+**Verificado:** `npm run lint`, `npx tsc --noEmit` y `npm run build`, los tres
+en verde.
+
+**Archivos del punto 1** — nuevos: `lib/url-sitio.ts`,
+`app/auth/confirmar/route.ts`, `app/(marketing)/design-system/layout.tsx`.
+Modificados: `.env.example`, `app/(marketing)/entrar/FormularioEntrar.tsx`,
+`components/admin/Accesos.tsx`, `scripts/validacion-bloque0.mjs`.
+
+### Punto 2 — Sección "Producción" en `AGENTS.md` ✅ (29-sep)
+
+Va **antes de "Stack"**, que es lo primero que lee cualquier asistente que abre
+el repo: la regla más peligrosa de todas es que `integration` está en vivo, y
+esa no puede estar en la mitad del documento. Cuatro bloques, escritos para que
+los siga cualquier asistente sin contexto previo:
+
+1. **`integration` publica vecitap.com. Cada push llega a usuarios reales.** No
+   hay staging entre medio. De ahí las tres reglas: los **tres** comandos en
+   verde antes de cada push (`build`, `lint`, `tsc --noEmit` — un error de tipos
+   no rompe `npm run dev` pero sí el build de Vercel, y un build roto deja el
+   sitio en la versión anterior sin avisar); todo lo que dependa del **método
+   HTTP o del status** se prueba contra `next start` o un Preview, nunca solo
+   contra `npm run dev` (la lección del 405 de "Salir"); y ante la duda, un
+   Preview, que es gratis y no toca a nadie.
+2. **Los cambios de base van como archivo**: migración en
+   `supabase/migrations/`, reverso en `supabase/rollbacks/` (**sin rollback la
+   migración no está terminada**), verificación dentro del propio archivo. Y en
+   este orden: primero **vecitap-pruebas**, después **producción**. **Nunca
+   directo en el dashboard de producción** — con el porqué dicho, que es lo que
+   hace que la regla se respete: un cambio hecho ahí no queda en el repo, no
+   tiene rollback, no pasó por pruebas, y la próxima migración que asuma el
+   estado anterior se rompe o pisa el cambio en silencio.
+3. **Respaldo antes de cualquier migración en producción**, sin excepción por
+   "es un cambio chiquito" — que son justamente los que se aplican sin
+   pensarlos. Remite a `docs/respaldo.md`.
+4. **Ninguna clave en el repo: es público.** Con la consecuencia dicha (una
+   clave commiteada está comprometida desde el push; borrarla después no la
+   saca del historial, hay que rotarla), la lista de las cuatro que nunca van
+   (Resend, service_role, contraseña de la base, claves de las cuentas de
+   prueba), y la única excepción explicada: la anon/publishable es pública por
+   diseño, y aun así vive en variables de entorno.
+
+De paso se corrigieron en **"Stack"** cuatro cosas que habían quedado
+desactualizadas y que un asistente nuevo leería como verdad:
+
+- El repo dice ahora que es **público**, y que `integration` **publica
+  producción** (antes solo decía que era la rama de trabajo).
+- `main` figura como **congelada**.
+- Se agregaron los dos **refs de Supabase**, el dominio y la forma del
+  despliegue (la raíz sirve los cuatro módulos, `www` redirige), y Resend con
+  la aclaración de que el correo lo despacha **la base**, no la app Next.
+- Se dejó anotada la **tensión real** entre las dos viñetas de planes y el
+  piloto: Vercel Hobby prohíbe uso comercial y Supabase Free pausa el proyecto
+  tras una semana sin actividad, pero el 30-sep se sale con los dos planes
+  Free. Es **decisión tomada de Nicolás**, así que queda marcada como tal —
+  "no volver a proponerlo como pregunta, sí tenerlo presente" — en vez de
+  borrar las viñetas (que haría perder el pendiente) o dejar el archivo
+  contradiciéndose solo.
+
+**Archivos del punto 2** — modificados: `AGENTS.md`.
+
+### Punto 3 — Migración: segunda ronda de fechas ✅ (29-sep, sin aplicar)
+
+`supabase/migrations/20260929120000_segunda_ronda_dia_local.sql` +
+`supabase/rollbacks/20260929120000_segunda_ronda_dia_local_rollback.sql`.
+**Escrita, no aplicada** — la corre Nicolás, primero en vecitap-pruebas y
+después en producción, con respaldo previo.
+
+Cierra el pendiente "Segunda ronda de zona horaria" que estaba en
+"Decisiones abiertas". Las cinco funciones, en orden de consecuencia:
+
+| Función | Qué tenía | Qué quedó |
+|---|---|---|
+| `libro_edificio` | `p.cerrado_en::date between p_desde and p_hasta` | ventana `>= inicio_dia_local(p_desde)` / `< inicio_dia_local(p_hasta + 1)`, y `dia_local(p.cerrado_en)` en la columna que se muestra |
+| `historial_unidad` | `p.cerrado_en::date` ×4 | `dia_local(p.cerrado_en)` ×4 |
+| `cerrar_periodo` | `current_date` ×2 (ajustes de redondeo) | `hoy_local()` ×2 |
+| `generar_cobros_vencidos` | `current_date` ×2 | `hoy_local()` ×2 |
+| `generar_cobro_interno` | `coalesce(p_desde, …, current_date)` | `coalesce(p_desde, …, hoy_local())` |
+
+**Cómo se escribió, que es lo que da la garantía:** los cuerpos **no se
+transcribieron a mano**. Un script extrajo los cinco `prosrc` de
+`esquema_inicial.sql`, aplicó cada reemplazo exigiendo el número exacto de
+ocurrencias (1, 1, 2, 2, 4 — aborta si no coincide), verificó que no quedara
+ningún `current_date` ni ningún `cerrado_en::date` en líneas de código, y
+emitió los dos archivos. Después se comprobó el **viaje de ida y vuelta**:
+los cinco cuerpos del rollback tienen exactamente los md5 del volcado, o sea
+que revertir deja la base byte a byte como estaba.
+
+#### Las dos guardas
+
+1. **Dependencia de 20260928140000.** Si `hoy_local()` o
+   `inicio_dia_local(date)` no existen, aborta con el nombre del archivo que
+   hay que aplicar primero.
+2. **La base tiene que ser la del volcado.** Compara el cuerpo actual de las
+   cinco contra el del 27-sep y aborta la transacción entera si alguno
+   cambió, diciendo cuál y los dos hashes. También compara lenguaje,
+   volatilidad y `SECURITY DEFINER`. Hace falta porque la migración
+   **reescribe cada función entera**: sin la guarda, un cambio que alguien
+   hubiera hecho después del volcado se borraría en silencio.
+
+**Se usa `md5(prosrc)`, no `md5(pg_get_functiondef(oid))`, y no es un
+atajo.** `pg_get_functiondef` no devuelve el texto del dump: lo **reimprime**
+—escribe `CREATE OR REPLACE`, resangra la cabecera, cambia el delimitador a
+`$function$` y agrega un salto final—, así que un valor precalculado desde
+`esquema_inicial.sql` **nunca** coincidiría con el de la base, ni con la
+función intacta: la guarda abortaría siempre. `prosrc` sí se puede
+precalcular: `pg_dump` lo escribe **verbatim** entre los delimitadores de
+dollar-quoting, byte a byte igual a lo que guarda `pg_proc`. Lo que `prosrc`
+no cubre (lenguaje, volatilidad, SECURITY DEFINER) se comprueba aparte en el
+mismo bucle, así que entre las dos cosas queda cubierto todo lo que
+verificaría comparar el `pg_get_functiondef` completo, sin la fragilidad del
+formato. De todos modos la guarda **imprime** el `md5(pg_get_functiondef)` de
+cada función con un `raise notice`, para dejarlo registrado; la comparación
+entre las dos bases va por el bloque (a) de `docs/consultas-produccion.sql`.
+
+Los md5 del volcado, por si hay que rehacer el cálculo:
+
+```
+cerrar_periodo           374ad9f13bbb10b2c75b471837514bfc
+generar_cobro_interno    0357eccd663e3de660c46c79f94d0900
+generar_cobros_vencidos  a62a6621783b77e25971b493738399a6
+historial_unidad         b0243caf2ccb0efc4409b75c33cbe8bd
+libro_edificio           21ba3a6d8b9b2e877b329c5a0a270be2
+```
+
+#### `dia_local(timestamptz)`: hizo falta una tercera auxiliar
+
+`hoy_local()` e `inicio_dia_local(date)` no alcanzaban. `libro_edificio` e
+`historial_unidad` no preguntan "qué día es hoy" sino "de qué día local es
+este instante guardado", que es la conversión **inversa**. Las opciones eran
+escribir `(x at time zone 'America/Caracas')::date` inline en cinco lugares
+o agregar la auxiliar. Se agregó, por el mismo motivo por el que existen las
+otras dos: que la zona viva en un solo lugar. Mismos atributos que sus
+hermanas — **no** `SECURITY DEFINER`, `STABLE`, `SET search_path = ''`.
+
+`STABLE` y no `IMMUTABLE` aunque no dependa de `now()`: las reglas de zona
+salen de `pg_timezone_names` y cambian con una actualización de tzdata;
+marcarla inmutable permitiría indexarla y congelaría un resultado que puede
+dejar de ser cierto.
+
+#### `vinculos.desde`: se cambia el DEFAULT — decisión revertida, con motivo
+
+El 28-sep se decidió **no** tocarlo ("DDL de tabla sobre la base compartida
+por un beneficio cosmético"). **Acá se revierte**, y queda
+`default hoy_local()`. Los tres motivos:
+
+- `hoy_local()` va a existir en producción igual, por esta misma migración.
+  El costo marginal es una línea, más una en el rollback.
+- La alternativa (mandar `desde: hoyLocalISO()` desde el cliente) toca tres
+  componentes —`AltaUnidad.tsx:79`, `DatosUnidad.tsx:81`,
+  `ImportarUnidades.tsx:97`— y deja el agujero abierto para el próximo
+  `insert` que se olvide de la columna. El default lo cierra de una vez.
+- La objeción original era el riesgo de DDL sobre la base compartida con
+  Gustavo trabajando en vivo. **Cambiar un DEFAULT no reescribe la tabla ni
+  toca una sola fila**: es una actualización de catálogo, instantánea. No es
+  el tipo de DDL que motivaba la cautela.
+
+La severidad del bug sigue siendo baja y conviene no inflarla: nada en la app
+filtra por `desde` (`vigente()` mira solo `!v.hasta`), el único uso es un
+`order by v.desde desc` dentro de `destinatarios_de`. Las filas ya guardadas
+**no se migran**.
+
+**Consecuencia de orden que hay que recordar:** a partir de acá la tabla
+`vinculos` depende de `hoy_local()`, así que Postgres no deja borrar esa
+función sin quitar antes el default. **El rollback de esta migración tiene
+que correr antes que el de 20260928140000.** Está escrito en los dos
+archivos.
+
+#### Verificación
+
+Ocho pasos al final del archivo de migración, todos de solo lectura salvo uno
+envuelto en `begin`/`rollback`: que las tres auxiliares existan con los
+atributos correctos; que sean consistentes entre sí (`dia_local(inicio_dia_local(d)) = d`
+a cualquier hora); que no quede ningún `current_date` ni `cerrado_en::date`;
+el default de `vinculos.desde`; **qué cierres históricos cambian de fecha en
+el libro** (la consulta que muestra a la vez que no rompió nada y que arregló
+algo); las cuatro funciones corriendo; los ajustes de redondeo del primer
+cierre real; y los md5 nuevos para comparar las dos bases. El rollback tiene
+sus propios tres pasos, incluidos los md5 esperados para confirmar que la
+reversión fue exacta.
+
+**Archivos del punto 3** — nuevos:
+`supabase/migrations/20260929120000_segunda_ronda_dia_local.sql`,
+`supabase/rollbacks/20260929120000_segunda_ronda_dia_local_rollback.sql`.
+
+### Punto 4 — `docs/consultas-produccion.sql` ✅ (29-sep)
+
+Ocho bloques (a–h) más el orden de aplicación (z). **Todas de solo lectura**:
+ni un `insert`, `update`, `delete`, `create` ni `alter` en todo el archivo. Se
+pueden correr con la base en uso y sin respaldo. Cada bloque dice en qué base
+se corre y qué resultado se espera; los `order by` son fijos para que el diff
+entre los dos CSV salga limpio.
+
+**Ninguna consulta devuelve el valor de un secreto.** El bloque (f) trae
+nombre, fecha y longitud —la misma información que ya expone `hay_secreto()`—
+y el de vault pide columnas explícitas a propósito, porque un `select *`
+sobre las vistas de vault puede traer el secreto descifrado. Está dicho en el
+archivo para que nadie lo "simplifique".
+
+| Bloque | Qué trae | Lo que más importa mirar |
+|---|---|---|
+| a | Funciones de public: md5 de la definición y del cuerpo, SECURITY DEFINER, search_path, lenguaje, volatilidad | **(a.3)**: SECURITY DEFINER **sin** search_path fijo. Esperado cero filas; cualquier fila es bloqueante. **(a.2)**: una huella de una sola fila para comparar las dos bases de un vistazo |
+| b | Tablas con RLS y todas las políticas | `rls_activo` en todas; `politicas = 0` **solo** en `operadores`, `secretos` y `tasa_pendiente` |
+| c | Triggers y extensiones | **pg_net** (sin ella no sale un correo ni se actualiza la tasa), **pg_cron**, **pgcrypto** |
+| d | `cron.job`, las últimas corridas y `cron.timezone` | Si producción se armó desde un volcado, lo más probable es que **no tenga ninguna tarea**: `pg_dump` no exporta `cron.job`, y no falla nada — simplemente no pasa nada nunca |
+| e | `storage.buckets` y políticas de `storage.objects` | `comprobantes` tiene que existir y estar con `public = false` |
+| f | La cadena de despacho del correo y dónde vive la clave | Ver abajo |
+| g | URLs dentro de la base | **El bloque crítico del cambio de dominio.** Ver abajo |
+| h | Qué migraciones ya están aplicadas | Comprueba la existencia del objeto que crea cada una |
+
+#### Lo que se confirmó sobre el correo, leyendo el volcado
+
+El bloque (f) quedó escrito para **confirmar** esto, no para descubrirlo:
+
+- **No hay Edge Function.** El repo no tiene `supabase/functions/` y el envío
+  ocurre entero dentro de la base.
+- La cadena es `despachar_ahora()` → `despachar_correos(20)`, y esa última
+  llama **directo** a `net.http_post` (pg_net) contra
+  `https://api.resend.com/emails`. Sin intermediario.
+- Es **asíncrona en dos pasos**: una corrida manda la tanda y guarda el
+  `request_id`; la **siguiente** recoge la respuesta de `net._http_response`.
+  O sea que hace falta que el cron corra periódicamente — con una corrida
+  suelta los correos salen pero la cola nunca pasa a `enviado`.
+- La clave **no está en vault**: sale de `public.secretos` con
+  `nombre = 'resend_api_key'`. El remitente, de `secretos.correo_remitente`.
+  El nombre visible por organización, de `ajustes_correo.remitente`, con el
+  nombre de la organización como respaldo.
+- `secretos` tiene RLS activo y **cero políticas**, así que no se lee desde
+  el cliente; solo la alcanza `despachar_correos`, que es SECURITY DEFINER.
+- **Si falta `resend_api_key`, no falla nada visible:** `despachar_correos`
+  escribe `{"error":"falta la clave de Resend"}` en `tareas_log` y se va en
+  silencio. Por eso (f.6) mira `tareas_log`.
+
+#### El hallazgo del bloque (g): el enlace de los correos
+
+`correo_recibo` arma el enlace del recibo así (volcado, líneas 776-777):
+
+```
+v_enlace := coalesce(ajustes_correo.enlace_base,
+                     (select valor from secretos where nombre = 'correo_enlace'))
+```
+
+O sea que **el dominio que le llega al residente en el correo no sale del
+código de la app: sale de la base**, y puede ser distinto por organización.
+El punto 1 dejó el código sin ninguna URL escrita a mano, pero eso no toca
+esto. Si `secretos.correo_enlace` o cualquier `ajustes_correo.enlace_base`
+quedó apuntando a `mi.vecitap.com`, los recibos que salgan de producción van
+a mandar a la gente **al sitio de respaldo**, y el correo va a salir bien: no
+hay error que lo delate.
+
+La consulta (g.2) lista los dos orígenes con una columna
+`apunta_al_respaldo`. Toda fila en `true` hay que corregirla **antes de
+mandar el primer recibo**. La corrección es un `UPDATE`, así que no está en
+este archivo (es de solo lectura): la hace Nicolás o va como migración.
+
+#### El bloque (z): qué aplicar y en qué orden
+
+Solo lo que (h) devuelva en `false`, y en este orden:
+
+1. `20260926120000_membresias_multiples_por_organizacion` — primera porque es
+   la única que **toca datos existentes**; si algo va a fallar por el estado
+   de los datos, que falle con la base recién respaldada. Probablemente ya
+   salga aplicada si producción viene del volcado del 27-sep.
+2. `20260928130000_correos_malos_ver_solo_operador` — independiente y chica.
+3. `20260928140000_garita_bitacora_dia_local` — crea las auxiliares. **La 4
+   depende de esta.** Avisarle a Gustavo.
+4. `20260929120000_segunda_ronda_dia_local` — trae sus dos guardas, así que
+   es seguro intentarla.
+5. `20260928120000_puede_ver_garita` — **NO aplicar todavía**: es del bloque
+   13, que no arrancó.
+
+Y una lista aparte, igual de importante, de **lo que no es una migración y
+tampoco viaja en un `pg_dump`**, con el bloque que lo detecta al lado: las
+tareas de `cron.job`, el bucket `comprobantes` y sus políticas, los tres
+secretos, los `enlace_base` apuntando a vecitap.com, y la lista blanca de
+Authentication → URL Configuration.
+
+**Archivos del punto 4** — nuevos: `docs/consultas-produccion.sql`.
+
+### Punto 5 — `docs/respaldo.md` ✅ (29-sep)
+
+Runbook de respaldo diario para Windows + PowerShell, un comando por línea.
+Ocho secciones: instalar, la cadena de conexión, la contraseña, dónde se
+guardan, el respaldo, **qué no cubre**, cómo restaurar, la comprobación de que
+no se coló nada en el repo, y el guion completo.
+
+**El dato que cambia la urgencia de todo:** en el plan **Free de Supabase no
+hay respaldos automáticos** — ni diarios ni point-in-time; eso llega con Pro.
+Hasta que se pase a Pro, este procedimiento **es el único respaldo que tiene
+Vecitap**. Está dicho en la primera línea del archivo.
+
+**Los tres volcados** (`supabase db dump --db-url`), con la fecha y la hora en
+el nombre (`yyyy-MM-dd-HHmm`, para poder hacer más de uno por día): `--role-only`,
+esquema, y `--data-only --use-copy` (`COPY` en vez de un `INSERT` por fila:
+archivo mucho más chico y restauración mucho más rápida).
+
+**La cadena de conexión:** Session pooler (puerto **5432**, usuario
+`postgres.<ref>`), no el de transacciones (6543, no soporta las sentencias
+preparadas que necesita `pg_dump`) y no la conexión directa
+(`db.<ref>.supabase.co`, que puede ser solo IPv6).
+
+**La contraseña sin dejarla escrita:** `Read-Host -AsSecureString`, y la URI
+se arma en memoria reemplazando el `[YOUR-PASSWORD]` que trae la que copia del
+dashboard. Tres motivos dichos en el archivo, y el primero no es obvio:
+**PowerShell guarda todo lo que uno escribe en `ConsoleHost_history.txt`**, en
+texto plano y para siempre; esa carpeta está sincronizada con OneDrive; y el
+repo es público. La contraseña pasa por `[uri]::EscapeDataString` — sin eso,
+una contraseña con `@`, `/`, `#` o `?` rompe la URI y el error habla de "host
+desconocido", que no ayuda.
+
+#### Qué NO cubre — la sección larga a propósito
+
+Un respaldo que uno cree completo y no lo es, es peor que no tener ninguno.
+
+- **`auth.users` no está en los tres volcados.** Es lo más grave: al restaurar
+  sobre un proyecto nuevo, la base vuelve con todas las unidades, recibos y
+  membresías **y sin una sola cuenta** — cada `usuario_id` de `membresias`
+  apunta a un usuario que no existe. La app queda intacta e inaccesible al
+  mismo tiempo. Se cubre con `--schema auth` (que sí quedó en el guion) más un
+  CSV legible de las cuentas, sin contraseñas.
+- **Los archivos de Storage tampoco.** El bucket `comprobantes` guarda los
+  comprobantes de pago de los residentes; ni los archivos ni la lista de
+  objetos viajan en un `pg_dump`. Se bajan con `supabase storage cp`, que
+  **cambió entre versiones del CLI** — por eso el archivo manda a mirar
+  `supabase storage --help` primero, y por eso **no** está en el guion
+  automático: meterlo sin comprobarlo daría la falsa impresión de que los
+  comprobantes están respaldados.
+- **Todo lo que no vive en una tabla**, en una tabla que remite al bloque de
+  `docs/consultas-produccion.sql` que lo detecta: tareas de `cron.job`,
+  buckets y sus políticas, los tres secretos, las extensiones, la config de
+  Auth (Site URL, Redirect URLs, plantillas) y las variables de Vercel.
+
+**La conclusión práctica, dicha explícitamente:** los tres volcados alcanzan
+para **deshacer una migración que salió mal** —el 99 % de los casos y para lo
+que se usan todos los días— y **no** alcanzan para **levantar el proyecto de
+cero en otra cuenta**.
+
+#### Restaurar
+
+Un solo comando con `psql`, en el orden roles → esquema → datos, con
+`--single-transaction`, `ON_ERROR_STOP=1` y
+`SET session_replication_role = replica`. Los tres están explicados, porque
+parecen ruido y no lo son: sin `ON_ERROR_STOP`, **`psql` sigue después de un
+error** y la restauración "termina bien" con la mitad de las tablas vacías.
+
+También dice lo que casi siempre es la respuesta correcta: para deshacer una
+migración **no se restaura nada**, se usa el rollback de
+`supabase/rollbacks/`. Y recomienda probar el respaldo una vez, con calma,
+restaurando el de **pruebas** en un proyecto descartable — un respaldo que
+nunca se restauró no se sabe si sirve.
+
+#### La comprobación con `git check-ignore`, y la trampa que tiene
+
+Los archivos van **fuera del repo**, sin negociación: un volcado de producción
+tiene nombres, cédulas, correos, teléfonos y pagos de personas reales, y el
+repo es **público**.
+
+Las cuatro respuestas de `git check-ignore -v` **se probaron contra este
+repo**, no se escribieron de memoria — y la tabla salió al revés de lo que
+parecía:
+
+| Respuesta | Código | Significa |
+|---|---|---|
+| `fatal: … is outside repository` | 128 | ✅ Lo que se busca |
+| `fatal: Invalid path …` | 128 | ✅ Igual, pero ese archivo todavía no existe |
+| `.gitignore:54:/*.sql …` | 0 | ⚠ Está **dentro** del repo, en la raíz, tapado por esa regla |
+| **nada** | 1 | 🚨 Está **dentro** del repo y **no** ignorado |
+
+**El silencio es la respuesta mala, no la buena.** Y pasa de verdad: la regla
+`/*.sql` del `.gitignore` empieza con `/`, así que cubre **solo la raíz** — un
+respaldo guardado en `docs/` o en `supabase/` no queda ignorado y
+`check-ignore` se calla. Por eso la comprobación que manda es
+`git status --porcelain`, y `check-ignore` queda como la que explica *por qué*
+un archivo está o no protegido.
+
+**Archivos del punto 5** — nuevos: `docs/respaldo.md`.
+
+---
+
+## Salida a producción — 29-sep, segunda tanda (puntos 6 a 9)
+
+| # | Punto | Estado |
+|---|---|---|
+| 6 | Revisión de seguridad de `/auth/confirmar` | ✅ Hecho (4 correcciones) |
+| 7 | Secretos en el historial de git | ✅ Hecho (1 hallazgo, rotar 2 claves) |
+| 8 | Plantillas de correo de Auth | ✅ Hecho (3 plantillas + README) |
+| 9 | `enlace_base` y los enlaces de los correos de la base | ✅ Hecho |
+
+### Punto 6 — Revisión de `/auth/confirmar` ✅ (29-sep)
+
+Cuatro cosas encontradas, las cuatro corregidas. Las dos primeras son reales;
+las dos últimas son endurecimiento.
+
+**1. `rutaInterna()` era evadible (real, no explotable hoy).** Dejaba pasar
+`/⇥/ajeno.com` con **tabulador, salto de línea o retorno de carro**, y
+`/..//ajeno.com`. Comprobado contra el parser de URL de verdad, no de
+memoria:
+
+```
+"/\t/evil.com"   -> rutaInterna vieja devolvía "/\t/evil.com"
+new URL("/\t/evil.com", base)  ->  origin http://evil.com
+```
+
+El parser de URL (y los navegadores) **borran** tab, `\n` y `\r` antes de
+interpretar la dirección, así que `/⇥/ajeno.com` se convierte en
+`//ajeno.com` **después** de que el `startsWith("//")` ingenuo ya dijo que
+estaba bien. `/..//ajeno.com` normaliza a un `pathname` que arranca con `//`.
+
+**No era explotable en esta ruta**, porque el destino se armaba copiando solo
+`pathname`/`search` sobre una URL de este origen, y asignar `.pathname` nunca
+reescribe el host (comprobado). Pero `rutaInterna()` es un helper exportado y
+de uso general: estaba mal por sí solo, y la seguridad de la ruta dependía de
+una propiedad implícita del parser que no se veía en el código.
+
+Ahora: limpia los tres caracteres **antes** de comprobar nada, rechaza
+cualquier `\`, y después **parsea contra un origen centinela
+(`http://interno.invalid`, TLD reservado por RFC 2606) y exige que el origen
+resultante siga siendo ese**. Esa última red hace que la lista de casos no
+tenga que ser exhaustiva: cualquier forma nueva de escaparse cae ahí. Devuelve
+la forma normalizada, sin fragmento. En la ruta quedó además la comprobación
+explícita de origen, como defensa en profundidad.
+
+**2. La rama de error perdía las cookies (real).** La respuesta de éxito se
+armaba antes del canje y Supabase le escribía las cookies encima; pero **la
+rama de fallo devolvía otra respuesta**, creada después, sin esas cookies. Es
+exactamente la clase de bug que `redirigirConCookies()` existe para evitar en
+`proxy.ts`, y `AGENTS.md` dice que **toda** rama de redirect tiene que llevar
+las cookies. Importa porque en un canje fallido `@supabase/ssr` emite cookies
+de **borrado** (limpiar un verificador PKCE ya usado, o una sesión rota), y se
+perdían: el navegador se quedaba con cookies inválidas que reintentaba en cada
+petición.
+
+Corregido cambiando la forma, no parchando la rama: las cookies se juntan en
+una lista y se aplican **a la respuesta que se devuelva**, sea cual sea. Ya no
+hay forma de agregar una rama nueva y olvidarse.
+
+**3. `type` llegaba del URL sin validar.** Se casteaba directo a
+`EmailOtpType` y se pasaba a `verifyOtp`. Supabase lo habría rechazado, pero
+un valor sin validar no debería llegar a una llamada de autenticación. Ahora
+hay lista blanca de los seis tipos.
+
+**4. El mensaje de error daba el consejo equivocado la mitad de las veces.**
+Decía siempre «Pida uno nuevo con "Olvidé mi contraseña"», también cuando el
+enlace que falló era de confirmación de cuenta. Ahora el enlace lleva
+`de=registro|clave|correo` y el mensaje se adapta. **`de` solo cambia el
+texto**: no toca destino ni permisos.
+
+Lo que ya estaba bien y se confirmó: nunca se muestra `error.message` (la
+diferencia entre "token inválido" y "token vencido" le sirve más a quien
+prueba enlaces a mano que a la persona que se equivocó), y el caso de
+`?error=access_denied&error_code=otp_expired` que manda Supabase cuando el
+enlace venció cae solo en la rama de error sin leer ese texto de terceros.
+
+Agregado de paso: `Cache-Control: no-store` — un aterrizaje de autenticación
+depende de un token de un solo uso y trae cookies de sesión.
+
+### Punto 7 — Secretos en el historial de git ✅ (29-sep)
+
+Barrido de solo lectura sobre **72 commits** (`--all`: `integration`, `main`,
+`optimization`). No se reescribió nada.
+
+> Nota de método: el primer intento usó
+> `git rev-list --all | xargs git grep -n "patrón" --`, que **no busca nada** —
+> el `--` convierte los SHA en pathspecs. Se detectó con una búsqueda de
+> control de un texto que se sabía presente. La forma correcta pone las
+> revisiones **antes** del `--`. Si alguien repite esta auditoría, use primero
+> un control positivo.
+
+**Un solo hallazgo, y hay que rotar dos claves:**
+
+| Qué | Dónde | Commits | Acción |
+|---|---|---|---|
+| Claves de las 3 cuentas de prueba: `admin.prueba` y `operador.prueba` = `temporal.1234`; `residente.prueba` = `12345678` | `scripts/validacion-bloque0.mjs:29-31` | Introducidas en **`e0f3dd0`** (27-sep, "Destino por rol, validación automatizada Bloque 0") y presentes en los 9 commits siguientes hasta `135e13c` | **Rotar las 3 claves** en Supabase Auth. Están en `origin/integration`, o sea **publicadas en GitHub desde el 27-sep** |
+
+Siguen en el historial aunque el punto 1 las haya sacado del código actual:
+borrarlas de un archivo no las borra del pasado. Como no se reescribe el
+historial, **la única mitigación es rotarlas**. Son cuentas de prueba sobre
+vecitap-pruebas, con datos ficticios, así que el daño posible es bajo — pero
+`admin.prueba` tiene rol `administrador` sobre Administradora Baja y
+`operador.prueba` es staff interno, así que no es cero. Rotar y sumar a la
+limpieza de Fase 9, que ya las tiene listadas para eliminar.
+
+**Lo que se buscó y NO está, que es la mejor noticia:**
+
+| Buscado | Resultado |
+|---|---|
+| JWT con forma de clave (`eyJ….eyJ….`) | **Cero**, en los 72 commits |
+| `sb_secret_` (service_role nueva) | **Cero** |
+| `service_role` | 12 commits, **todos prosa**: avisos de "nunca use la service_role" en los HTML y en `.env.example`. Ninguna clave |
+| Claves de Resend (`re_` + 16 o más) | **Cero** |
+| Cadenas `postgresql://` / `postgres://` | **Cero** |
+| Archivos `.env` versionados alguna vez | Solo `.env.example`. `.env.local` nunca entró |
+| Clave de `vigilante.prueba` | **Nunca estuvo en el repo.** Aparece el correo en `docs/estado-migracion.md`, nunca la clave |
+
+**La clave anon/publishable sí está** (`sb_publishable_75OWc-…`, 227
+apariciones en los 4 HTML), y **no hay que rotarla**: es pública por diseño,
+la seguridad la dan las políticas de RLS. Coincide con lo que ya decía
+`AGENTS.md`.
+
+**Dato tranquilizador sobre producción:** en todo el historial hay **una sola**
+clave publishable y **un solo** ref de proyecto, los dos de **vecitap-pruebas**
+(`hdivffuorclzulijkyry`). El ref de producción (`sudghmerriewjmmnlcrf`) **nunca
+apareció** en ningún commit.
+
+### Punto 8 — Plantillas de correo de Auth ✅ (29-sep)
+
+`docs/plantillas-correo/`: tres plantillas más un README con dónde se pega
+cada una.
+
+| Archivo | Pestaña del dashboard | Asunto sugerido |
+|---|---|---|
+| `confirmacion-registro.html` | Confirm signup | `Confirme su cuenta de Vecitap` |
+| `recuperar-clave.html` | Reset password | `Recupere su clave de Vecitap` |
+| `cambio-de-correo.html` | Change email address | `Confirme su correo nuevo en Vecitap` |
+
+**Magic link: la app no lo usa, así que se omite.** Se entra con correo y
+clave (`signInWithPassword`); no hay ninguna llamada a `signInWithOtp` en todo
+el código. El README lo dice y explica cómo derivarla si algún día hace falta.
+Lo mismo con **Invite user** (Vecitap tiene su propio sistema de invitaciones:
+tabla `invitaciones`, `crear_invitacion`/`aceptar_invitacion`, y el
+administrador copia el código desde Admin → Accesos) y **Reauthentication**
+(manda un código de 6 dígitos, ningún flujo lo pide).
+
+**El enlace usa `{{ .TokenHash }}`, no `{{ .ConfirmationURL }}`**, y ese es el
+motivo de que las plantillas existan:
+
+```
+{{ .SiteURL }}/auth/confirmar?token_hash={{ .TokenHash }}&type=<tipo>&de=<intención>&siguiente=<ruta>
+```
+
+La plantilla por defecto pasa por `/auth/v1/verify` y vuelve con `?code=`, que
+es PKCE y **exige el mismo navegador que pidió el enlace** (el verificador
+vive en una cookie). En la práctica: pide el enlace en la computadora, abre el
+correo en el teléfono, no funciona, y el mensaje no explica por qué. Con
+`token_hash` el token viaja en la dirección y la ruta lo valida con
+`verifyOtp`: **funciona en cualquier dispositivo**. La ruta acepta los dos
+formatos, así que los correos con `?code=` que ya estén en una bandeja no se
+rompen al cambiar las plantillas.
+
+HTML de correo de verdad: tablas, estilos inline, botón con el color en el
+`<td>` (Outlook ignora el `background` del `<a>`), preencabezado, el enlace
+también en texto plano, y `Helvetica/Arial` en vez de Inter/Poppins (una
+fuente web no se carga de forma fiable en un correo).
+
+**Los colores van escritos a mano, y es la única excepción a la regla de
+`AGENTS.md`** de que la paleta vive solo en `globals.css`. No hay alternativa:
+el correo no entiende `var(--tinta)` y muchos clientes tiran el `<style>` del
+`<head>`. El README trae la tabla de qué token es cada hex y el aviso de que
+si cambia la paleta hay que venir a cambiarla acá.
+
+### Punto 9 — `enlace_base` y los enlaces de los correos ✅ (29-sep)
+
+Recorridos todos los `insert into cola_correo` del volcado. Son **tres
+funciones**, y salen **dos** correos distintos:
+
+| Correo | Lo arma | `tipo` | Enlace | Ruta que le agrega a `enlace_base` |
+|---|---|---|---|---|
+| **Recibo del mes** | `correo_recibo` vía `encolar_recibos(p_periodo)` (Admin → Cortes) | `recibo` | `<a href="{enlace_base}">` | **NINGUNA** |
+| **Prueba de recibo** | `correo_recibo` vía `encolar_prueba(p_recibo, p_destino)` (Admin → Cortes) | `prueba` | igual | **NINGUNA** |
+| **Aviso de visita en la puerta** | `garita_avisar(p_visita)` | `visita` | **no tiene enlace** | — |
+
+**El hallazgo que cambia la respuesta: `enlace_base` se usa TAL CUAL, sin
+concatenarle nada.** El volcado (L776-777 y L849) hace
+`v_enlace := coalesce(ajustes_correo.enlace_base, secretos.correo_enlace)` y
+lo mete directo en `<a href="%s">`. No es una "base" a la que se le pega una
+ruta: es **la dirección completa y final** del botón "Véalo y reporte su pago
+aquí".
+
+Los tipos `mora`, `pago_confirmado` y `pago_rechazado` existen **solo** en el
+CHECK de `cola_correo` (L4248): **ninguna función los produce**. Son valores
+permitidos sin productor — la funcionalidad no está construida. Conviene
+saberlo para no salir a buscar la plantilla que los arma.
+
+Las invitaciones (residente y vigilante) **no salen por correo desde la
+base**: el administrador copia el mensaje desde Admin → Accesos, y ese texto
+ya usa `urlDelSitio()` desde el punto 1. Las invitaciones de visita de "Mis
+visitas" tampoco: la tarjeta con el QR se genera en el navegador.
+
+#### El valor exacto de `enlace_base` en producción
+
+```
+https://vecitap.com/mi
+```
+
+**Sin barra final.** Tres decisiones dentro de ese valor:
+
+- **No `https://vecitap.com` a secas.** La raíz de la app nueva es la página
+  "Sitio en construcción" (`app/(marketing)/page.tsx`). Un residente que toca
+  el botón de su recibo llega a un callejón sin salida. **Éste es el riesgo
+  concreto del punto 4 (g.2)**, y el correo sale bien: no hay ningún error que
+  lo delate.
+- **`/mi` y no `/entrar?volver=/mi`.** `/mi` está protegido por `proxy.ts`, así
+  que quien no tenga sesión va igual al login y vuelve; y quien ya la tenga
+  cae **directo en su recibo** sin ver una pantalla de login de más. Además se
+  lee mejor en un correo.
+- **Sin barra final.** Con `/mi/`, Next (que tiene `trailingSlash: false`)
+  contesta un 308 a `/mi`: funciona, pero agrega un salto a cada enlace de
+  cada recibo, y encima antes del salto de autenticación.
+
+Hay que ponerlo en **los dos lugares**: `secretos.correo_enlace` (el global) y
+cada fila de `ajustes_correo.enlace_base` que no sea NULL (el de cada
+organización, que **pisa** al global). La consulta que las lista está en
+`docs/consultas-produccion.sql`, bloque (g.2).
+
+#### Rutas viejas que no existen en la app nueva
+
+No hay ninguna ruta que el correo del recibo arme y que falte, porque no arma
+ninguna. El desajuste real es otro: **las direcciones de la app vieja que la
+gente ya tiene guardadas** — `index.html`, `admin.html`, `app.html`,
+`operador.html`, `garita.html`. En `main` eran archivos servidos por GitHub
+Pages; en la app nueva dan 404.
+
+Corrección más chica, sin tocar la base: **seis redirecciones en
+`next.config.ts`**, `/index.html` → `/mi`, `/admin.html` y `/app.html` →
+`/admin`, `/operador.html` → `/operador`, `/garita.html` → `/garita`. Con
+`permanent: false` (307) a propósito: un 308 se cachea en el navegador de cada
+persona y cambiarlo después sale carísimo; durante el piloto conviene poder
+corregir.
+
+`mi.vecitap.com` sigue en pie y no se toca, así que los enlaces viejos a **ese**
+dominio siguen funcionando solos. Esto cubre el caso de que alguien complete
+la dirección de memoria sobre `vecitap.com`, que es lo que va a pasar apenas
+se empiece a repartir el dominio nuevo.
+
+**Lo que las redirecciones NO arreglan, dicho para que quede claro:** la raíz
+`/` sigue siendo la página en construcción. Por eso `enlace_base` no puede
+quedar apuntando ahí.
+
+**Archivos de esta tanda** — nuevos: `docs/plantillas-correo/README.md`,
+`docs/plantillas-correo/confirmacion-registro.html`,
+`docs/plantillas-correo/recuperar-clave.html`,
+`docs/plantillas-correo/cambio-de-correo.html`. Modificados:
+`app/auth/confirmar/route.ts`, `lib/url-sitio.ts`,
+`app/(marketing)/entrar/FormularioEntrar.tsx`, `next.config.ts`.
+
+---
+
+## Limpieza de `integration` — 29-sep
+
+**La referencia de paridad pasa a ser `main`, congelada.** Los HTML salieron de
+esta rama. Se leen sin cambiar de rama y sin restaurarlos:
+
+```bash
+git show main:admin.html | sed -n '3899,3960p'
+git show main:index.html | grep -n "papelRecibo"
+```
+
+Cuando un comentario del código dice `admin.html:3899`, se refiere a ese
+archivo **en `main`**. Como `main` está congelada, las líneas no se mueven: una
+referencia escrita hace semanas sigue apuntando a lo mismo. La regla completa
+quedó en `AGENTS.md`, sección "En esta rama no hay HTML".
+
+### Verificación previa: nada del código dependía de los HTML
+
+Hecha **antes** de borrar. Búsquedas sobre `app/`, `components/`, `lib/`,
+`hooks/`, `scripts/`, `public/`, `types/`, `tests/`, `next.config.ts` y
+`proxy.ts`:
+
+```bash
+# 1. toda mención de .html en código
+grep -rniE "\.html" --include=*.ts --include=*.tsx --include=*.mjs \
+  --include=*.js --include=*.json --include=*.css app components lib hooks \
+  scripts public types tests next.config.ts proxy.ts tsconfig.json \
+  package.json eslint.config.mjs
+
+# 2. cualquier forma de leer/servir/redirigir un archivo de la raíz
+grep -rniE "readFile|readFileSync|fetch\(|require\(|import\(|createReadStream|process\.cwd|__dirname|path\.join|rewrites|redirects|CNAME|logo-claro|logo-oscuro|favicon-180|favicon-32" \
+  --include=*.ts --include=*.tsx --include=*.mjs --include=*.js \
+  app components lib hooks scripts next.config.ts proxy.ts
+```
+
+**Resultado: ningún archivo lee, importa, sirve, redirige ni hace fetch de un
+`.html`.** Los ~40 aciertos de la primera búsqueda son **todos comentarios** de
+portabilidad (`* Portado de Accesos() en admin.html:3899-4252`) — documentación,
+no dependencias. La segunda búsqueda devolvió solo referencias a `public/`
+(`/logo-claro.png`, `/logo-oscuro.png`), imports diferidos de paquetes de npm
+(`xlsx`, `pdfjs-dist`, `qrcode`, `jsqr`) y las redirecciones de
+`next.config.ts` que se eliminaron en esta misma limpieza.
+
+Comprobaciones puntuales antes de cada borrado:
+
+- **Logos:** `sha256sum` confirmó que la copia de la raíz y la de `public/`
+  eran **idénticas byte a byte** (`4cbdbf9d…` y `8243090d…`). Nada apunta a la
+  raíz; los cinco usos del código (`Logo.tsx`, `papel-cortes`,
+  `papel-estadisticas`, `recibo-papel`, `tarjeta-visita`) piden
+  `/logo-claro.png`, que Next sirve desde `public/`.
+- **`scripts/validacion-bloque0.mjs` no abre ningún HTML.** Lo único que
+  miraba de la raíz eran los hashes de los logos, y como las dos copias eran
+  idénticas los valores no cambian. Se ajustó el texto (decía "== raíz del
+  repo", ahora "== public/ del repo") y el comentario que lo explicaba. **No
+  hizo falta extraer nada de `main` a una carpeta temporal.**
+- **`main` tiene todo lo que se borró**, verificado con
+  `git ls-tree --name-only main` antes de tocar nada.
+
+### Borrado
+
+| Archivo | Por qué |
+|---|---|
+| `admin.html`, `index.html`, `garita.html`, `operador.html` | La referencia es `main`. Nada del código los usa |
+| `CNAME` | GitHub Pages publica desde `main`; en esta rama no cumple ninguna función |
+| `logo-claro.png`, `logo-oscuro.png` (de la raíz) | Duplicados byte a byte de `public/`, que es lo único que sirve Next |
+| `hooks/useSesion.ts` | **Huérfano real**: ningún archivo lo importa. Resolvía el patrón `getSession()` + `onAuthStateChange()` de la Fase 3, que la sesión en cookies + Server Components dejó sin uso |
+| Las 6 redirecciones `.html` de `next.config.ts` | Nadie usó nunca esas direcciones en vecitap.com: vivían en mi.vecitap.com, que sigue en pie. Eran una respuesta a un problema que no existe |
+
+### Modificado
+
+- **`AGENTS.md`** — sección nueva "En esta rama no hay HTML. La referencia de
+  paridad es `main`", con los comandos `git show`, y las dos reglas que salen
+  de ahí: los HTML son de solo lectura y de otra rama; todo cambio va en la
+  app de Next.
+- **`README.md`** — decía que los HTML "se mantienen en la raíz sin tocar".
+  Ahora remite a `main`. De paso se actualizó la estructura, que no
+  mencionaba `garita`, `auth/confirmar`, `proxy.ts`, `public/`, `docs/` ni
+  `supabase/`.
+- **`lib/formato.ts`** — el comentario decía que las copias de `nf`/`usd` en
+  los HTML no se tocaban "porque los archivos quedan en la raíz como línea
+  base". Ahora dice que ésta es la única copia de esta rama y que la
+  referencia está en `main`.
+- **`scripts/validacion-bloque0.mjs`** — el comentario y las dos etiquetas de
+  los hashes de logos.
+- **`docs/estado-migracion.md`** — las tres afirmaciones que quedaron falsas
+  (Fase 1 "quedaron intactos en la raíz"; Fase 3 "la duplicación desaparece
+  cuando cada HTML se reemplace"; Operador "sigue intacto como línea base"), y
+  la del punto 1 de la salida a producción que decía "No se tocaron".
+- **`next.config.ts`** — sin configuración propia otra vez, con el motivo
+  anotado para que nadie las vuelva a agregar.
+
+### Lo que NO se borró, y por qué
+
+**Los 14 `eslint-disable` se quedan todos: ninguno está de más.** No se juzgó
+a ojo, se midió:
+
+```bash
+npx eslint --report-unused-disable-directives   # exit 0, sin salida
+```
+
+Cero directivas inútiles. Son 6 de `react-hooks/exhaustive-deps` (el patrón de
+cargar al montar sin volver a disparar) y 5 de `@next/next/no-img-element`
+(imágenes de origen dinámico: logo de la administradora, comprobantes, tarjetas
+de visita, donde `next/image` no aporta).
+
+**`setModo` no está huérfano.** Se revisó por pedido explícito: tiene cuatro
+llamadores vivos en `FormularioEntrar.tsx` (líneas 80, 87, 98 y 120), dos de
+ellos en la red de seguridad del flujo implícito de recuperación de clave.
+
+Y los candidatos que el análisis de imports marcó pero **no son** huérfanos:
+
+- `app/(garita)/garita.css` — lo importa `app/(garita)/layout.tsx:2`.
+- `app/(marketing)/page.module.css` — lo importa `app/(marketing)/page.tsx:1`.
+- `types/jsqr.d.ts`, `types/barcode-detector.d.ts` — **declaraciones de tipos
+  ambientales**. No se importan nunca: los toma TypeScript por el `include`
+  del `tsconfig.json`. Borrarlos rompe el typecheck de
+  `await import("jsqr")` y del lector nativo de QR.
+
+### Dejados con duda, para que los decida Nicolás
+
+| Qué | Motivo |
+|---|---|
+| `favicon-180.png`, `favicon-32.png` (raíz) | **No tienen copia en `public/`**, así que quedan fuera de la regla de borrado. Ahora sí están huérfanos: los referenciaban solo los cuatro HTML. La app usa `app/favicon.ico` y **no tiene ícono para pantalla de inicio en el teléfono** — algo que `main` sí tenía. Lo limpio no es borrarlos: es moverlos a `app/apple-icon.png` y `app/icon.png`, que es como Next los toma por convención. Es un cambio de producto (cambia lo que se ve al guardar la app en el teléfono), así que no se hizo sin aprobación |
+| `estadoUnidadDesdeSaldo()` y `UMBRAL_SALDO` (`lib/estados-unidad.ts`) | `estadoUnidadDesdeSaldo` **no tiene ningún llamador**, y `UMBRAL_SALDO` solo se usa dentro de esa función: borrar una deja huérfana a la otra. Pero `UMBRAL_SALDO` es, por decisión escrita de la Sesión 1 de Admin, **la fuente única del umbral de saldo** que reemplazó a los literales `0.01`/`0.009` de `app.html`. Borrarla sería deshacer esa decisión en silencio, no limpiar. Lo que hay acá es una deriva —el umbral quedó sin usar— que merece revisarse, no un borrado |
+| `ROLES_GARITA_ADMIN_ORG` (`lib/admin/constantes.ts`) | Sin usar hoy, pero está puesta para el **bloque 13** (vista de Garita dentro de Admin), que todavía no arranca. Borrarla es tirar trabajo ya hecho |
+| ~20 `type`/`interface` exportados que nadie nombra fuera de su archivo (p. ej. `Cruce`, `LineaRecibo`, `MetricasCartera`) | Son la API declarada de cada módulo y no cuestan nada en el bundle: los tipos desaparecen al compilar. Tocar veinte archivos el día antes del lanzamiento, para no ganar nada en tiempo de ejecución, es riesgo sin beneficio |
+
+### Verificado al cerrar
+
+`npm run lint`, `npx tsc --noEmit` y `npm run build`, los tres en verde
+después de los borrados. El análisis de imports se volvió a correr y no
+apareció ningún huérfano nuevo. Nada de `docs/`, `supabase/migrations/`,
+`supabase/rollbacks/`, `scripts/`, `.env.example` ni de los archivos ignorados
+por Git (`esquema_inicial.sql` incluido) se tocó.
