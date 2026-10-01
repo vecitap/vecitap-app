@@ -20,6 +20,14 @@ export type Unidad = Pick<
   vinculos: Vinculo[];
 };
 
+/**
+ * Unidad con `paga` ("¿quién paga el condominio?"). Aparte de `Unidad` a
+ * propósito: solo la piden las pantallas que la usan (la lista de
+ * Propietarios y la ficha), así Inicio y Cortes no dependen de la columna
+ * nueva. Ver supabase/migrations/20260930120000_unidades_paga.sql.
+ */
+export type UnidadConPaga = Unidad & Pick<Database["public"]["Tables"]["unidades"]["Row"], "paga">;
+
 /** Mismo subconjunto de columnas que selecciona cada pantalla (unidad_id..estado) — ver app.html:935-936. */
 export type SaldoActual = Pick<
   Database["public"]["Views"]["saldos_actuales"]["Row"],

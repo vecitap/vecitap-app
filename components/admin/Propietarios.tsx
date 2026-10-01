@@ -3,10 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, FileSpreadsheet, Plus, Search, Upload } from "lucide-react";
-import { Button, Input } from "@/components/ui";
+import { Badge, Button, Input } from "@/components/ui";
 import { nf, pct, usd } from "@/lib/formato";
 import { nombreDe, vigente } from "@/lib/admin/personas";
-import type { SaldoActual, Unidad } from "@/lib/admin/tipos";
+import { pagaDe } from "@/lib/paga";
+import type { SaldoActual, UnidadConPaga } from "@/lib/admin/tipos";
 import { AltaUnidad } from "./AltaUnidad";
 import { ImportarUnidades } from "./ImportarUnidades";
 import { ImportarSaldos } from "./ImportarSaldos";
@@ -43,7 +44,7 @@ export function Propietarios({
 }: {
   orgId: string;
   edificioId: string;
-  unidades: Unidad[];
+  unidades: UnidadConPaga[];
   saldos: SaldoActual[];
   sumaAlicuotas: number;
 }) {
@@ -162,7 +163,14 @@ export function Propietarios({
                         </div>
                       )}
                     </td>
-                    <td data-t="Inquilino">{nombreDe(i) || <span style={{ color: "var(--tenue)" }}>—</span>}</td>
+                    <td data-t="Inquilino">
+                      {nombreDe(i) || <span style={{ color: "var(--tenue)" }}>—</span>}
+                      {pagaDe(u.paga) === "inquilino" && (
+                        <div style={{ marginTop: 3 }}>
+                          <Badge tono="azul">Paga: inquilino</Badge>
+                        </div>
+                      )}
+                    </td>
                     <td className="mono" data-t="Saldo" style={{ textAlign: "right", fontWeight: 600, color: COLOR_TOTAL(total) }}>
                       {usd(total)}
                     </td>

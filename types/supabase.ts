@@ -1764,6 +1764,8 @@ export type Database = {
           id: string
           inquilino_ve: string
           org_id: string
+          // PROVISORIO (30-sep): agregado a mano hasta regenerar los tipos — ver supabase/migrations/20260930120000_unidades_paga.sql
+          paga: string
           saldo_inicial: number
           saldo_inicial_hon: number
         }
@@ -1776,6 +1778,8 @@ export type Database = {
           id?: string
           inquilino_ve?: string
           org_id: string
+          // PROVISORIO (30-sep): agregado a mano hasta regenerar los tipos — ver supabase/migrations/20260930120000_unidades_paga.sql
+          paga?: string
           saldo_inicial?: number
           saldo_inicial_hon?: number
         }
@@ -1788,6 +1792,8 @@ export type Database = {
           id?: string
           inquilino_ve?: string
           org_id?: string
+          // PROVISORIO (30-sep): agregado a mano hasta regenerar los tipos — ver supabase/migrations/20260930120000_unidades_paga.sql
+          paga?: string
           saldo_inicial?: number
           saldo_inicial_hon?: number
         }
@@ -2584,6 +2590,8 @@ export type Database = {
           nivel: string
           org_id: string
           organizacion: string
+          // PROVISORIO (30-sep): agregado a mano hasta regenerar los tipos — ver supabase/migrations/20260930120000_unidades_paga.sql
+          paga: string
           recibo_anio: number
           recibo_mes: number
           recibo_numero: string

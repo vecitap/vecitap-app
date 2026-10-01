@@ -84,7 +84,11 @@ reconstruirlos leyendo el documento entero es caro.
 | 3 | Día local de la Bitácora + `hoy_local()` / `inicio_dia_local()` | `supabase/migrations/20260928140000_garita_bitacora_dia_local.sql` | **Avisarle a Gustavo antes:** toca una función `SECURITY DEFINER` de la base compartida. El cliente ya está corregido, así que hasta que esto corra la Bitácora sigue mostrando la ventana corrida |
 | 4 | Segunda ronda de fechas: las 5 funciones (`libro_edificio`, `historial_unidad`, `cerrar_periodo`, `generar_cobros_vencidos`, `generar_cobro_interno`) + `dia_local()` + default de `vinculos.desde` | `supabase/migrations/20260929120000_segunda_ronda_dia_local.sql` | **Va después del #3** (la guarda 1 aborta si faltan las auxiliares). **Respaldo antes de correrla en producción.** La guarda 2 aborta sola si alguna función cambió desde el volcado del 27-sep, así que es seguro intentarla. Ver "Punto 3" en "Salida a producción — 29-sep" |
 
-Los tres tienen su rollback en `supabase/rollbacks/` y su consulta de
+| 5 | `unidades.paga` + guardas A/B + `mis_unidades()` con `paga` (propietarios con varias unidades, fase 1) | `supabase/migrations/20260930120000_unidades_paga.sql` | Primero vecitap-pruebas; **correr el paso 0 del archivo antes** (anota los permisos de `mis_unidades()`). Después regenerar `types/supabase.ts`. Respaldo antes de producción. **Va a producción ANTES que el código del paso 3** (Propietarios y la ficha piden la columna). Ver "Propietarios con varias unidades — fase 1" |
+| 6 | `puede_operar` con `search_path` fijado | `supabase/migrations/20260930130000_puede_operar_search_path.sql` | Función de seguridad. La guarda aborta sola si el cuerpo no es el del volcado. Anotar el NOTICE "ANTES" que imprime. Sin dependencias |
+| 7 | Coherencia de organización en `vinculos` (disparadores) | `supabase/migrations/20260930140000_vinculos_org_coherente.sql` | **Correr antes la CONSULTA PREVIA del archivo**: tiene que dar 0 filas. La guarda aborta sola si no. Sin dependencias |
+
+Todos tienen su rollback en `supabase/rollbacks/` y su consulta de
 verificación dentro del propio archivo.
 
 ### Lo que falta probar en el navegador
@@ -3800,3 +3804,190 @@ después de los borrados. El análisis de imports se volvió a correr y no
 apareció ningún huérfano nuevo. Nada de `docs/`, `supabase/migrations/`,
 `supabase/rollbacks/`, `scripts/`, `.env.example` ni de los archivos ignorados
 por Git (`esquema_inicial.sql` incluido) se tocó.
+
+---
+
+## Propietarios con varias unidades — fase 1 (30-sep)
+
+Origen: `PARA_NICOLAS_propietarios_varias_unidades.md` (Claude de Gustavo,
+30-sep). **Solo la fase 1** ("¿quién paga el condominio?" por unidad + total
+en el portal). La fase 2 (pago agrupado) queda **fuera de alcance**.
+
+Decisión de Nicolás: `paga` va en **`unidades`**, no en `vinculos`
+(`mis_unidades()` y `saldo_visible()` no leen `vinculos`, y
+`vinculos.persona_id` apunta a `personas`, no a usuarios de Auth).
+
+### Paso 1 — Lectura ✅ (30-sep)
+
+Consulta de `pg_get_functiondef` / `pg_policies` corrida por Nicolás en las
+**dos** bases: coinciden entre sí y con `esquema_inicial.sql`. "Vigente" en
+`vinculos` es **`hasta is null`** en toda la base (`destinatarios_de`,
+`garita_directorio`, `garita_vehiculos`, el índice parcial, `vigente()` del
+cliente); ninguna función compara `hasta` con la fecha. En pruebas no hay
+ningún `hasta` cargado; en producción `vinculos` está vacía.
+
+### Paso 2 — Migración ✅ construida, sin aplicar (30-sep)
+
+`supabase/migrations/20260930120000_unidades_paga.sql` + su rollback. El
+detalle y el porqué de cada decisión están en el encabezado del archivo. En
+corto:
+
+- `unidades.paga` (`'propietario'` | `'inquilino'`, default `'propietario'`).
+- **Guarda B** (BEFORE en `unidades`): `paga = 'inquilino'` exige un inquilino
+  vigente. Mensaje en castellano para mostrar tal cual en Admin.
+- **Disparador A** (AFTER en `vinculos`): cuando se va el último inquilino
+  vigente (se le pone `hasta` —aunque sea futuro—, se borra, cambia de tipo,
+  de unidad o de organización), `paga` vuelve a `'propietario'`.
+- A bloquea la fila de la unidad antes de contar, para que dos cambios
+  simultáneos no dejen `paga = 'inquilino'` sin inquilinos.
+- **Ninguno de los dos es SECURITY DEFINER** (justificado en el archivo:
+  quien escribe ya pasa `puede_operar` y ve todo lo que hace falta contar).
+- `mis_unidades()`: DROP + CREATE con `paga` al final; mismos atributos y
+  permisos.
+- **Política de `unidades`: sin hueco.** La única de escritura es
+  `unidades_escribir` (`puede_operar` = propietario_cuenta/administrador) y
+  ninguna función escribe en `unidades`. No se corrigió nada.
+
+**Probada en un Postgres embebido (PGlite), no contra ninguna base:** esquema
+mínimo con las mismas políticas, `puede_operar`/`tiene_rol` y permisos del
+volcado. 24 casos en verde: B acepta/rechaza (también en INSERT y con un
+vínculo de otra organización), A en sus cinco disparos, A con dos inquilinos,
+cascada al borrar la unidad, todo de nuevo **con RLS como administradora y
+como residente**, `anon` sin EXECUTE, el ACL de `mis_unidades()` idéntico
+antes y después, y el rollback. **No se probó la concurrencia** (una sola
+conexión): el razonamiento está en el archivo.
+
+La prueba encontró un bug antes de aplicar: con `search_path = ''` en los
+disparadores, las políticas de RLS fallaban porque `puede_operar` no fija su
+propia ruta (ver pendientes). Quedaron con `search_path TO 'public'`.
+
+**Supuesto pendiente de confirmar con Gustavo:** "inquilino vigente" se
+define por `vinculos`, no por `membresias` (un inquilino puede estar en el
+directorio sin cuenta en la app).
+
+### Paso 3 — UI ✅ construida, sin validar (30-sep)
+
+Construida **sin esperar la regeneración de tipos** (pedido de Nicolás):
+`paga` se agregó a mano en `types/supabase.ts` (Row/Insert/Update de
+`unidades` y el `Returns` de `mis_unidades`), en el mismo orden alfabético
+que usa el generador y con un comentario `// PROVISORIO (30-sep)` encima de
+cada línea. Al regenerar, el diff contra la edición manual tiene que ser
+**solo la desaparición de esos cuatro comentarios**.
+
+- **`lib/paga.ts`** (nuevo): `type Paga = "propietario" | "inquilino"`,
+  `pagaDe()` (cualquier otro valor, incluido `undefined` si la migración no
+  está aplicada, se lee como `propietario`) y `leerPagaPegado()` para el
+  importador.
+- **Admin, ficha de la unidad (`DatosUnidad`)**: selector "¿Quién paga el
+  condominio?". Si se elige Inquilino sin inquilino cargado, aviso y no
+  guarda (y si la base rechaza igual, se muestra su mensaje tal cual).
+  **Orden de guardado:** unidad → propietario → inquilino → `paga` al final,
+  con `.select()` para detectar un UPDATE que RLS filtra en silencio.
+- **Admin, ficha: "El inquilino ya no ocupa la unidad"** (caso 32): con
+  confirmación, le pone `hasta = hoyLocalISO()` al vínculo vigente. **No toca
+  la membresía**: el texto de confirmación y el de éxito le recuerdan a la
+  administradora que la cuenta sigue entrando hasta darla de baja en Accesos.
+  Al terminar vacía el formulario del inquilino (si no, el próximo "Guardar
+  cambios" recrearía al que se fue como inquilino nuevo).
+- **Admin, Propietarios**: etiqueta "Paga: inquilino" bajo el nombre del
+  inquilino. `UnidadConPaga` (en `lib/admin/tipos.ts`) solo la piden
+  Propietarios y la ficha; Inicio y Cortes no dependen de la columna.
+- **Admin, importar unidades**: cuatro columnas opcionales **después** de
+  las seis de `main`: quién paga, nombre, teléfono y correo del inquilino
+  (un pegado con el formato de `main` se lee igual que antes). Ver
+  "Decisiones tomadas sin consultar" abajo.
+- **Residente, `/mi`**: `ResumenUnidades` arriba del selector, con la lógica
+  en `lib/residente/resumen.ts`. "Lo que usted paga" (saldo de cada unidad y
+  total) y "Lo paga su inquilino" (solo "Al día" / "Debe"). Unidad con
+  `saldo` null → "ver recibo", fuera de la suma.
+- **"Debe N cuotas": no se construyó.** `mis_unidades()` no trae ningún dato
+  que lo diga, y calcularlo en el navegador está prohibido. Se muestra solo
+  "Al día" / "Debe". Para tenerlo hace falta una columna nueva en
+  `mis_unidades()` (decisión de Nicolás).
+
+**Probado:** typecheck, lint y build en verde. La lógica pura
+(`leerPagaPegado`, `pagaDe`, `resumenPropietario`) con 18 casos en el
+scratchpad, incluida la prueba 1 del documento de Gustavo (3 unidades, el
+total suma solo 2). **Nada probado en el navegador.**
+
+### Decisiones tomadas sin consultar (Nicolás no estaba; la más conservadora)
+
+1. **El total suma solo las deudas.** Un saldo a favor en una unidad **no**
+   se descuenta del total de las otras: no paga la deuda de otra unidad, y
+   restarlo invitaría a pagar de menos. La unidad a favor se sigue
+   mostrando con su monto, y una nota lo explica.
+2. **El resumen aparece solo si es propietario de 2 o más unidades.** Las
+   que alquila quedan "como hoy" (fuera de los dos grupos y fuera del
+   umbral). Con 1 propia + 1 alquilada, la pantalla no cambia. La regla 3 de
+   Gustavo (el inquilino que alquila varias ve un total) **no se construyó**,
+   porque el pedido fue "el inquilino ve sus unidades como hoy".
+3. **Umbral de "debe": `saldo > 0`, sin margen**, el mismo de
+   `TarjetaSaldo` (paridad con `main`), para que el resumen y la tarjeta
+   digan lo mismo de la misma unidad. No se usó `UMBRAL_SALDO`.
+4. **Importador: el inquilino entra con columnas nuevas.** El de `main` no
+   tenía columnas de inquilino, así que una fila con "inquilino" en quién
+   paga no podía ser válida nunca. Se agregaron nombre, teléfono y correo
+   del inquilino al final. Errores por fila: palabra ilegible en quién paga,
+   "paga el inquilino, pero la fila no trae su nombre", datos de inquilino
+   sin nombre, correo del inquilino inválido. Las unidades se crean con el
+   default y `paga` se fija al final, cuando los vínculos ya existen: la
+   guarda B nunca rechaza una importación válida. Si falla un paso
+   intermedio, el mensaje dice qué quedó cargado y qué no (la carga no es
+   atómica, igual que en `main`).
+5. **4b: disparador, no FK compuesta.** Ver el encabezado de la migración: una
+   segunda FK entre `unidades` y `vinculos` hace ambiguo el embed
+   `vinculos(...)` de PostgREST (PGRST201) y tumbaría Propietarios, la
+   ficha, Inicio y Cortes, salvo que se borre la FK actual.
+6. **4a: `puede_operar` NO es SECURITY DEFINER** (el pedido decía
+   "conservá SECURITY DEFINER"). Según el volcado es de invocador; se
+   conserva como esté, con `ALTER FUNCTION ... SET`, que no toca nada más.
+
+### Migraciones 4a y 4b ✅ construidas, sin aplicar (30-sep)
+
+- **`20260930130000_puede_operar_search_path.sql`**: `ALTER FUNCTION
+  public.puede_operar(uuid) SET search_path TO 'public'`. Guarda: md5 del
+  cuerpo = el del volcado, `sql`/`STABLE`, sin `SET` previo; si no, aborta.
+  Por qué no cambia quién pasa: explicado en el encabezado. **Costo:**
+  `puede_operar` deja de inlinearse en las políticas (confirmado con EXPLAIN
+  en PGlite: antes `Filter: tiene_rol(...)`, después
+  `Filter: puede_operar(...)`). Una llamada más por fila; la verificación 5
+  da la consulta para medirlo en pruebas. Alternativa anotada en el archivo.
+- **`20260930140000_vinculos_org_coherente.sql`**: disparador en `vinculos`
+  (la unidad tiene que ser de la misma org) y en `unidades` (no cambiar de
+  org una unidad con vínculos). Guarda: aborta si ya hay filas cruzadas.
+  Consulta previa incluida en el archivo.
+
+**Probadas en PGlite** (`puede_operar`, `tiene_rol`, políticas y permisos
+copiados del volcado; para la guarda md5, el cuerpo byte a byte): 30 casos,
+incluidos la guarda que aborta (cuerpo distinto, aplicar dos veces, fila
+cruzada existente), RLS como administradora de cada org y como residente,
+los dos rollbacks, y **las tres migraciones del 30-sep aplicadas juntas y
+revertidas en orden inverso**. La de `paga` volvió a pasar sus 24 casos.
+`package.json` del proyecto sin tocar (PGlite vive solo en el scratchpad).
+
+### Pendientes que dejó este trabajo
+
+1. **Un inquilino que se va conserva su membresía.** Ahora hay una acción
+   que cierra el vínculo (caso 32) y dispara A, pero la membresía en la app
+   sigue apagándose a mano en Accesos (decisión de Nicolás: no tocarla).
+   Si la administradora se olvida, el ex-inquilino sigue viendo la unidad,
+   reportando pagos y creando invitaciones de visita a la garita.
+2. ~~Un vínculo puede apuntar a una unidad de otra organización~~:
+   migración escrita (4b), sin aplicar.
+3. ~~`puede_operar` no fija `search_path`~~: migración escrita (4a), sin
+   aplicar.
+4. **`vinculos.persona_id` tampoco está atado a la organización**: un
+   vínculo podría apuntar a una persona de otra org. Mismo tipo de hueco, del
+   lado de la persona. La consulta previa de 4b lo cuenta, pero no se
+   bloquea. Candidato para la Fase 5.
+5. **`puede_ver_garita()`** (20260928120000) se creó sin
+   `REVOKE ... FROM PUBLIC`. Devuelve un booleano y mira `auth.uid()`, así
+   que no filtra nada; anotado por consistencia.
+6. **Importador, heredado de `main`:** separa columnas por coma, punto y coma
+   o tabulación, así que escrito a mano con comas, un decimal con coma
+   (`2,41144`) se parte en dos columnas; el propio ejemplo del placeholder
+   lo hace. Pegado desde Excel (tabulaciones) funciona. No se tocó: es
+   paridad, y con las columnas nuevas el efecto es el mismo que antes.
+7. **"Debe N cuotas"**: ver arriba.
+8. **Supuesto pendiente con Gustavo:** "inquilino vigente" se define por
+   `vinculos`, no por `membresias`.

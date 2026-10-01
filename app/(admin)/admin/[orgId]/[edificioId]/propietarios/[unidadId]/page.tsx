@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Ficha } from "@/components/admin/Ficha";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { esUuid } from "@/lib/validacion";
-import type { Unidad } from "@/lib/admin/tipos";
+import type { UnidadConPaga } from "@/lib/admin/tipos";
 
 /** Portado de Ficha() en app.html:1977-2132 — antes drawer superpuesto, ahora subruta propia (ver docs/inventario-admin.md sección 2). */
 export default async function PaginaFicha({
@@ -29,7 +29,7 @@ export default async function PaginaFicha({
     supabase
       .from("unidades")
       .select(
-        "id,codigo,alicuota,saldo_inicial,saldo_inicial_hon,activa,vinculos(id,tipo,desde,hasta,enviar_corte,persona_id,personas(id,prefijo,nombre,documento,telefono,correo))"
+        "id,codigo,alicuota,saldo_inicial,saldo_inicial_hon,activa,paga,vinculos(id,tipo,desde,hasta,enviar_corte,persona_id,personas(id,prefijo,nombre,documento,telefono,correo))"
       )
       .eq("id", unidadId)
       .eq("edificio_id", edificioId)
@@ -58,7 +58,7 @@ export default async function PaginaFicha({
   // movimientos): no es un 404, la Ficha muestra el total en cero.
   if (e2) throw e2;
 
-  const unidadFila: Unidad = unidad;
+  const unidadFila: UnidadConPaga = unidad;
 
   return (
     <Ficha

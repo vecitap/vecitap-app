@@ -8,7 +8,7 @@ import { nf, usd } from "@/lib/formato";
 import { nombreDe, normalizarTel, vigente } from "@/lib/admin/personas";
 import { imprimirEstado } from "@/lib/admin/imprimir-estado";
 import type { Database } from "@/types/supabase";
-import type { OrganizacionAdmin, SaldoActual, Unidad } from "@/lib/admin/tipos";
+import type { OrganizacionAdmin, SaldoActual, UnidadConPaga } from "@/lib/admin/tipos";
 import { DatosUnidad } from "./DatosUnidad";
 
 type FilaHistorial = Database["public"]["Functions"]["historial_unidad"]["Returns"][number];
@@ -39,7 +39,7 @@ export function Ficha({
 }: {
   orgId: string;
   edificioId: string;
-  unidad: Unidad;
+  unidad: UnidadConPaga;
   saldo: SaldoActual | null;
   edificio: { id: string; nombre: string; rif: string | null; direccion: string | null };
   organizacion: Pick<OrganizacionAdmin, "id" | "nombre">;

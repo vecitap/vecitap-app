@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Aviso, Button, Card } from "@/components/ui";
 import { nf, num, pct } from "@/lib/formato";
 import { correoValido, normaliza } from "@/lib/admin/personas";
+import { leerPagaPegado, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Unidad } from "@/lib/admin/tipos";
 
@@ -15,10 +16,31 @@ type Fila = {
   nombre: string;
   telefono: string;
   correo: string;
+  paga: Paga | null;
+  inqNombre: string;
+  inqTelefono: string;
+  inqCorreo: string;
   errores: string[];
 };
 
-/** Portado de ImportarUnidades() en app.html:1655-1781. */
+type Persona = { nombre: string; telefono: string; correo: string };
+
+/**
+ * Portado de ImportarUnidades() en app.html:1655-1781.
+ *
+ * Agregado del 30-sep (docs/casos-de-uso-mejorados.md, caso 31): cuatro
+ * columnas opcionales DESPUÉS de las seis de `main` —quién paga, y nombre,
+ * teléfono y correo del inquilino—, así un pegado con el formato de `main`
+ * se lee exactamente igual que antes. "Quién paga" vacío = propietario.
+ *
+ * Orden de escritura: unidades → propietarios → inquilinos → `paga`. La
+ * base rechaza paga = 'inquilino' en una unidad sin inquilino vigente
+ * (guarda B de supabase/migrations/20260930120000_unidades_paga.sql), así
+ * que las unidades se crean con el default (propietario) y `paga` se fija al
+ * final, cuando los vínculos de inquilino ya existen. Una fila que pide
+ * inquilino sin traer su nombre se marca con error en la vista previa y no
+ * se carga, igual que el resto de la validación.
+ */
 export function ImportarUnidades({
   orgId,
   edificioId,
@@ -50,6 +72,10 @@ export function ImportarUnidades({
       const nombre = p[3] || "";
       const telefono = p[4] || "";
       const correo = p[5] || "";
+      const paga = leerPagaPegado(p[6]);
+      const inqNombre = p[7] || "";
+      const inqTelefono = p[8] || "";
+      const inqCorreo = p[9] || "";
       const k = normaliza(codigo);
       const errores: string[] = [];
       if (!codigo) errores.push("sin código");
@@ -57,8 +83,12 @@ export function ImportarUnidades({
       if (existentes.has(k)) errores.push("ya existe en el edificio");
       if (vistos.has(k)) errores.push("repetida en el pegado");
       if (correo && !correoValido(correo)) errores.push("correo inválido");
+      if (paga === null) errores.push(`«${p[6]}» en quién paga: escriba propietario o inquilino`);
+      if (paga === "inquilino" && !inqNombre) errores.push("paga el inquilino, pero la fila no trae su nombre");
+      if ((inqTelefono || inqCorreo) && !inqNombre) errores.push("datos de inquilino sin nombre");
+      if (inqCorreo && !correoValido(inqCorreo)) errores.push("correo del inquilino inválido");
       vistos.add(k);
-      return { codigo, alicuota, saldo, nombre, telefono, correo, errores };
+      return { codigo, alicuota, saldo, nombre, telefono, correo, paga, inqNombre, inqTelefono, inqCorreo, errores };
     });
   }, [texto, unidades]);
 
@@ -66,6 +96,24 @@ export function ImportarUnidades({
   const suma =
     buenas.reduce((s, f) => s + (f.alicuota || 0), 0) +
     unidades.filter((u) => u.activa).reduce((s, u) => s + Number(u.alicuota || 0), 0);
+
+  /** Crea las personas y sus vínculos de un tipo. Devuelve el mensaje de error, o null. */
+  async function vincular(
+    supabase: ReturnType<typeof crearClienteNavegador>,
+    tipo: "propietario" | "inquilino",
+    filas: { unidadId: string; persona: Persona }[]
+  ): Promise<string | null> {
+    if (!filas.length) return null;
+    const { data: pers, error: e1 } = await supabase
+      .from("personas")
+      .insert(filas.map((f) => ({ org_id: orgId, nombre: f.persona.nombre, telefono: f.persona.telefono || null, correo: f.persona.correo || null })))
+      .select("id");
+    if (e1 || !pers || pers.length !== filas.length) return e1?.message ?? `No se pudieron registrar los ${tipo}s.`;
+    const { error: e2 } = await supabase
+      .from("vinculos")
+      .insert(filas.map((f, i) => ({ org_id: orgId, unidad_id: f.unidadId, persona_id: pers[i].id, tipo })));
+    return e2 ? e2.message : null;
+  }
 
   async function aplicar() {
     if (!buenas.length) return;
@@ -81,23 +129,41 @@ export function ImportarUnidades({
       setOcupado(false);
       return setError(e1?.message ?? "No se pudieron cargar las unidades.");
     }
+    // Por código y no por posición: los códigos del pegado son únicos (se
+    // validó arriba), y así no depende del orden en que la base devuelva las filas.
+    const idDe = new Map(nuevas.map((n) => [n.codigo, n.id]));
+    const conId = buenas.map((f) => ({ ...f, id: idDe.get(f.codigo) })).filter((f): f is Fila & { id: string } => !!f.id);
 
-    const conNombre = buenas.map((f, i) => ({ ...f, id: nuevas[i]?.id })).filter((f) => f.nombre && f.id);
-    if (conNombre.length) {
-      const { data: pers, error: e2 } = await supabase
-        .from("personas")
-        .insert(conNombre.map((f) => ({ org_id: orgId, nombre: f.nombre, telefono: f.telefono || null, correo: f.correo || null })))
-        .select("id");
-      if (e2 || !pers) {
+    const eProp = await vincular(
+      supabase,
+      "propietario",
+      conId.filter((f) => f.nombre).map((f) => ({ unidadId: f.id, persona: { nombre: f.nombre, telefono: f.telefono, correo: f.correo } }))
+    );
+    if (eProp) {
+      setOcupado(false);
+      return setError(eProp);
+    }
+
+    const eInq = await vincular(
+      supabase,
+      "inquilino",
+      conId.filter((f) => f.inqNombre).map((f) => ({ unidadId: f.id, persona: { nombre: f.inqNombre, telefono: f.inqTelefono, correo: f.inqCorreo } }))
+    );
+    if (eInq) {
+      setOcupado(false);
+      return setError(
+        `Las unidades y sus propietarios se cargaron, pero no los inquilinos: ${eInq}. Todas quedaron como «paga el propietario»; cargue los inquilinos desde la ficha de cada unidad.`
+      );
+    }
+
+    const pagaInquilino = conId.filter((f) => f.paga === "inquilino").map((f) => f.id);
+    if (pagaInquilino.length) {
+      const { data: marcadas, error: e4 } = await supabase.from("unidades").update({ paga: "inquilino" }).in("id", pagaInquilino).select("id");
+      if (e4 || !marcadas || marcadas.length !== pagaInquilino.length) {
         setOcupado(false);
-        return setError(e2?.message ?? "No se pudieron registrar los propietarios.");
-      }
-      const { error: e3 } = await supabase
-        .from("vinculos")
-        .insert(conNombre.map((f, i) => ({ org_id: orgId, unidad_id: f.id as string, persona_id: pers[i].id, tipo: "propietario" })));
-      if (e3) {
-        setOcupado(false);
-        return setError(e3.message);
+        return setError(
+          `Las unidades, propietarios e inquilinos se cargaron, pero no se pudo marcar que paga el inquilino${e4 ? `: ${e4.message}` : ""}. Márquelo desde la ficha de cada unidad.`
+        );
       }
     }
 
@@ -122,7 +188,7 @@ export function ImportarUnidades({
           </Button>
         </div>
         <div className="mono" style={{ background: "var(--fondo)", borderRadius: "var(--radio-chico)", padding: "12px 14px", fontSize: 12.5, color: "var(--tinta-2)", margin: "14px 0" }}>
-          código, alícuota, saldo inicial, propietario, teléfono, correo
+          código, alícuota, saldo inicial, propietario, teléfono, correo, quién paga, inquilino, teléfono del inquilino, correo del inquilino
         </div>
         <textarea
           value={texto}
@@ -133,7 +199,9 @@ export function ImportarUnidades({
           style={{ fontSize: 13 }}
         />
         <p style={{ fontSize: 12, color: "var(--tenue)", marginTop: 8 }}>
-          Del tercer campo en adelante todo es opcional. Los montos aceptan coma o punto.
+          Del tercer campo en adelante todo es opcional. Los montos aceptan coma o punto. En «quién paga» escriba
+          propietario o inquilino; si lo deja vacío, paga el propietario. Si paga el inquilino, la fila tiene que traer
+          su nombre.
         </p>
       </Card>
 
@@ -166,6 +234,7 @@ export function ImportarUnidades({
                   <th>Alícuota</th>
                   <th>Saldo</th>
                   <th>Propietario</th>
+                  <th>Inquilino</th>
                   <th>Estado</th>
                 </tr>
               </thead>
@@ -176,6 +245,10 @@ export function ImportarUnidades({
                     <td className="mono">{f.alicuota === null ? "—" : nf(5).format(f.alicuota)}</td>
                     <td className="mono">{f.saldo === null ? "—" : nf(2).format(f.saldo)}</td>
                     <td>{f.nombre || <span style={{ color: "var(--tenue)" }}>—</span>}</td>
+                    <td>
+                      {f.inqNombre || <span style={{ color: "var(--tenue)" }}>—</span>}
+                      {f.paga === "inquilino" && <div style={{ fontSize: 11.5, color: "var(--azul)" }}>paga él</div>}
+                    </td>
                     <td style={{ fontSize: 12 }}>
                       {f.errores.length ? (
                         <span style={{ color: "var(--rojo)" }}>{f.errores.join(" · ")}</span>
