@@ -52,7 +52,7 @@ RESUELTO / PENDIENTE) justo debajo del título, con el motivo en una línea.
 | 29 | La garita comparte el tema de la app | **APROBADO 28-sep** (revierte el tema propio) |
 | 30 | Las fechas se deciden en hora de Venezuela, no en UTC | **MANTENIDO** (riesgo de datos) |
 | 31 | "¿Quién paga el condominio?" por unidad + total del propietario | **NUEVO** (funcionalidad, 30-sep) — construido, sin validar |
-| 32 | "El inquilino ya no ocupa la unidad" en la ficha | **NUEVO** (funcionalidad, 30-sep) — construido, pendiente de confirmar con Gustavo |
+| 32 | "El inquilino ya no ocupa la unidad" (y su acceso a la app) | **NUEVO** (funcionalidad, 30-sep; confirmado por Gustavo el 01-oct) — construido, sin validar |
 
 
 ## Residente
@@ -873,49 +873,50 @@ medianoche, todas esas fechas salían con un día de más.
 
 ## Funcionalidad nueva del 30-sep
 
-### 31. "¿Quién paga el condominio?" por unidad, y el total del propietario con varias unidades
+### 31. "¿Quién paga el condominio?" por unidad, y el total de quien tiene varias unidades
 
-> **30-sep — NUEVO.** Capacidad que `main` no tiene. Reglas de negocio decididas por
-> Gustavo; diseño técnico decidido por Nicolás. **Solo la fase 1** (el pago agrupado
-> de varias unidades en una transferencia es la fase 2, fuera de alcance).
+> **30-sep — NUEVO; ajustado el 01-oct con las respuestas de Gustavo.** Capacidad que
+> `main` no tiene. Reglas de negocio decididas por Gustavo; diseño técnico decidido por
+> Nicolás. **Solo la fase 1** (el pago agrupado de varias unidades en una transferencia
+> es la fase 2, fuera de alcance).
 
 **Caso de uso:** en el edificio piloto (oficinas) es común que un propietario tenga
-varias. Hoy ve cada unidad por separado, nunca el total, y no hay dónde decir que una
-oficina la paga el inquilino.
+varias, y puede haber inquilinos que alquilen varias. Hoy cada uno ve sus unidades por
+separado, nunca el total, y no hay dónde decir que una oficina la paga el inquilino.
 
-- **`main`:** no existe. El propietario elige una unidad a la vez en el selector; la
+- **`main`:** no existe. El residente elige una unidad a la vez en el selector; la
   ficha de la unidad registra propietario e inquilino y a quién le llega el recibo,
   pero no quién es responsable del pago.
-- **Ahora (cuando esté completo):**
+- **Ahora:**
   - La administradora marca en la ficha de cada unidad **quién paga: propietario (por
     omisión) o inquilino**. Lo decide ella, no el residente: si lo eligiera el
     propietario, podría sacar unidades de su vista para no ver la deuda.
-  - Un propietario con más de una unidad ve arriba del selector **"Lo que usted
-    paga"** (cada unidad con su saldo, y el total) y **"Lo paga su inquilino"** (solo
-    si está al día o debe, sin montos). Con una sola unidad, la pantalla no cambia.
-  - El inquilino ve sus unidades como hoy.
+  - Quien tiene **dos o más unidades** (propias o alquiladas) ve arriba del selector:
+    - **"Lo que usted paga"**: las que es propietario y paga el propietario, más las que
+      alquila y paga el inquilino. Cada una con su saldo, y el total.
+    - **"Lo paga su inquilino"**: las que es propietario y paga el inquilino. Solo si
+      está al día o debe, sin montos.
+  - Con una sola unidad, la pantalla no cambia.
   - **La base cuida la coherencia sola:** no deja marcar "paga el inquilino" si la
     unidad no tiene inquilino cargado, y si el inquilino se va, la unidad vuelve sola a
-    "paga el propietario" — así nunca queda una deuda que el propietario no ve y que
+    "paga el propietario", así nunca queda una deuda que el propietario no ve y que
     nadie más paga.
-- **Supuesto pendiente de confirmar con Gustavo:** "tiene inquilino" se decide por el
-  directorio de la unidad (lo que carga la administradora en la ficha), no por si el
-  inquilino tiene cuenta en la app.
-- **Detalles que conviene revisar con Gustavo** (decididos del lado conservador):
-  - El **total suma solo lo que se debe**: si una oficina tiene saldo a favor, no se
-    resta de la deuda de las otras (no la paga). Se muestra aparte, con una nota.
-  - "Lo paga su inquilino" dice solo **al día / debe**, no "debe N cuotas": la base
-    todavía no da ese número y no se calcula en el navegador.
-  - El resumen aparece cuando es **propietario de dos o más** unidades. Las que alquila
-    se ven como siempre.
-  - Al **importar unidades** se pueden agregar, al final de cada línea, quién paga y los
-    datos del inquilino. Si dice "inquilino" pero falta su nombre, la fila se marca con
-    error y no se carga.
-- **Estado:** **construido, sin validar.** Migración de la base escrita, sin aplicar
-  (`supabase/migrations/20260930120000_unidades_paga.sql`); pantallas de Admin (ficha,
-  lista de Propietarios, importador) y del portal (`ResumenUnidades`) construidas, sin
-  probar en el navegador. Detalle técnico en `docs/estado-migracion.md`, "Propietarios
-  con varias unidades — fase 1".
+- **Confirmado por Gustavo (01-oct):**
+  - "Tiene inquilino" = el cargado en el directorio de la unidad, tenga o no cuenta en
+    la app.
+  - **El total suma solo lo que se debe.** Cada unidad es una cuenta aparte: un saldo
+    a favor no se resta de las otras. Va en una **línea aparte**, "Saldo a favor en
+    05A: $ X", para que no parezca perdido.
+  - "Debe N cuotas" no hace falta para el piloto: se muestra al día / debe.
+  - El inquilino que alquila varias ve el mismo resumen (regla 3).
+- Al **importar unidades** se pueden agregar, al final de cada línea, quién paga y los
+  datos del inquilino. Si dice "inquilino" pero falta su nombre, la fila se marca con
+  error y no se carga. Si la fase 1 no está a tiempo para la carga del piloto, se
+  cargan las 6 columnas de siempre y "quién paga" se marca después en la ficha.
+- **Estado:** **construido, sin validar en el navegador.** La migración
+  (`supabase/migrations/20260930120000_unidades_paga.sql`) está **aplicada en
+  vecitap-pruebas** el 01-oct, con sus 8 verificaciones; falta producción. Detalle
+  técnico en `docs/estado-migracion.md`, "Propietarios con varias unidades — fase 1".
 - **Cómo se revierte:** primero la app (quitar el selector, la etiqueta, las columnas
   del importador y el resumen), después
   `supabase/rollbacks/20260930120000_unidades_paga_rollback.sql` (borra lo cargado en
@@ -923,29 +924,37 @@ oficina la paga el inquilino.
 
 ### 32. "El inquilino ya no ocupa la unidad"
 
-> **30-sep — NUEVO.** Capacidad que `main` no tiene. **Pendiente de confirmar con
-> Gustavo.**
+> **30-sep — NUEVO; ajustado el 01-oct: confirmado por Gustavo, y ahora también quita
+> el acceso a la app.** Capacidad que `main` no tiene.
 
 **Caso de uso:** cuando un inquilino deja la oficina, la administradora lo indica desde
 la ficha de la unidad con un botón, y el sistema deja de tratarlo como inquilino desde
-ese día, sin borrar su historia.
+ese día, sin borrar su historia, y le quita el acceso a esa unidad en la app.
 
 - **`main`:** no hay forma de hacerlo. La ficha solo permite **sobrescribir** los datos
   del inquilino con los del siguiente: el que se fue desaparece sin dejar rastro de que
-  estuvo, y si se vacía el nombre no pasa nada.
+  estuvo, y si se vacía el nombre no pasa nada. Su acceso a la app sigue activo hasta
+  que alguien lo dé de baja a mano.
 - **Ahora:** en la ficha de la unidad (Admin → Propietarios → unidad → Datos), bajo los
   datos del inquilino, **"El inquilino ya no ocupa la unidad"**. Pide confirmación y
   registra la fecha de hoy como fin de su ocupación. Sus datos y su historia quedan
   guardados.
-  - Si la unidad estaba en "paga el inquilino", **vuelve sola a "paga el propietario"**
-    (lo hace la base, caso 31): así el propietario vuelve a ver los montos de inmediato.
-  - **No le quita el acceso a la app.** Si el inquilino tenía cuenta, sigue entrando
-    hasta que la administradora lo dé de baja en Accesos. La confirmación y el mensaje
-    final se lo recuerdan.
-- **Para confirmar con Gustavo:** si "ya no ocupa" debería también quitarle el acceso a
-  la app de una vez (hoy son dos pasos, a propósito: se pidió no tocar la membresía).
-- **Estado:** construido, sin validar (`components/admin/DatosUnidad.tsx`). No necesita
-  migración propia: escribe en una columna que ya existe (`vinculos.hasta`).
-- **Cómo se revierte:** quitar el botón. Los vínculos ya cerrados quedan cerrados: no
-  hay botón para "deshacer". Si una salida se marcó por error, lo más simple es volver a
-  cargar al inquilino en la ficha.
+  - Si era el **último** inquilino de la unidad:
+    - la unidad **vuelve sola a "paga el propietario"** (caso 31);
+    - se **desactivan los accesos de inquilino de esa unidad** (no de otras). Su
+      usuario sigue activo: si se muda a otro edificio con Vecitap, entra con el mismo
+      usuario y un código nuevo.
+    - La pantalla dice **"También se le quitó el acceso a la app"**, solo si de verdad
+      se desactivó al menos uno (si el inquilino nunca creó su cuenta, no lo dice).
+  - Si la unidad tiene **otro** inquilino registrado, los accesos no se tocan (no se
+    puede saber cuál es "el del que se fue": los accesos son de la unidad, no de la
+    persona del directorio). La confirmación lo avisa.
+- **Lo hace la base**, no la pantalla: también vale si el vínculo se cierra o se borra
+  por otro camino. Queda registrado en la auditoría.
+- **Estado:** construido, sin validar en el navegador (`components/admin/DatosUnidad.tsx`
+  + la parte 3b de `20260930120000_unidades_paga.sql`, aplicada en vecitap-pruebas el
+  01-oct y verificada como administradora).
+- **Cómo se revierte:** quitar el botón, y el rollback de la migración. Los vínculos ya
+  cerrados quedan cerrados y los accesos ya apagados quedan apagados: no hay "deshacer".
+  Si una salida se marcó por error, se vuelve a cargar al inquilino en la ficha y se le
+  manda un código nuevo.

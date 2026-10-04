@@ -58,11 +58,18 @@ revoke all on function public.mis_unidades() from public;
 revoke all on function public.mis_unidades() from anon;
 grant execute on function public.mis_unidades() to authenticated;
 
--- 2) Disparadores y sus funciones.
+-- 2) Disparadores y sus funciones (incluida la 3b, la de los accesos).
+--    Las membresías de inquilino que 3b ya desactivó QUEDAN desactivadas:
+--    el rollback no las reactiva (no hay forma segura de distinguirlas de
+--    las que se apagaron a mano). Para verlas, en `auditoria`, los UPDATE de
+--    `membresias` que pasaron `activo` de true a false desde que se aplicó.
+drop trigger if exists vinculos_inquilino_sale_accesos_del on public.vinculos;
+drop trigger if exists vinculos_inquilino_sale_accesos_upd on public.vinculos;
 drop trigger if exists vinculos_inquilino_sale_del on public.vinculos;
 drop trigger if exists vinculos_inquilino_sale_upd on public.vinculos;
 drop trigger if exists unidades_paga_exige_inquilino on public.unidades;
 
+drop function if exists public.vinculos_inquilino_sale_accesos();
 drop function if exists public.vinculos_inquilino_sale();
 drop function if exists public.unidades_paga_exige_inquilino();
 
@@ -79,12 +86,14 @@ commit;
 --
 --   select tgname from pg_trigger
 --    where tgname in ('unidades_paga_exige_inquilino',
---                     'vinculos_inquilino_sale_upd', 'vinculos_inquilino_sale_del');
+--                     'vinculos_inquilino_sale_upd', 'vinculos_inquilino_sale_del',
+--                     'vinculos_inquilino_sale_accesos_upd', 'vinculos_inquilino_sale_accesos_del');
 --   -- 0 filas esperadas
 --
 --   select proname from pg_proc
 --    where pronamespace = 'public'::regnamespace
---      and proname in ('unidades_paga_exige_inquilino', 'vinculos_inquilino_sale');
+--      and proname in ('unidades_paga_exige_inquilino', 'vinculos_inquilino_sale',
+--                      'vinculos_inquilino_sale_accesos');
 --   -- 0 filas esperadas
 --
 --   select pg_get_functiondef(oid), proacl from pg_proc

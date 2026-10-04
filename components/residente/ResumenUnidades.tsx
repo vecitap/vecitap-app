@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { usd } from "@/lib/formato";
-import { debeSegunPortal, type LineaResumen, type ResumenPropietario } from "@/lib/residente/resumen";
+import { aFavorSegunPortal, debeSegunPortal, type LineaResumen, type ResumenPortal } from "@/lib/residente/resumen";
 
 /**
- * Resumen del propietario con varias unidades, arriba del selector (caso 31
- * de docs/casos-de-uso-mejorados.md). No existe en `main`. Las cuentas viven
- * en lib/residente/resumen.ts; acá solo se muestran.
+ * Resumen de quien tiene varias unidades, arriba del selector (caso 31 de
+ * docs/casos-de-uso-mejorados.md). No existe en `main`. Las cuentas viven en
+ * lib/residente/resumen.ts; acá solo se muestran.
  */
-export function ResumenUnidades({ resumen }: { resumen: ResumenPropietario }) {
-  const { pagaUsted, totalDeuda, pagaInquilino } = resumen;
+export function ResumenUnidades({ resumen }: { resumen: ResumenPortal }) {
+  const { pagaUsted, totalDeuda, aFavor, pagaInquilino } = resumen;
 
   return (
     <Card style={{ marginBottom: 16 }}>
@@ -31,10 +31,19 @@ export function ResumenUnidades({ resumen }: { resumen: ResumenPropietario }) {
               <Fila key={l.unidadId} linea={l} conMonto />
             ))}
           </ul>
-          {pagaUsted.some((l) => l.saldo !== null && l.saldo < 0) && (
-            <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--tenue)", lineHeight: 1.5 }}>
-              Un saldo a favor queda en su unidad: no se descuenta del total de las otras.
-            </p>
+          {aFavor.length > 0 && (
+            <ul style={{ listStyle: "none", margin: "8px 0 0", padding: "8px 0 0", borderTop: "1px dashed var(--linea)" }}>
+              {aFavor.map((l) => (
+                <li key={l.unidadId} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "4px 0", fontSize: 13.5 }}>
+                  <span>
+                    Saldo a favor en <span className="mono">{l.codigo}</span>
+                  </span>
+                  <span className="mono" style={{ color: "var(--verde)" }}>
+                    {usd(Math.abs(l.saldo ?? 0))}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       )}
@@ -53,21 +62,26 @@ export function ResumenUnidades({ resumen }: { resumen: ResumenPropietario }) {
   );
 }
 
+/**
+ * Una unidad. Con monto: "Debe $ X" o "Al día" — un saldo a favor dice "Al
+ * día" acá y su monto va en la línea "Saldo a favor en …", que no se suma al
+ * total. Sin monto (lo paga el inquilino): solo "Debe" o "Al día".
+ */
 function Fila({ linea, conMonto = false }: { linea: LineaResumen; conMonto?: boolean }) {
   const { saldo } = linea;
   const debe = saldo !== null && debeSegunPortal(saldo);
 
   let estado: string;
   if (saldo === null) estado = "ver recibo";
-  else if (!conMonto) estado = debe ? "Debe" : "Al día";
-  else estado = debe ? `Debe ${usd(saldo)}` : saldo < 0 ? `A su favor ${usd(Math.abs(saldo))}` : "Al día";
+  else if (debe) estado = conMonto ? `Debe ${usd(saldo)}` : "Debe";
+  else estado = conMonto && aFavorSegunPortal(saldo) ? "A su favor" : "Al día";
 
   return (
     <li style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", fontSize: 13.5 }}>
       <Link href={`/mi/${linea.unidadId}/recibo`} style={{ color: "inherit" }}>
         {linea.edificio} · <span className="mono">{linea.codigo}</span>
       </Link>
-      <span className={conMonto && saldo !== null ? "mono" : undefined} style={{ color: saldo === null ? "var(--tenue)" : debe ? "var(--rojo)" : "var(--verde)" }}>
+      <span className={conMonto && debe ? "mono" : undefined} style={{ color: saldo === null ? "var(--tenue)" : debe ? "var(--rojo)" : "var(--verde)" }}>
         {estado}
       </span>
     </li>

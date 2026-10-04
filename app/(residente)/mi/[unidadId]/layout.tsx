@@ -6,7 +6,7 @@ import { TarjetaSaldo } from "@/components/residente/TarjetaSaldo";
 import { PestanasResidente } from "@/components/residente/PestanasResidente";
 import { ResumenUnidades } from "@/components/residente/ResumenUnidades";
 import { misUnidadesSesion } from "@/lib/residente/datos";
-import { resumenPropietario } from "@/lib/residente/resumen";
+import { resumenUnidades } from "@/lib/residente/resumen";
 import { usuarioActual } from "@/lib/supabase/cache";
 import { esUuid } from "@/lib/validacion";
 
@@ -36,7 +36,7 @@ export default async function LayoutUnidad({
   // en la lista, o es un typo o alguien probó la unidad de otra persona.
   if (!unidad) notFound();
 
-  const resumen = resumenPropietario(unidades);
+  const resumen = resumenUnidades(unidades);
 
   return (
     <>
@@ -46,7 +46,7 @@ export default async function LayoutUnidad({
       <EncabezadoResidente correo={user.email ?? ""} />
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "18px 16px 60px" }}>
-        {/* Solo para quien es propietario de más de una unidad; si no, null
+        {/* Solo para quien tiene más de una unidad; si no, null
             y la pantalla queda igual que antes (caso 31). */}
         {resumen && <ResumenUnidades resumen={resumen} />}
 

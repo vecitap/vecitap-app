@@ -11,23 +11,29 @@ export type LineaResumen = {
   saldo: number | null;
 };
 
-export type ResumenPropietario = {
-  /** Unidades de las que es propietario y paga él. */
+export type ResumenPortal = {
+  /** Las que paga él: propietario con paga = propietario, o inquilino con paga = inquilino. */
   pagaUsted: LineaResumen[];
-  /** Suma de las deudas de `pagaUsted` (ver `resumenPropietario`). */
+  /** Suma de las deudas de `pagaUsted` (ver `resumenUnidades`). */
   totalDeuda: number;
-  /** Unidades de las que es propietario y paga su inquilino: solo el estado, nunca el monto. */
+  /** Las de `pagaUsted` con saldo a favor: cada una se muestra en su propia línea. */
+  aFavor: LineaResumen[];
+  /** Propietario con paga = inquilino: solo el estado, nunca el monto. */
   pagaInquilino: LineaResumen[];
 };
 
 /**
  * Mismo criterio que la tarjeta de saldo del portal (`TarjetaSaldo.tsx`, en
- * paridad con index.html:668-671): debe si el saldo es mayor que cero, sin
- * margen. El resumen y la tarjeta tienen que decir lo mismo de la misma
- * unidad.
+ * paridad con index.html:668-671): debe si el saldo es mayor que cero, a
+ * favor si es menor, sin margen. El resumen y la tarjeta tienen que decir lo
+ * mismo de la misma unidad.
  */
 export function debeSegunPortal(saldo: number): boolean {
   return saldo > 0;
+}
+
+export function aFavorSegunPortal(saldo: number): boolean {
+  return saldo < 0;
 }
 
 function linea(u: UnidadPortal): LineaResumen {
@@ -38,28 +44,35 @@ function linea(u: UnidadPortal): LineaResumen {
 }
 
 /**
- * Resumen arriba del selector para quien es propietario de más de una
- * unidad (caso 31 de docs/casos-de-uso-mejorados.md). Devuelve `null` si no
- * corresponde mostrarlo, y la pantalla queda igual que antes.
+ * Resumen arriba del selector para quien tiene más de una unidad (caso 31 de
+ * docs/casos-de-uso-mejorados.md, con las respuestas de Gustavo del 01-oct).
+ * Devuelve `null` si no corresponde mostrarlo, y la pantalla queda igual.
  *
- * Decisiones, todas a favor de no mostrar de menos:
- *  - Solo cuentan las unidades donde la relación es `propietario`. Las que
- *    alquila se ven "como hoy" (pedido de Nicolás, 30-sep): no entran a
- *    ningún grupo ni cuentan para el umbral de "más de una unidad".
- *  - El total **no se calcula**: se suman los saldos que ya calculó la base.
- *    Y se suman solo las deudas (saldo > 0): un saldo a favor queda en su
- *    unidad y no se descuenta del total, porque no paga la deuda de otra
- *    unidad — restarlo invitaría a pagar de menos. Cada unidad a favor se
- *    sigue mostrando, con su monto, en su línea.
+ *  - Aparece con 2 o más unidades EN TOTAL (propias y alquiladas).
+ *  - "Lo que usted paga": las que es propietario y paga el propietario, más
+ *    las que alquila y paga el inquilino (regla 3: el inquilino que alquila
+ *    varias ve el mismo resumen).
+ *  - "Lo paga su inquilino": las que es propietario y paga el inquilino.
+ *  - Las que alquila y paga el propietario no entran a ningún grupo: no le
+ *    toca pagarlas. Se siguen viendo en el selector, como siempre.
+ *  - El total **no se calcula**: se suman los saldos que ya calculó la base,
+ *    y solo las deudas. Cada unidad es una cuenta aparte, así que un saldo a
+ *    favor no se descuenta de las otras; va en su propia línea ("Saldo a
+ *    favor en 05A") para que no parezca perdido.
  *  - `saldo` null no entra a la suma; la línea dice "ver recibo".
  */
-export function resumenPropietario(unidades: UnidadPortal[]): ResumenPropietario | null {
-  const propias = unidades.filter((u) => u.relacion !== "inquilino");
-  if (propias.length < 2) return null;
+export function resumenUnidades(unidades: UnidadPortal[]): ResumenPortal | null {
+  if (unidades.length < 2) return null;
 
-  const pagaUsted = propias.filter((u) => pagaDe(u.paga) === "propietario").map(linea);
-  const pagaInquilino = propias.filter((u) => pagaDe(u.paga) === "inquilino").map(linea);
+  const esPropia = (u: UnidadPortal) => u.relacion !== "inquilino";
+  const pagaUsted = unidades
+    .filter((u) => (esPropia(u) ? pagaDe(u.paga) === "propietario" : pagaDe(u.paga) === "inquilino"))
+    .map(linea);
+  const pagaInquilino = unidades.filter((u) => esPropia(u) && pagaDe(u.paga) === "inquilino").map(linea);
+  if (pagaUsted.length === 0 && pagaInquilino.length === 0) return null;
+
   const totalDeuda = pagaUsted.reduce((s, l) => (l.saldo !== null && debeSegunPortal(l.saldo) ? s + l.saldo : s), 0);
+  const aFavor = pagaUsted.filter((l) => l.saldo !== null && aFavorSegunPortal(l.saldo));
 
-  return { pagaUsted, totalDeuda, pagaInquilino };
+  return { pagaUsted, totalDeuda, aFavor, pagaInquilino };
 }

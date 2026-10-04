@@ -20,6 +20,11 @@
 --      unidad no tiene un inquilino vigente en `vinculos`.
 --   3. Disparador A (en `vinculos`): cuando el último inquilino vigente de una
 --      unidad deja de serlo, `paga` vuelve sola a 'propietario'.
+--   3b. En ese mismo momento, se desactivan las membresías de INQUILINO de
+--      ESA unidad (pedido de Gustavo, 01-oct). La cuenta del usuario no se
+--      toca: si se muda a otro edificio con Vecitap, entra con el mismo
+--      usuario y un código nuevo. Ver "3b: por qué ESTA parte sí es
+--      SECURITY DEFINER" más abajo.
 --   4. `mis_unidades()` devuelve también `paga`.
 --
 -- A y B juntas mantienen una sola invariante, en los dos sentidos:
@@ -263,6 +268,98 @@ create trigger vinculos_inquilino_sale_del
   when (old.tipo = 'inquilino' and old.hasta is null)
   execute function public.vinculos_inquilino_sale();
 
+-- ── 3b. Se fue el último inquilino → se apagan sus accesos a esa unidad ──
+--
+-- 3b: por qué ESTA parte sí es SECURITY DEFINER (y A y B no)
+-- La política de escritura de `membresias` es `mem_admin` (FOR ALL), y solo
+-- deja pasar a `propietario_cuenta` (leída por MCP el 01-oct, igual en las
+-- dos bases). Una `administrador` —que es quien carga y cierra inquilinos—
+-- PUEDE cerrar el vínculo, pero su UPDATE a `membresias` afectaría 0 filas,
+-- sin error. Con los permisos de quien dispara, la regla de Gustavo no se
+-- cumpliría justo en el caso más común.
+--
+-- Por eso esta función corre como su dueño, y por eso está acotada al
+-- mínimo:
+--   · Hace UNA sola cosa: `activo = false` en membresías con rol
+--     'residente', relación 'inquilino', de ESA unidad y de la MISMA
+--     organización que la unidad. No toca otras unidades, otros roles, ni
+--     la cuenta (auth.users), ni borra nada.
+--   · Solo actúa si el vínculo que se fue era de la misma organización que
+--     la unidad. Quien lo cerró tuvo que pasar `puede_operar` sobre la org
+--     del vínculo (política `vinculos_escribir`), así que ya administra esa
+--     unidad. Un vínculo cruzado (el hueco que cierra 20260930140000) no
+--     dispara nada.
+--   · Solo si no queda ningún inquilino vigente, contado después de
+--     bloquear la fila de la unidad (mismo criterio de concurrencia que A).
+--   · Es una función de disparador: Postgres no deja llamarla como RPC
+--     ("trigger functions can only be called as triggers"). Además se le
+--     quita EXECUTE a todos; disparar el disparador no lo necesita.
+--   · `SET search_path TO 'public'` y nombres calificados.
+--
+-- Lo que esto amplía, dicho explícitamente: hasta ahora una `administrador`
+-- no podía desactivar ninguna membresía. Desde acá puede, de forma
+-- indirecta, desactivar los accesos de inquilino de una unidad de su
+-- organización, y solo cerrando al último inquilino de esa unidad. Es la
+-- regla de negocio que pidió Gustavo. Queda en `auditoria` (aud_membresias).
+--
+-- Lo que NO hace: si quedan otros inquilinos vigentes, no apaga ninguna
+-- membresía (las membresías no están atadas a una persona del directorio,
+-- solo a la unidad, así que no se puede saber cuál es "la del que se fue").
+
+create function public.vinculos_inquilino_sale_accesos() returns trigger
+    language plpgsql
+    security definer
+    set search_path to 'public'
+    as $function$
+declare
+  v_org uuid;
+begin
+  select u.org_id into v_org
+    from public.unidades u
+   where u.id = old.unidad_id
+     for update;
+  if not found or v_org <> old.org_id then
+    return null;
+  end if;
+
+  if exists (
+       select 1 from public.vinculos v
+        where v.unidad_id = old.unidad_id
+          and v.org_id    = v_org
+          and v.tipo      = 'inquilino'
+          and v.hasta is null) then
+    return null;
+  end if;
+
+  update public.membresias m
+     set activo = false
+   where m.unidad_id = old.unidad_id
+     and m.org_id    = v_org
+     and m.rol       = 'residente'
+     and m.relacion  = 'inquilino'
+     and m.activo;
+  return null;
+end $function$;
+
+revoke all on function public.vinculos_inquilino_sale_accesos() from public;
+revoke all on function public.vinculos_inquilino_sale_accesos() from anon, authenticated;
+
+create trigger vinculos_inquilino_sale_accesos_upd
+  after update of tipo, hasta, unidad_id, org_id on public.vinculos
+  for each row
+  when (old.tipo = 'inquilino' and old.hasta is null
+        and (new.tipo <> 'inquilino'
+             or new.hasta is not null
+             or new.unidad_id <> old.unidad_id
+             or new.org_id <> old.org_id))
+  execute function public.vinculos_inquilino_sale_accesos();
+
+create trigger vinculos_inquilino_sale_accesos_del
+  after delete on public.vinculos
+  for each row
+  when (old.tipo = 'inquilino' and old.hasta is null)
+  execute function public.vinculos_inquilino_sale_accesos();
+
 -- ── 4. mis_unidades() con `paga` ─────────────────────────────────────────
 
 drop function public.mis_unidades();
@@ -329,7 +426,8 @@ commit;
 --      select paga, count(*) from public.unidades group by paga;
 --      -- Esperado: una sola fila, 'propietario' = total de unidades.
 --
--- 2) Los tres disparadores nuevos y que NO son SECURITY DEFINER:
+-- 2) Los cinco disparadores nuevos, y que A y B NO son SECURITY DEFINER
+--    (la 3b sí, a propósito: ver verificación 7):
 --
 --      select c.relname, t.tgname, pg_get_triggerdef(t.oid)
 --        from pg_trigger t join pg_class c on c.oid = t.tgrelid
@@ -337,7 +435,10 @@ commit;
 --         and c.relname in ('unidades', 'vinculos') and not t.tgisinternal
 --       order by 1, 2;
 --      -- Esperado: aud_unidades (ya estaba), unidades_paga_exige_inquilino,
---      -- vinculos_inquilino_sale_del, vinculos_inquilino_sale_upd.
+--      -- vinculos_inquilino_sale_accesos_del, vinculos_inquilino_sale_accesos_upd,
+--      -- vinculos_inquilino_sale_del, vinculos_inquilino_sale_upd. (Si la
+--      -- 20260930140000 ya está aplicada, también vinculos_unidad_misma_org
+--      -- y unidades_org_con_vinculos.)
 --
 --      select proname, prosecdef as security_definer, provolatile, proconfig
 --        from pg_proc
@@ -421,4 +522,39 @@ commit;
 --      -- Esperado: 0 filas (RLS lo filtra sin error). Se usa 'propietario'
 --      -- a propósito para que la guarda B no se meta y se vea solo RLS.
 --      rollback;
+--
+-- 7) 3b, la función y sus permisos:
+--
+--      select proname, prosecdef, proconfig, proacl, pg_get_userbyid(proowner) dueno
+--        from pg_proc
+--       where oid = 'public.vinculos_inquilino_sale_accesos()'::regprocedure;
+--      -- Esperado: prosecdef = true, proconfig = {search_path=public},
+--      -- proacl = {postgres=X/postgres} (nadie más), dueño postgres.
+--
+-- 8) 3b de punta a punta, como una ADMINISTRADORA (no propietario_cuenta:
+--    es el caso que justifica SECURITY DEFINER), sin dejar rastro. El
+--    `raise exception` del final deshace todo y muestra el resultado en el
+--    mensaje de error:
+--
+--      do $v$
+--      declare a int; b int; otra int;
+--      begin
+--        perform set_config('role', 'authenticated', true);
+--        perform set_config('request.jwt.claims',
+--          '{"sub":"<usuario_id de una administradora>","role":"authenticated"}', true);
+--        select count(*) into a from public.membresias
+--         where unidad_id = '<unidad con inquilino>' and rol = 'residente'
+--           and relacion = 'inquilino' and activo;
+--        update public.vinculos set hasta = hoy_local()
+--         where unidad_id = '<unidad con inquilino>' and tipo = 'inquilino' and hasta is null;
+--        select count(*) into b from public.membresias
+--         where unidad_id = '<unidad con inquilino>' and rol = 'residente'
+--           and relacion = 'inquilino' and activo;
+--        select count(*) into otra from public.membresias
+--         where unidad_id <> '<unidad con inquilino>' and not activo;
+--        raise exception 'RESULTADO antes=% despues=% inactivas_en_otras_unidades=%', a, b, otra;
+--      end $v$;
+--      -- Esperado: despues = 0, y `inactivas_en_otras_unidades` igual que
+--      -- antes de correrlo (no tocó otras unidades). Las propietarias de la
+--      -- misma unidad, intactas.
 -- ─────────────────────────────────────────────────────────────────────────

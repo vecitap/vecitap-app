@@ -84,9 +84,9 @@ reconstruirlos leyendo el documento entero es caro.
 | 3 | Día local de la Bitácora + `hoy_local()` / `inicio_dia_local()` | `supabase/migrations/20260928140000_garita_bitacora_dia_local.sql` | **Avisarle a Gustavo antes:** toca una función `SECURITY DEFINER` de la base compartida. El cliente ya está corregido, así que hasta que esto corra la Bitácora sigue mostrando la ventana corrida |
 | 4 | Segunda ronda de fechas: las 5 funciones (`libro_edificio`, `historial_unidad`, `cerrar_periodo`, `generar_cobros_vencidos`, `generar_cobro_interno`) + `dia_local()` + default de `vinculos.desde` | `supabase/migrations/20260929120000_segunda_ronda_dia_local.sql` | **Va después del #3** (la guarda 1 aborta si faltan las auxiliares). **Respaldo antes de correrla en producción.** La guarda 2 aborta sola si alguna función cambió desde el volcado del 27-sep, así que es seguro intentarla. Ver "Punto 3" en "Salida a producción — 29-sep" |
 
-| 5 | `unidades.paga` + guardas A/B + `mis_unidades()` con `paga` (propietarios con varias unidades, fase 1) | `supabase/migrations/20260930120000_unidades_paga.sql` | Primero vecitap-pruebas; **correr el paso 0 del archivo antes** (anota los permisos de `mis_unidades()`). Después regenerar `types/supabase.ts`. Respaldo antes de producción. **Va a producción ANTES que el código del paso 3** (Propietarios y la ficha piden la columna). Ver "Propietarios con varias unidades — fase 1" |
-| 6 | `puede_operar` con `search_path` fijado | `supabase/migrations/20260930130000_puede_operar_search_path.sql` | Función de seguridad. La guarda aborta sola si el cuerpo no es el del volcado. Anotar el NOTICE "ANTES" que imprime. Sin dependencias |
-| 7 | Coherencia de organización en `vinculos` (disparadores) | `supabase/migrations/20260930140000_vinculos_org_coherente.sql` | **Correr antes la CONSULTA PREVIA del archivo**: tiene que dar 0 filas. La guarda aborta sola si no. Sin dependencias |
+| 5 | **✅ pruebas (01-oct) · falta producción** — `unidades.paga` + guardas A/B + `mis_unidades()` con `paga` (propietarios con varias unidades, fase 1) | `supabase/migrations/20260930120000_unidades_paga.sql` | Primero vecitap-pruebas; **correr el paso 0 del archivo antes** (anota los permisos de `mis_unidades()`). Después regenerar `types/supabase.ts`. Respaldo antes de producción. **Va a producción ANTES que el código del paso 3** (Propietarios y la ficha piden la columna). Ver "Propietarios con varias unidades — fase 1" |
+| 6 | **✅ pruebas (01-oct) · falta producción** — `puede_operar` con `search_path` fijado | `supabase/migrations/20260930130000_puede_operar_search_path.sql` | Función de seguridad. La guarda aborta sola si el cuerpo no es el del volcado. Anotar el NOTICE "ANTES" que imprime. Sin dependencias |
+| 7 | **✅ pruebas (01-oct) · falta producción** — Coherencia de organización en `vinculos` (disparadores) | `supabase/migrations/20260930140000_vinculos_org_coherente.sql` | **Correr antes la CONSULTA PREVIA del archivo**: tiene que dar 0 filas. La guarda aborta sola si no. Sin dependencias |
 
 Todos tienen su rollback en `supabase/rollbacks/` y su consulta de
 verificación dentro del propio archivo.
@@ -3991,3 +3991,121 @@ revertidas en orden inverso**. La de `paga` volvió a pasar sus 24 casos.
 7. **"Debe N cuotas"**: ver arriba.
 8. **Supuesto pendiente con Gustavo:** "inquilino vigente" se define por
    `vinculos`, no por `membresias`.
+
+---
+
+## Fase 1 de varias unidades: ajustes de Gustavo y aplicación en pruebas — 01-oct
+
+Rama de trabajo: **`dev`** (Nicolás hizo commit y push del trabajo del 30-sep
+ahí, no en `integration`). Nada pasa a `integration` hasta que las
+migraciones estén aplicadas en las dos bases. **El 01-oct a la tarde se carga
+el edificio piloto en producción: ese día no se toca `integration` ni
+producción.**
+
+Ojo para el merge futuro: `integration` tiene 3 commits de la cuenta
+`vecitap` posteriores a la base de `dev` (portada y marca, el último
+`0bcb42c` del 30-sep 19:19). Hay que traerlos a `dev` antes de mergear.
+
+### MCP de Supabase (alcance local, fuera del repo)
+
+- `supabase-pruebas` → `hdivffuorclzulijkyry`, con escritura (usuario `postgres`).
+- `supabase-produccion` → `sudghmerriewjmmnlcrf&read_only=true`. Confirmado
+  de solo lectura: usuario `supabase_read_only_user`,
+  `transaction_read_only = on`, y `create temp table` falla con
+  `ERROR 25006 … read-only transaction`.
+- Configurados con `claude mcp add --scope local` (en `~/.claude.json`,
+  nunca en `.mcp.json`: el repo es público). Tropezón: la extensión de VS Code
+  abre el proyecto como `c:\…` y el CLI como `C:\…`, y `~/.claude.json` los
+  guarda como dos entradas distintas; hubo que copiar los servidores a la
+  entrada `c:/…`.
+- **`execute_sql` con un `DROP` volvía `declined`** desde la sesión de VS Code
+  (la confirmación de sentencias destructivas del servidor de Supabase no
+  llegaba a mostrarse). Al retomar la sesión, pasó. Si se repite: correr el
+  bloque en el SQL Editor de pruebas.
+
+### Comparación de estructura pruebas ↔ producción (esquema `public`)
+
+Idénticas en columnas (385), restricciones (171), índices (82), políticas (63)
+y disparadores (25). Diferencias:
+
+- `aceptar_invitacion`, `crear_invitacion`: mismo contenido, solo cambia el fin
+  de línea (CRLF en pruebas, LF en producción).
+- **Permisos de tabla:** en producción `anon` tiene `Dxtm` (TRUNCATE,
+  REFERENCES, TRIGGER, MAINTAIN) en casi todas las tablas, y `secretos` le da
+  `Dxtm` a `authenticated`; en pruebas no. Ninguno lee ni escribe filas y
+  PostgREST no hace TRUNCATE, así que no es explotable por la API. Candidato
+  para la Fase 5: quitarlos.
+
+### Chequeos previos (las dos bases, iguales)
+
+`proacl` de `mis_unidades()` = `{postgres=X/postgres,authenticated=X/postgres}`;
+`paga` no existía; md5 de `puede_operar` = `84d6594f…` (no SECURITY DEFINER,
+sin `SET`); consulta previa (a) de la 140000 = 0; vínculos con persona de otra
+org = 0; membresías con edificio o unidad de otra org = 0.
+
+### Cambios por las respuestas de Gustavo ✅ construidos
+
+1. **"Inquilino vigente" = el del directorio**, con o sin cuenta: confirmado,
+   deja de ser supuesto.
+2. **Se va el último inquilino → se apagan los accesos de inquilino de esa
+   unidad.** Parte **3b** de `20260930120000_unidades_paga.sql`:
+   `vinculos_inquilino_sale_accesos()`, **SECURITY DEFINER** y acotada (una
+   sola actualización, `activo = false`, solo rol residente / relación
+   inquilino / esa unidad / esa org; solo si el vínculo era de la org de la
+   unidad y no queda otro inquilino; sin EXECUTE para nadie;
+   `search_path TO 'public'`). Hace falta porque la política `mem_admin`
+   (leída por MCP) solo deja escribir `membresias` a `propietario_cuenta`: con
+   permisos de una `administrador`, el UPDATE afectaría 0 filas. La pantalla
+   dice "También se le quitó el acceso a la app" solo si el conteo de accesos
+   activos bajó.
+3. **Saldo a favor en línea aparte** ("Saldo a favor en 05A: $ X"), sin
+   descontarlo del total.
+4. "Debe N cuotas": no hace falta.
+5. **Regla 3 dentro de la fase 1:** "Lo que usted paga" = propietario con paga
+   propietario + inquilino con paga inquilino; "Lo paga su inquilino" =
+   propietario con paga inquilino; aparece con 2 o más unidades en total.
+
+Probado en PGlite: 41 casos de las migraciones (11 nuevos de 3b, entre ellos
+"sin 3b una administradora no puede; con 3b sí") y 24 de `paga`, con
+rollbacks; 22 de lógica pura del resumen.
+
+### Aplicadas en vecitap-pruebas ✅ (01-oct), con `execute_sql`, no `apply_migration`
+
+| Migración | Resultado de sus verificaciones |
+|---|---|
+| `20260930120000_unidades_paga` | 1–8 todas como se esperaba. Las 56 unidades en `propietario`; B rechaza con su mensaje; A devuelve `paga` al cerrar o borrar; un residente actualiza 0 filas; 3b como **administradora**: su UPDATE directo a `membresias` = 0 filas, y al cerrar el último inquilino los accesos pasan de 1 a 0, sin tocar los de propietario ni otras unidades |
+| `20260930130000_puede_operar_search_path` | Guarda pasó. Solo cambió `proconfig = {search_path=public}`; mismo cuerpo, permisos y dueño. Administradora sobre su org = true, sobre otra = false, residente = false, sin sesión = false, con `search_path` vacío = true (antes, error). El filtro de RLS pasó de `tiene_rol(...)` a `puede_operar(...)` (dejó de inlinearse); con 6 pagos el tiempo no es medible |
+| `20260930140000_vinculos_org_coherente` | Consulta previa (a) = 0, guarda pasó. Vínculo cruzado rechazado (como postgres y como administradora con RLS), cambiar de org una unidad con vínculos rechazado, el alta legítima aceptada |
+
+Las verificaciones con escritura corrieron dentro de bloques `DO` que terminan
+en `raise exception` (todo se deshace); donde faltaban datos de prueba
+(administradora de esa org, membresía de inquilino, persona de la org) se
+crearon temporales dentro del mismo bloque. Controles posteriores: nada quedó
+escrito.
+
+`types/supabase.ts` regenerado contra pruebas (PowerShell, `Out-File
+-Encoding utf8`): desaparecen las 4 líneas `// PROVISORIO`, y aparecen
+`dia_local`, `hoy_local` e `inicio_dia_local`, que existen en las dos bases
+desde las migraciones del 28 y 29-sep y no estaban en la última regeneración.
+Typecheck, lint y build en verde.
+
+### Hallazgos nuevos (sin tocar)
+
+1. **"Dar de baja" en Accesos no funciona para una `administrador`**: el
+   UPDATE a `membresias` afecta 0 filas por `mem_admin` y no muestra error.
+   Hoy en producción hay una sola membresía (`propietario_cuenta`), así que no
+   afecta al piloto todavía.
+2. **El correo del recibo dice "a la tasa de hoy" pero usa la tasa del
+   período** (`correo_recibo` usa `periodos.tasa_bcv`). El recibo en papel y
+   el portal usan la tasa viva (caso 17, portado). Ver la propuesta del correo.
+3. Los permisos `Dxtm` de `anon` en producción (arriba).
+
+### Falta para producción (después de la carga del piloto)
+
+1. Respaldo (`docs/respaldo.md`).
+2. Las tres migraciones en el mismo orden (120000, 130000, 140000), cada una
+   con su consulta previa y sus verificaciones. La corre Nicolás.
+3. Validar en el navegador contra pruebas (Preview de `dev`): ficha (selector,
+   "ya no ocupa la unidad"), importador, resumen del portal.
+4. Traer los 3 commits de `integration` a `dev`, y recién entonces mergear
+   `dev` → `integration`.

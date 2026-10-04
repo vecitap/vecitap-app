@@ -34,8 +34,9 @@ function aForm(v: Vinculo | null): FormPersona {
  *    inquilino vigente (guarda B de 20260930120000_unidades_paga.sql), así que
  *    "cargo al inquilino y marco que paga él" en un mismo guardado necesita
  *    que el vínculo exista primero.
- *  - "El inquilino ya no ocupa la unidad": le pone `hasta` a su vínculo. No
- *    toca su membresía en la app (eso sigue siendo "dar de baja" en Accesos).
+ *  - "El inquilino ya no ocupa la unidad": le pone `hasta` a su vínculo. Si
+ *    era el último inquilino, la base apaga además los accesos de inquilino
+ *    de esta unidad (3b de la misma migración); su usuario sigue activo.
  */
 export function DatosUnidad({
   orgId,
@@ -156,6 +157,23 @@ export function DatosUnidad({
     setListo(null);
     try {
       const supabase = crearClienteNavegador();
+      // Accesos de inquilino activos de ESTA unidad, antes y después: la base
+      // los apaga sola cuando se va el último inquilino (3b de
+      // 20260930120000_unidades_paga.sql), y la pantalla solo lo anuncia si
+      // de verdad apagó al menos uno. La administradora los puede leer
+      // (política mem_ver), aunque no escribirlos.
+      const accesosActivos = async () => {
+        const { count, error } = await supabase
+          .from("membresias")
+          .select("id", { count: "exact", head: true })
+          .eq("unidad_id", unidad.id)
+          .eq("rol", "residente")
+          .eq("relacion", "inquilino")
+          .eq("activo", true);
+        return error ? null : (count ?? 0);
+      };
+      const antes = await accesosActivos();
+
       const { data, error } = await supabase
         .from("vinculos")
         .update({ hasta: hoyLocalISO() })
@@ -164,6 +182,9 @@ export function DatosUnidad({
         .select("id");
       if (error) throw error;
       if (!data || data.length === 0) throw new Error("No se pudo registrar la salida del inquilino. Puede ser un permiso, o ya se había registrado.");
+
+      const despues = await accesosActivos();
+      const seQuitoAcceso = antes !== null && despues !== null && despues < antes;
       // El formulario del inquilino queda vacío: si conservara los datos del
       // que se fue, el próximo "Guardar cambios" lo volvería a crear como
       // inquilino nuevo. Y `paga` vuelve a propietario solo si la base lo
@@ -171,7 +192,12 @@ export function DatosUnidad({
       setI(aForm(null));
       if (pagaVuelve) setPaga("propietario");
       setListo(
-        `${nombreDe(inq) || "El inquilino"} ya no figura como inquilino de ${unidad.codigo}. Si tenía cuenta en la app, sigue entrando hasta que lo dé de baja en Accesos.`
+        [
+          `${nombreDe(inq) || "El inquilino"} ya no figura como inquilino de ${unidad.codigo}.`,
+          seQuitoAcceso ? "También se le quitó el acceso a la app." : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
       );
       router.refresh();
     } catch (e) {
@@ -307,7 +333,9 @@ export function DatosUnidad({
           texto={[
             `${nombreDe(inq) || "El inquilino"} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${fechaCorta(hoyLocalISO())}. Sus datos y su historia se conservan.`,
             pagaVuelve ? "La unidad vuelve a «paga el propietario»." : "",
-            "Si tiene cuenta en la app, sigue entrando hasta que lo dé de baja en Accesos.",
+            otrosInquilinos === 0
+              ? "Si tiene cuenta en la app, se le quita el acceso a esta unidad; su usuario sigue activo para otros edificios."
+              : "Como la unidad tiene otro inquilino registrado, los accesos a la app de esta unidad no se tocan.",
             "Los cambios sin guardar de este formulario no se guardan con esta acción.",
           ]
             .filter(Boolean)

@@ -1764,7 +1764,6 @@ export type Database = {
           id: string
           inquilino_ve: string
           org_id: string
-          // PROVISORIO (30-sep): agregado a mano hasta regenerar los tipos — ver supabase/migrations/20260930120000_unidades_paga.sql
           paga: string
           saldo_inicial: number
           saldo_inicial_hon: number
@@ -1778,7 +1777,6 @@ export type Database = {
           id?: string
           inquilino_ve?: string
           org_id: string
-          // PROVISORIO (30-sep): agregado a mano hasta regenerar los tipos — ver supabase/migrations/20260930120000_unidades_paga.sql
           paga?: string
           saldo_inicial?: number
           saldo_inicial_hon?: number
@@ -1792,7 +1790,6 @@ export type Database = {
           id?: string
           inquilino_ve?: string
           org_id?: string
-          // PROVISORIO (30-sep): agregado a mano hasta regenerar los tipos — ver supabase/migrations/20260930120000_unidades_paga.sql
           paga?: string
           saldo_inicial?: number
           saldo_inicial_hon?: number
@@ -2260,6 +2257,7 @@ export type Database = {
           telefono: string
         }[]
       }
+      dia_local: { Args: { p_instante: string }; Returns: string }
       edificio_activo: { Args: { p_edificio: string }; Returns: boolean }
       edificios_de: {
         Args: { p_org: string }
@@ -2505,6 +2503,8 @@ export type Database = {
           saldo: number
         }[]
       }
+      hoy_local: { Args: never; Returns: string }
+      inicio_dia_local: { Args: { p_dia: string }; Returns: string }
       invitaciones_de: {
         Args: { p_org: string }
         Returns: {
@@ -2590,7 +2590,6 @@ export type Database = {
           nivel: string
           org_id: string
           organizacion: string
-          // PROVISORIO (30-sep): agregado a mano hasta regenerar los tipos — ver supabase/migrations/20260930120000_unidades_paga.sql
           paga: string
           recibo_anio: number
           recibo_mes: number
