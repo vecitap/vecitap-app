@@ -4,6 +4,7 @@ import { DirectorioProvider } from "@/components/garita/DirectorioContexto";
 import { MarcoGarita } from "@/components/garita/MarcoGarita";
 import { NavGarita } from "@/components/garita/NavGarita";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 import { esUuid } from "@/lib/validacion";
 
 /**
@@ -30,9 +31,9 @@ export default async function LayoutGaritaEdificio({
   if (!esUuid(edificioId)) notFound();
 
   const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Sin conexión con Auth lanza ErrorSinConexion (lo muestra app/error.tsx);
+  // null es solo "no hay sesión". Ver lib/supabase/cache.ts.
+  const user = await usuarioActual();
   if (!user) redirect(`/entrar?volver=/garita/${edificioId}`);
 
   const { data, error } = await supabase.rpc("garita_edificios");

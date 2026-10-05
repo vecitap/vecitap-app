@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Card } from "@/components/ui";
 import { Invitacion } from "@/components/residente/Invitacion";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 
 /**
  * proxy.ts solo garantiza sesión para /mi/* (ver su comentario) — el
@@ -17,9 +18,9 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  */
 export default async function ResidenteHome() {
   const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Sin conexión con Auth lanza ErrorSinConexion (lo muestra app/error.tsx);
+  // null es solo "no hay sesión". Ver lib/supabase/cache.ts.
+  const user = await usuarioActual();
 
   if (!user) redirect("/entrar?volver=/mi");
 

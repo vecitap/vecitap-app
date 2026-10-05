@@ -4,6 +4,7 @@ import { Card } from "@/components/ui";
 import { CrearOrganizacion } from "@/components/admin/CrearOrganizacion";
 import { ROLES_ADMIN } from "@/lib/admin/constantes";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 
 /**
  * Portado de la resolución de organización en App() (app.html:900-906):
@@ -29,9 +30,9 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  */
 export default async function AdminHome() {
   const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Sin conexión con Auth lanza ErrorSinConexion (lo muestra app/error.tsx);
+  // null es solo "no hay sesión". Ver lib/supabase/cache.ts.
+  const user = await usuarioActual();
   if (!user) redirect("/entrar?volver=/admin");
 
   const { data: candidatas, error } = await supabase

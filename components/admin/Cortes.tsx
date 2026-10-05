@@ -13,6 +13,7 @@ import { csvDeCortes, descargarCSV, listadoDeCortesEnPapel } from "@/lib/admin/p
 import { imprimirDocumento, reciboEnPapel } from "@/lib/recibo-papel";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { PeriodoAdmin, ReciboAdmin, TasaViva, Unidad, Vinculo } from "@/lib/admin/tipos";
+import { mensajeDeError } from "@/lib/errores";
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
 
@@ -84,7 +85,7 @@ export function Cortes({
     setMensaje({ texto, tipo });
   }
   function fallo(e: unknown) {
-    notificar(e instanceof Error ? e.message : String(e), "error");
+    notificar(mensajeDeError(e), "error");
   }
 
   const periodo = cerrados.find((p) => p.id === periodoId) ?? null;

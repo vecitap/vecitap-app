@@ -9,6 +9,7 @@ import { BOLSILLOS, MODOS_COBRO } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { ConceptoCobro } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
+import { mensajeDeError } from "@/lib/errores";
 
 type ActualizarConcepto = Database["public"]["Tables"]["conceptos_cobro"]["Update"];
 
@@ -42,7 +43,7 @@ export function Cobros({
   async function editar(id: string, campos: ActualizarConcepto) {
     const supabase = crearClienteNavegador();
     const { error: e } = await supabase.from("conceptos_cobro").update(campos).eq("id", id);
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     router.refresh();
   }
 
@@ -60,7 +61,7 @@ export function Cobros({
       iva: num0(nuevo.iva),
       orden: 5,
     });
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     setNuevo({ ...nuevo, nombre: "", monto: "0" });
     router.refresh();
   }
@@ -70,7 +71,7 @@ export function Cobros({
     const supabase = crearClienteNavegador();
     const { error: e } = await supabase.from("conceptos_cobro").delete().eq("id", borrar.id);
     setBorrar(null);
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     router.refresh();
   }
 

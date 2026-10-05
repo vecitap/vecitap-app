@@ -17,6 +17,7 @@ import {
 import { cruzarConBanco } from "@/lib/admin/conciliacion";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { BancoFila, ComprobanteFila, PagoAdmin } from "@/lib/admin/tipos";
+import { mensajeDeError } from "@/lib/errores";
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
 type Pestana = "registrar" | "conciliar" | "exonerar";
@@ -94,7 +95,7 @@ export function Pagos({
     setMensaje({ texto, tipo });
   }
   function fallo(e: unknown) {
-    notificar(e instanceof Error ? e.message : String(e), "error");
+    notificar(mensajeDeError(e), "error");
   }
 
   const comps = useMemo(() => {

@@ -8,6 +8,7 @@ import { leerPDF, leerTabla, parseMonto } from "@/lib/admin/archivos-tabla";
 import { normaliza } from "@/lib/admin/personas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Unidad } from "@/lib/admin/tipos";
+import { mensajeDeError } from "@/lib/errores";
 
 type FilaLeida = { cod: string; monto: number | null; unidad: Unidad | null };
 
@@ -94,7 +95,7 @@ export function ImportarSaldos({
       const cuantasCruzan = res.filter((r) => r.unidad).length;
       setNota(`${res.length} filas leídas, ${cuantasCruzan} cruzan con una unidad.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(mensajeDeError(e));
     }
     setLeyendo(false);
   }
@@ -109,7 +110,7 @@ export function ImportarSaldos({
       const { error: e } = await supabase.from("unidades").update({ saldo_inicial: f.monto }).eq("id", f.unidad.id);
       if (e) {
         setOcupado(false);
-        return setError(e.message);
+        return setError(mensajeDeError(e));
       }
     }
     setOcupado(false);

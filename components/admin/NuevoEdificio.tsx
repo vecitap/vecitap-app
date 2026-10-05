@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Campo, Input } from "@/components/ui";
 import { num0 } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { mensajeDeError } from "@/lib/errores";
 
 /**
  * Portado de NuevoEdificio() en admin.html:6033-6069 (mismos 3 campos
@@ -48,7 +49,7 @@ export function NuevoEdificio({ orgId, onCerrar }: { orgId: string; onCerrar: ()
       .select("id")
       .single();
     setOcupado(false);
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     onCerrar();
     router.push(`/admin/${orgId}/${data.id}/inicio`);
     router.refresh();

@@ -8,6 +8,7 @@ import { correoValido, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { UnidadConPaga, Vinculo } from "@/lib/admin/tipos";
+import { mensajeDeError } from "@/lib/errores";
 
 const TRATAMIENTOS = ["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""];
 
@@ -144,7 +145,7 @@ export function DatosUnidad({
       await guardarPaga();
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(mensajeDeError(e));
     }
     setOcupado(false);
   }
@@ -201,7 +202,7 @@ export function DatosUnidad({
       );
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(mensajeDeError(e));
     }
     setOcupado(false);
   }

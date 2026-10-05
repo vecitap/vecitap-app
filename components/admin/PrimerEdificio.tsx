@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Campo, Card, Input } from "@/components/ui";
 import { num0 } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { mensajeDeError } from "@/lib/errores";
 
 /** Portado de PrimerEdificio() en app.html:1292-1343. */
 export function PrimerEdificio({ orgId }: { orgId: string }) {
@@ -34,7 +35,7 @@ export function PrimerEdificio({ orgId }: { orgId: string }) {
       .select("id")
       .single();
     setOcupado(false);
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     router.push(`/admin/${orgId}/${data.id}/inicio`);
   }
 

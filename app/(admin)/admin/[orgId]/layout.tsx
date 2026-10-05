@@ -6,6 +6,7 @@ import { ROLES_ADMIN } from "@/lib/admin/constantes";
 import { edificiosDeOrganizacion } from "@/lib/admin/edificios-organizacion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { usuarioActual } from "@/lib/supabase/cache";
+import { AvisoCambioDeCuenta } from "@/components/AvisoCambioDeCuenta";
 import { tasaDelDia } from "@/lib/tasa";
 import { esUuid } from "@/lib/validacion";
 
@@ -60,6 +61,7 @@ export default async function LayoutOrg({
   return (
     <MarcoAdmin organizacion={org} edificios={edificios ?? []} tasaInicial={tasa}>
       {children}
+      <AvisoCambioDeCuenta usuarioId={user.id} />
     </MarcoAdmin>
   );
 }

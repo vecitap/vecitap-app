@@ -13,6 +13,7 @@ import type { ClienteCartera, TareaLog, TasaAtrasada } from "@/lib/operador/tipo
 import { EncabezadoOperador } from "./EncabezadoOperador";
 import { Kpi } from "./Kpi";
 import { FichaCliente } from "./FichaCliente";
+import { mensajeDeError } from "@/lib/errores";
 
 type Aviso = { t: string; tipo: "ok" | "error" };
 
@@ -69,7 +70,7 @@ export function ConsolaOperador({
     setTimeout(() => setAviso(null), 3600);
   }
   function fallo(e: unknown) {
-    notificar(e instanceof Error ? e.message : String(e), "error");
+    notificar(mensajeDeError(e), "error");
   }
 
   async function correrAhora() {

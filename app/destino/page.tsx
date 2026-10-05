@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 
 /**
  * A dónde va alguien que entró sin un `volver` puesto (escribió el dominio
@@ -38,9 +39,9 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  */
 export default async function Destino() {
   const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Sin conexión con Auth lanza ErrorSinConexion (lo muestra app/error.tsx);
+  // null es solo "no hay sesión". Ver lib/supabase/cache.ts.
+  const user = await usuarioActual();
   if (!user) redirect("/entrar?volver=/destino");
 
   const { data: esOperador } = await supabase.rpc("es_operador");

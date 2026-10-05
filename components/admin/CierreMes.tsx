@@ -9,6 +9,7 @@ import { MESES } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { CategoriaAdmin, ConceptoCobro, GastoAdmin, PeriodoAdmin, SimulacionCierre } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
+import { mensajeDeError } from "@/lib/errores";
 
 type ActualizarGasto = Database["public"]["Tables"]["gastos"]["Update"];
 type InsertarGasto = Database["public"]["Tables"]["gastos"]["Insert"];
@@ -68,7 +69,7 @@ export function CierreMes({
     setMensaje({ texto, tipo });
   }
   function fallo(e: unknown) {
-    notificar(e instanceof Error ? e.message : String(e), "error");
+    notificar(mensajeDeError(e), "error");
   }
 
   const ultimoCerrado = cerrados.reduce<PeriodoAdmin | null>(

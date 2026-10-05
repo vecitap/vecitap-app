@@ -27,6 +27,7 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 import { useTema } from "@/lib/theme/ThemeProvider";
 import { tasaDeReferencia, type TasaViva } from "@/lib/tasa";
 import type { OrganizacionAdmin } from "@/lib/admin/tipos";
+import { mensajeDeError } from "@/lib/errores";
 
 /**
  * El armazón de Admin: columna lateral oscura + encabezado con la tasa del
@@ -256,7 +257,7 @@ function TasaCabecera({ inicial }: { inicial: TasaViva | null }) {
     try {
       setTasa(await tasaDeReferencia());
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(mensajeDeError(err));
     }
     setCargando(false);
   }

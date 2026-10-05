@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { EncabezadoResidente } from "@/components/residente/EncabezadoResidente";
@@ -8,6 +9,7 @@ import { ResumenUnidades } from "@/components/residente/ResumenUnidades";
 import { misUnidadesSesion } from "@/lib/residente/datos";
 import { resumenUnidades } from "@/lib/residente/resumen";
 import { usuarioActual } from "@/lib/supabase/cache";
+import { AvisoCambioDeCuenta } from "@/components/AvisoCambioDeCuenta";
 import { esUuid } from "@/lib/validacion";
 
 export default async function LayoutUnidad({
@@ -54,12 +56,22 @@ export default async function LayoutUnidad({
           <SelectorUnidad unidades={unidades} unidadIdActual={unidadId} />
         )}
 
+        {/* 05-oct: una segunda invitación (otra oficina, otro edificio)
+            no tenía dónde pegarse. Visible siempre, también con una sola
+            unidad: es justo el caso de quien recibe la segunda. */}
+        <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 0 12px" }}>
+          <Link href="/mi/agregar" className="btn btn-secundario btn-mini" style={{ textDecoration: "none" }}>
+            + Agregar otra unidad
+          </Link>
+        </div>
+
         <TarjetaSaldo unidad={unidad} />
 
         <PestanasResidente unidadId={unidadId} edificioId={unidad.edificio_id} />
 
         {children}
       </div>
+      <AvisoCambioDeCuenta usuarioId={user.id} />
     </>
   );
 }

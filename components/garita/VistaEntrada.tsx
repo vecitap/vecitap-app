@@ -9,6 +9,7 @@ import { useLectorQR } from "@/hooks/useLectorQR";
 import { registrarEntradaGarita } from "@/lib/garita/entrada";
 import type { ValidacionCodigo } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { mensajeDeError } from "@/lib/errores";
 
 type Veredicto = {
   ok: boolean;
@@ -60,7 +61,7 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
     // ella misma un rechazo en la bitácora (para que quede asentado si
     // alguien prueba códigos al azar en la puerta) — efecto de la función,
     // no algo que este cliente tenga que replicar.
-    if (error) return mostrarAviso(error.message, "mal");
+    if (error) return mostrarAviso(mensajeDeError(error), "mal");
     const r = data?.[0];
     if (!r) return;
 
@@ -112,7 +113,7 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
       placa: fila.placa ?? undefined,
       invitacionId: fila.invitacion_id ?? undefined,
     });
-    if (error) return mostrarAviso(error.message, "mal");
+    if (error) return mostrarAviso(mensajeDeError(error), "mal");
     if (!id) return;
 
     mostrarAviso(`Entrada registrada. ${fila.nombre}`, "ok");
@@ -166,7 +167,7 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
       placa: placa.trim() || undefined,
     });
     setEnviandoSinAnunciar(false);
-    if (error) return mostrarAviso(error.message, "mal");
+    if (error) return mostrarAviso(mensajeDeError(error), "mal");
     if (!id) return;
 
     // Acá sí se espera y se le dice al vigilante si el aviso llegó

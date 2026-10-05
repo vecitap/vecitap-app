@@ -6,6 +6,7 @@ import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
 import { horaCorta, hoyLocalISO } from "@/lib/formato";
 import type { NotaBitacora } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { mensajeDeError } from "@/lib/errores";
 
 const ETIQUETA_TIPO: Record<string, string> = {
   entrada: "Entrada",
@@ -50,7 +51,7 @@ export function VistaBitacora({ edificioId }: { edificioId: string }) {
       p_fecha: fecha,
       p_limite: 200,
     });
-    if (error) return mostrarAviso(error.message, "mal");
+    if (error) return mostrarAviso(mensajeDeError(error), "mal");
     setCargado({ fecha, notas: data ?? [] });
   }, [edificioId, fecha, mostrarAviso]);
 
@@ -64,7 +65,7 @@ export function VistaBitacora({ edificioId }: { edificioId: string }) {
       .rpc("garita_bitacora", { p_edificio: edificioId, p_fecha: fecha, p_limite: 200 })
       .then(({ data, error }) => {
         if (!vivo) return;
-        if (error) return mostrarAviso(error.message, "mal");
+        if (error) return mostrarAviso(mensajeDeError(error), "mal");
         setCargado({ fecha, notas: data ?? [] });
       });
     return () => {
@@ -86,7 +87,7 @@ export function VistaBitacora({ edificioId }: { edificioId: string }) {
       p_tipo: tipo,
     });
     setEnviandoNota(false);
-    if (error) return mostrarAviso(error.message, "mal");
+    if (error) return mostrarAviso(mensajeDeError(error), "mal");
     if (!id) return;
 
     setTexto("");

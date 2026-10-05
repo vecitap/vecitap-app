@@ -7,6 +7,7 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 import { fechaCorta } from "@/lib/formato";
 import { urlDelSitio } from "@/lib/url-sitio";
 import type { InvitacionAdmin, ResidenteAcceso, VigilanteAcceso } from "@/lib/admin/tipos";
+import { mensajeDeError } from "@/lib/errores";
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
 type Pestana = "invitar" | "pendientes" | "gente" | "vigilantes";
@@ -57,13 +58,14 @@ export function Accesos({
   const [fv, setFv] = useState({ correo: "", edificio: "" });
   const [codigoVig, setCodigoVig] = useState<{ token: string; correo: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [revocando, setRevocando] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
 
   function notificar(texto: string, tipo: "ok" | "error" = "ok") {
     setMensaje({ texto, tipo });
   }
   function fallo(e: unknown) {
-    notificar(e instanceof Error ? e.message : String(e), "error");
+    notificar(mensajeDeError(e), "error");
   }
 
   async function cargar() {
@@ -143,13 +145,25 @@ export function Accesos({
   }
 
   async function invitar() {
+    // La tarjeta de un código anterior se saca ANTES de pedir el nuevo: si
+    // la generación falla, no puede quedar a la vista un código viejo (de
+    // otra unidad o de otro correo) como si fuera el recién pedido.
+    setCodigo(null);
+    setMensaje(null);
     if (!f.unidad) return notificar("Elija la unidad.", "error");
     if (!correoValido(f.correo)) return notificar("Ese correo no se entiende.", "error");
+    const correo = f.correo.trim().toLowerCase();
+    // Solo para el aviso: crear_invitacion ya anula sola la pendiente del
+    // mismo correo y la misma unidad (migración 20261005120000).
+    const codigoUnidad = unidades.find((u) => u.id === f.unidad)?.codigo;
+    const reemplaza = invs.some(
+      (i) => i.estado === "pendiente" && i.correo === correo && i.unidad === codigoUnidad
+    );
     setOcupado(true);
     const supabase = crearClienteNavegador();
     const { data, error } = await supabase.rpc("crear_invitacion", {
       p_org: orgId,
-      p_correo: f.correo.trim().toLowerCase(),
+      p_correo: correo,
       p_rol: "residente",
       p_edificio: undefined,
       p_unidad: f.unidad,
@@ -157,16 +171,22 @@ export function Accesos({
     });
     setOcupado(false);
     if (error) return fallo(error);
-    setCodigo({ token: data, correo: f.correo.trim().toLowerCase() });
+    setCodigo({ token: data, correo });
     setF({ ...f, correo: "" });
+    if (reemplaza) {
+      notificar(`Código nuevo generado. El anterior para ${correo} en ${codigoUnidad} quedó anulado.`);
+    }
     cargar();
   }
 
   async function revocar(id: string) {
+    setMensaje(null);
+    setRevocando(id);
     const supabase = crearClienteNavegador();
     const { error } = await supabase.rpc("revocar_invitacion", { p_id: id });
-    if (error) return fallo(error);
-    notificar("Invitación revocada.");
+    setRevocando(null);
+    if (error) return notificar(`No se pudo revocar: ${mensajeDeError(error)}`, "error");
+    notificar("Invitación revocada. Ese código ya no sirve.");
     cargar();
   }
 
@@ -226,7 +246,14 @@ export function Accesos({
             </p>
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
               <Campo etiqueta="Unidad">
-                <Select value={f.unidad} onChange={(e) => setF({ ...f, unidad: e.target.value })}>
+                <Select
+                  value={f.unidad}
+                  onChange={(e) => {
+                    // Otra unidad: el código a la vista ya no corresponde.
+                    setCodigo(null);
+                    setF({ ...f, unidad: e.target.value });
+                  }}
+                >
                   <option value="">Elija</option>
                   {unidades.map((u) => (
                     <option key={u.id} value={u.id}>
@@ -239,7 +266,12 @@ export function Accesos({
                 <Input
                   value={f.correo}
                   placeholder="propietario@correo.com"
-                  onChange={(e) => setF({ ...f, correo: e.target.value })}
+                  onChange={(e) => {
+                    // Al escribir otro correo, la tarjeta del código anterior
+                    // se va: no puede quedar al lado de un correo distinto.
+                    setCodigo(null);
+                    setF({ ...f, correo: e.target.value });
+                  }}
                 />
               </Campo>
               <Campo etiqueta="Es el..." ayuda="El inquilino puede ver menos que el propietario. Se configura por unidad.">
@@ -292,14 +324,22 @@ export function Accesos({
                         // El original mandaba a la raíz del sitio, que en los
                         // HTML era index.html (el panel del residente). Acá la
                         // raíz es la página en construcción, así que el enlace
-                        // apunta directo a /entrar con el destino puesto: el
-                        // residente cae en /mi y, sin unidades todavía, en la
-                        // pantalla de aceptar la invitación.
+                        // apunta directo a /entrar con el destino puesto:
+                        // /mi/agregar con el código ya cargado. Sirve igual
+                        // para quien todavía no tiene ninguna unidad y para
+                        // quien ya tiene otra (05-oct: antes iba a /mi, que
+                        // con una unidad ya aceptada no ofrecía dónde pegar
+                        // el código). /entrar, con la sesión abierta, sigue
+                        // de largo a ese destino. El código viaja en la URL:
+                        // es el mismo que va en texto dos líneas más abajo,
+                        // atado a ese correo y de un solo uso.
                         // `urlDelSitio()` y no `location.origin`: este texto se
                         // le manda a un residente de verdad, así que tiene que
                         // llevar el dominio público aunque quien lo copie esté
                         // mirando un Preview de Vercel.
-                        `${urlDelSitio("/entrar?volver=/mi")}\n\n` +
+                        `${urlDelSitio(
+                          `/entrar?volver=${encodeURIComponent(`/mi/agregar?codigo=${codigo.token}`)}`
+                        )}\n\n` +
                         `Cree su cuenta con el correo ${codigo.correo} y pegue este código:\n${codigo.token}`
                     )
                   }
@@ -352,8 +392,14 @@ export function Accesos({
                     </td>
                     <td>
                       {i.estado === "pendiente" && (
-                        <Button type="button" variante="secundario" mini onClick={() => revocar(i.id)}>
-                          Revocar
+                        <Button
+                          type="button"
+                          variante="secundario"
+                          mini
+                          disabled={revocando !== null}
+                          onClick={() => revocar(i.id)}
+                        >
+                          {revocando === i.id ? "Revocando…" : "Revocar"}
                         </Button>
                       )}
                     </td>

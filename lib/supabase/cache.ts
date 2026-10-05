@@ -1,5 +1,7 @@
 import { cache } from "react";
+import { isAuthRetryableFetchError, type AuthError } from "@supabase/supabase-js";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { ErrorSinConexion } from "@/lib/sin-conexion";
 
 /**
  * `getUser()` memoizado por petición con `cache()` de React: cuando más de
@@ -15,6 +17,24 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  * para cualquier otro módulo que en el futuro necesite el usuario en más
  * de un punto del mismo árbol.
  *
+ * **Tres resultados, no dos (05-oct, revisión cruzada pendiente: toca
+ * autenticación):**
+ * · `User` — hay sesión y el servidor de Auth la confirmó.
+ * · `null` — NO hay sesión: no hay cookies, el token es inválido, o Auth
+ *   dice que esa sesión o ese usuario ya no existen (4xx). Quien llama
+ *   manda a /entrar, como siempre.
+ * · **lanza `ErrorSinConexion`** — Auth no contestó: red caída, tiempo
+ *   agotado o 5xx (`AuthRetryableFetchError`, que en auth-js 2.116 cubre
+ *   500-504 y 520-530, más el fallo de `fetch` con status 0). No se sabe si
+ *   hay sesión o no, así que NO se manda a /entrar: lo atrapa `app/error.tsx`
+ *   y muestra "No pudimos conectar. Reintente".
+ *
+ * Sigue fallando cerrado: con un error de conexión no se devuelve ningún
+ * usuario, así que ningún layout deja pasar a nadie; solo cambia la
+ * pantalla que se muestra en vez de los datos (reintentar en lugar de
+ * Entrar). La sesión tampoco se toca: auth-js no borra la sesión ante un
+ * error reintentable.
+ *
  * **Lo que esto NO hace:** no dedupe con `proxy.ts`. `cache()` memoiza
  * dentro del árbol de render de Server Components de una petición;
  * `proxy.ts` corre antes, en un runtime aparte (Edge Middleware), fuera de
@@ -25,8 +45,21 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  */
 export const usuarioActual = cache(async () => {
   const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+  let resultado: Awaited<ReturnType<typeof supabase.auth.getUser>>;
+  try {
+    resultado = await supabase.auth.getUser();
+  } catch (e) {
+    // getUser() devuelve los errores de Auth en `error`; si algo LANZA es
+    // que falló algo más abajo (red, runtime). Tampoco es "sin sesión".
+    throw new ErrorSinConexion(e);
+  }
+  const { data, error } = resultado;
+  if (error && esErrorDeConexion(error)) throw new ErrorSinConexion(error);
+  return data.user;
 });
+
+function esErrorDeConexion(error: AuthError): boolean {
+  if (isAuthRetryableFetchError(error)) return true;
+  // Por si una versión futura de auth-js deja pasar un 5xx con otra clase.
+  return typeof error.status === "number" && error.status >= 500;
+}

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso } from "@/components/ui";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { mensajeDeError } from "@/lib/errores";
 
 /**
  * garita.html:931-970 — la cuenta existe pero todavía no está asignada a
@@ -35,7 +36,7 @@ export function FaltaUnPaso({ correo, errorCarga }: { correo: string; errorCarga
     const { error: e } = await supabase.rpc("aceptar_invitacion", { p_token: token });
     setEnviando(false);
 
-    if (e) return setError(e.message || "Ese código no sirvió.");
+    if (e) return setError(mensajeDeError(e));
     // La página de arriba vuelve a pedir garita_edificios(); ahora sí hay
     // una y redirige sola a la garita.
     router.refresh();

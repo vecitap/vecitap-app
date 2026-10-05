@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { MarcoGarita } from "@/components/garita/MarcoGarita";
 import { FaltaUnPaso } from "@/components/garita/FaltaUnPaso";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 import { SECCION_INICIAL } from "@/lib/garita/secciones";
 
 /**
@@ -18,9 +19,9 @@ import { SECCION_INICIAL } from "@/lib/garita/secciones";
  */
 export default async function PaginaGarita() {
   const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Sin conexión con Auth lanza ErrorSinConexion (lo muestra app/error.tsx);
+  // null es solo "no hay sesión". Ver lib/supabase/cache.ts.
+  const user = await usuarioActual();
   if (!user) redirect("/entrar?volver=/garita");
 
   const { data, error } = await supabase.rpc("garita_edificios");

@@ -16,6 +16,83 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Dónde quedamos (05-oct)
+
+Detalle en "Validación de la fase 1 en el Preview: tres problemas
+bloqueantes (05-oct)", al final de este archivo.
+
+**Pendiente de aprobación de Nicolás:** la migración
+`20261005120000_crear_invitacion_reemplaza_pendiente.sql`, con su rollback.
+Está escrita y sin aplicar. Después de la aprobación se aplica en pruebas.
+
+**Hecho en `dev`, sin commit y sin validar en el Preview:**
+- Aceptar una segunda invitación (`/mi/agregar` y el botón "+ Agregar otra
+  unidad").
+- Errores legibles (`mensajeDeError()`).
+- Accesos:
+  - la invitación nueva reemplaza a la pendiente;
+  - la tarjeta del código se limpia;
+  - revocar muestra el resultado;
+  - aviso cuando el navegador cambia de cuenta.
+- `usuarioActual()` distingue "sin conexión" de "sin sesión".
+- `/entrar` sigue de largo cuando la sesión es válida.
+- Build, lint y tsc en verde. La revisión cruzada sigue pendiente, porque
+  toca autenticación.
+
+Pruebas en el Preview (con la migración ya aplicada en pruebas):
+1. El inquilino con 04D usa "+ Agregar otra unidad" y pega el código de
+   03C. Tiene que llegar al recibo de 03C, con el resumen y el selector de
+   las dos unidades.
+2. "Copiar el mensaje completo": el enlace, abierto con la sesión ya
+   iniciada, lleva directo a "Agregar otra unidad" con el código escrito.
+   Sin sesión, pide entrar y después llega igual.
+3. Dos invitaciones seguidas para el mismo correo y la misma unidad:
+   - la primera queda "vencida" y Accesos avisa que se anuló;
+   - el código viejo da "Invitación inválida o vencida".
+4. La tarjeta del código desaparece al cambiar la unidad o el correo.
+   Revocar muestra "Revocando…" y después el resultado.
+5. Accesos abierto como administradora y el inquilino abierto en otra
+   pestaña del mismo navegador:
+   - aparece el aviso de cambio de cuenta;
+   - si se genera igual, el error dice "Sin permiso para invitar" y no
+     "[object Object]".
+6. Salir desde otra pestaña muestra el aviso "La sesión de este navegador
+   se cerró".
+7. `/entrar` con la sesión abierta lleva adentro sin pedir la clave. El
+   enlace de "Olvidé mi contraseña" sigue pidiendo la clave nueva.
+8. `/admin`, `/mi`, `/garita` y `/operador` entran como antes. La pantalla
+   "No pudimos conectar" no se puede forzar con la base sana.
+
+**Validación de la fase 1 (lista del 04-oct):**
+- Ya pasó:
+  - el importador con el archivo anonimizado;
+  - 03C con inquilino, que muestra "Paga: inquilino" en Propietarios;
+  - la guarda de "paga" sin inquilino, que avisa y no guarda.
+- Falta:
+  - la **sección 3**, "El inquilino ya no ocupa la unidad", con sus tres
+    casos: sin cuenta, con cuenta y con dos inquilinos;
+  - la **sección 4**, `/mi` de un propietario con 6 unidades: total
+    $ 524,01, el caso de 08D que paga el inquilino, el saldo a favor de 02D,
+    una cuenta de una sola unidad, el tema oscuro y el ancho de teléfono.
+
+**Para probar con dos cuentas:** usar perfiles o navegadores distintos (o
+una ventana privada), nunca dos pestañas del mismo navegador. La sesión
+vive en cookies, que son una sola por navegador: abrir otra cuenta en una
+pestaña cambia la sesión de todas. Eso causó los problemas 2 y 3 del 04-oct.
+
+**Lo que sigue, en este orden:**
+1. Respaldo de producción (`docs/respaldo.md`).
+2. Las tres migraciones de la fase 1 en producción: 20260930120000,
+   20260930130000 y 20260930140000.
+   - Ojo con 20261005120000: si el código de hoy llega a `integration` sin
+     esa migración aplicada en producción, Accesos dice "el anterior quedó
+     anulado" y no es verdad.
+   - Hay que aplicarla junto con las otras tres, o antes del merge.
+3. Merge de `dev` a `integration` (publica vecitap.com).
+4. El script de borrado de las dos organizaciones de prueba
+   (`supabase/scripts/20261004_borrar_orgs_prueba_piloto.sql`), primero en
+   modo ensayo.
+
 ## Decisiones de arquitectura ya tomadas
 
 No volver a proponerlas como abiertas:
@@ -2340,6 +2417,23 @@ la próxima carga del piloto.
    prefijo del código ("PB.", "Mz.") y como una fila "Estacionamiento" sin
    alícuota, que el importador omite.
 
+### Para después de la fase 1 (validación en el Preview, 05-oct)
+
+Anotados por Nicolás al validar la fase 1. No se hacen ahora.
+
+1. **Saldo a favor en Propietarios:** hoy sale en negro con signo menos.
+   Mostrarlo como "A favor $ X".
+2. **Prefijo "Sr." duplicado:** el prefijo automático se suma al que ya
+   trae la planilla.
+3. **Botón desactivado que no lo parece:** un botón desactivado tiene que
+   verse desactivado. Va con el patrón único de carga y guardado (E).
+4. **D baja de prioridad:** no se reprodujo en el Preview. El edificio se
+   crea y la pantalla se actualiza sola. El `router.refresh()` que falta en
+   `PrimerEdificio.tsx` sigue siendo la causa probable si vuelve a pasar.
+5. **Demasiadas llamadas a `tiene_rol`:** más de 15 en el mismo segundo al
+   abrir una página (proxy, layouts y prefetch de los enlaces del menú).
+   Hay que reducirlas. Toca autorización: va con revisión cruzada.
+
 ---
 
 ## Checklist de despliegue — piloto con datos reales (28-sep)
@@ -4213,3 +4307,173 @@ termina con un error que deshace la transacción. Solo borra de verdad con
   `RESTRICT` internas): borró 25 tablas con datos, todo quedó en 0, sin
   errores. Después se comprobó que nada quedó escrito (las 5 organizaciones
   y sus filas intactas).
+
+## Validación de la fase 1 en el Preview: tres problemas bloqueantes (05-oct)
+
+Nicolás los encontró al validar la fase 1 en el Preview de `dev` (base
+vecitap-pruebas), el 04-oct a la noche. Se arreglaron en `dev` antes de
+subir la fase 1 a producción. Causas confirmadas con los logs de pruebas
+(Auth, API y Postgres), solo lectura.
+
+### 1. Una cuenta no podía aceptar una segunda invitación
+
+**Causa:** no era la base. `aceptar_invitacion()` ya acepta una segunda
+unidad de la misma organización y una de otra organización: la membresía es
+única por (organización, usuario, rol, unidad, edificio), así que cada
+unidad nueva es una fila nueva. Lo que faltaba era la pantalla: el
+formulario del código solo aparecía en `/mi` para una cuenta **sin**
+unidades ("Falta un paso"). Una cuenta con una unidad no tenía dónde pegar
+el segundo código.
+
+**Arreglo:**
+- **Ruta nueva `/mi/agregar`**: el mismo formulario, con el título "Agregar
+  otra unidad" cuando la cuenta ya tiene unidades. Al aceptar, lleva al
+  recibo de la unidad nueva. `aceptar_invitacion()` devuelve la
+  organización, no la unidad, así que se compara `mis_unidades()` antes y
+  después.
+- **Botón "+ Agregar otra unidad"** en `/mi/[unidadId]`, visible siempre,
+  también con una sola unidad.
+- **"Copiar el mensaje completo" (Accesos)** ahora lleva a
+  `/entrar?volver=/mi/agregar?codigo=…`. El campo aparece ya lleno, pero
+  hay que tocar el botón para aceptar. Sirve con o sin unidades previas, y
+  con la sesión abierta `/entrar` sigue de largo (ver el punto 3).
+  - El código viaja en la URL. Es el mismo que va en el texto del mensaje,
+    atado a ese correo, de un solo uso y válido 7 días.
+  - `/mi/agregar` solo pone en el campo un valor hexadecimal.
+- **Sin migración** para este punto.
+
+**Límite conocido:** si alguien abre `/mi/agregar?codigo=…` directo y sin
+sesión, `proxy.ts` lo manda a `/entrar?volver=/mi/agregar` sin el código,
+porque el proxy guarda solo el camino en `volver`. Hay que pegarlo a mano. El
+enlace que arma Accesos no tiene este problema: ya va por `/entrar`.
+
+### 2. Accesos: "[object Object]", tarjeta de un código viejo y revocar que no anduvo
+
+**Causa (logs, 05-oct UTC):**
+- **02:53** La administradora genera dos invitaciones para el mismo correo:
+  03C y después 04D.
+- **02:58–02:59** En el **mismo navegador** se crea y se abre la cuenta del
+  inquilino. Las cookies de sesión son una sola por navegador, así que la
+  pestaña de Accesos pasó a llamar a la base como inquilino, aunque seguía
+  mostrando la pantalla de la administradora.
+- **03:00** El inquilino acepta la invitación de 04D.
+- **03:02:42** `crear_invitacion` → 400 **"Sin permiso para invitar"**, con
+  el usuario del inquilino.
+- **03:04:02 y 03:04:05** `revocar_invitacion` → 400 **"Sin permiso"**, dos
+  veces, con el usuario del inquilino.
+- **03:04:59** Vuelve a entrar la administradora: revocar (03:05:11) y
+  generar (03:05:34) funcionan.
+
+O sea: no fue una invitación pendiente duplicada, ni otra restricción, ni un
+tiempo agotado. El error salió como "[object Object]" porque `supabase.rpc()`
+devuelve `error` como **objeto plano** (postgrest-js 2.116), y el patrón
+`e instanceof Error ? e.message : String(e)` lo convertía en texto así. La
+tarjeta que quedó a la vista era la del código de 04D, generado antes: la
+generación fallida no la limpiaba.
+
+**Arreglo:**
+- **`lib/errores.ts` → `mensajeDeError()`**: la regla única para mostrar
+  errores, aplicada en los 13 lugares con el patrón de "[object Object]" y
+  en los que mostraban `error.message` crudo (Cobros, CrearOrganizacion,
+  Edificio nuevo, Primer edificio, Logo, Cargar saldos, Mis vehículos,
+  Reportar pago y las cuatro vistas de Garita). Qué devuelve:
+  - Los `raise exception` de nuestras funciones salen tal cual: ya están en
+    español.
+  - Los errores conocidos de Postgres salen con una frase fija en español.
+  - Los de conexión dicen "No pudimos conectar. Reintente."
+  - El resto, un texto genérico. El detalle va a la consola.
+  - No se tocaron `FormularioEntrar.tsx`, que tiene sus propios textos de
+    Auth, ni las comparaciones por mensaje de `CierreMes.tsx`.
+- **La invitación nueva reemplaza a la pendiente** del mismo correo y la
+  misma unidad (`20261005120000_crear_invitacion_reemplaza_pendiente.sql`,
+  con rollback).
+  - Dentro de `crear_invitacion`, antes del INSERT, se anulan las
+    pendientes de la misma organización, correo, rol y alcance, igual que
+    lo hace `revocar_invitacion` (`expira_en` en el pasado).
+  - Todo va en la misma transacción: si el INSERT falla, la anterior sigue
+    viva.
+  - Accesos avisa: "El anterior para … quedó anulado".
+- **La tarjeta del código** se limpia:
+  - al generar (antes de pedir el código nuevo), así que también cuando la
+    generación falla;
+  - al cambiar la unidad;
+  - al escribir otro correo.
+- **Revocar** muestra "Revocando…" en el botón y después "Invitación
+  revocada. Ese código ya no sirve." o "No se pudo revocar: <motivo>".
+- **Aviso de cambio de cuenta** (`components/AvisoCambioDeCuenta.tsx`, en
+  los layouts de `/admin/[orgId]` y `/mi/[unidadId]`).
+  - Si la sesión del navegador ya no es la de la cuenta con la que se armó
+    la página (otra cuenta abierta, o sesión cerrada desde otra pestaña),
+    aparece abajo un aviso con el botón "Recargar".
+  - No cambia permisos: la base ya rechazaba bien esas llamadas. Lo que
+    faltaba era que se viera.
+
+### 3. "La app me volvió a sacar de la sesión"
+
+**El segundo caso (04-oct, ~23:07 de Venezuela) no fue lo mismo que el
+primero.**
+- **Entre 02:45 y 03:30 UTC:** ninguna respuesta 5xx de la API ni de Auth.
+  La más lenta tardó 861 ms.
+- **03:06:21** Hay un `logout` de la cuenta del inquilino, en el mismo
+  navegador. Cerró la única sesión que había, y al recargar Accesos el
+  proxy no encontró sesión y mandó a Entrar.
+- **03:06:41** Se vuelve a entrar como inquilino.
+
+Es el mismo mecanismo que el punto 2: dos cuentas en un navegador. Lo cubre
+el aviso de cambio de cuenta. Para validar con dos cuentas, usar una ventana
+privada o un navegador distinto para la segunda.
+
+**El primero (04-oct, 21:52–21:54)** sí fue la base: la instancia gratuita,
+en swap y con el CPU en IOwait (confirmado en el panel).
+- Consultas de 15 a 59 s y `/auth/v1/user` con 504 y 500.
+- `usuarioActual()` trataba ese error igual que "no hay sesión" y mandaba a
+  /entrar, aunque la sesión seguía viva.
+- Producción sigue en el plan gratuito hasta terminar las correcciones, así
+  que el caso puede repetirse. El arreglo es que la app no lo confunda con
+  un cierre de sesión.
+
+**Arreglo:**
+- **`usuarioActual()`** (`lib/supabase/cache.ts`) devuelve el usuario si
+  hay sesión y `null` si no la hay (sin cookies, token inválido, 4xx de
+  Auth). Si Auth no contesta (`AuthRetryableFetchError`: red, tiempo
+  agotado, 500-504 y 520-530), **lanza `ErrorSinConexion`**
+  (`lib/sin-conexion.ts`).
+  - Los seis lugares que llamaban a `getUser()` por su cuenta pasan a usar
+    `usuarioActual()`: `/admin`, `/mi`, `/garita`,
+    `/garita/[edificioId]`, `/operador` y `/destino`.
+- **`app/error.tsx`** (nuevo, para toda la app) reconoce ese error por su
+  `digest` y muestra "No pudimos conectar. Reintente" con el botón
+  "Reintentar", que vuelve a pedir la página con `retry()`.
+  - Por qué el `digest`: en producción Next borra el mensaje de los errores
+    de servidor, pero respeta un `digest` propio.
+  - Se comprobó contra `next start`, con un navegador sin interfaz y una
+    página de prueba temporal (ya borrada): la pantalla sale bien.
+  - Cualquier otro error cae en la misma pantalla, con un texto genérico.
+- **`/entrar` con la sesión válida sigue de largo** a `volver`, saneado con
+  `rutaInterna()` y nunca de vuelta a /entrar, o a `/destino`.
+  - Excepción: `?clave=nueva` (la sesión especial de recuperar la clave).
+  - Si Auth no contesta, muestra el formulario.
+
+**Revisión cruzada pendiente (toca autenticación).** Puntos a mirar:
+- **Falla cerrado.** Con un error de conexión no se devuelve ningún
+  usuario. Cambia la pantalla (reintentar en vez de Entrar), no quién pasa.
+- **`proxy.ts` no cambió.** Si el token de acceso ya venció y el refresco
+  falla por la caída, `getClaims()` sigue sin sesión y el proxy manda a
+  /entrar. Ahí, con Auth caído, `/entrar` muestra el formulario. Este caso
+  queda abierto.
+- **Posible bucle /entrar ↔ ruta protegida.** Solo pasaría si el proxy y
+  `getUser()` no coincidieran sobre si hay sesión. No se encontró un caso
+  así, pero conviene revisarlo.
+- **El aviso de cambio de cuenta** llama a `getSession()` en el navegador,
+  que puede refrescar el token en paralelo con el proxy. Ya pasaba con
+  cualquier cliente del navegador, y Supabase tolera el reuso del refresh
+  token dentro de su intervalo.
+
+### Estado
+
+- **Código:** en `dev`, sin commit. `npm run build`, `npm run lint` y
+  `npx tsc --noEmit` en verde (05-oct).
+- **Migración `20261005120000`:** escrita, **sin aplicar**. Primero en
+  pruebas, con la aprobación de Nicolás. Antes de aplicarla, el cuerpo
+  actual de `crear_invitacion` era el mismo en las dos bases (md5 sin `\r`
+  `f29847e7…`), y el rollback lo restaura exacto (verificado).

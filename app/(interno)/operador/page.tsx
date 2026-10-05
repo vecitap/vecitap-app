@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { ConsolaOperador } from "@/components/operador/ConsolaOperador";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { usuarioActual } from "@/lib/supabase/cache";
 
 /**
  * Portado de App() en operador.html:201-537. proxy.ts ya redirige a quien
@@ -14,9 +15,9 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  */
 export default async function OperadorHome() {
   const supabase = await crearClienteServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Sin conexión con Auth lanza ErrorSinConexion (lo muestra app/error.tsx);
+  // null es solo "no hay sesión". Ver lib/supabase/cache.ts.
+  const user = await usuarioActual();
   if (!user) redirect("/entrar?volver=/operador");
 
   const { data: esOperador } = await supabase.rpc("es_operador");

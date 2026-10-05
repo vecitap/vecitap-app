@@ -13,6 +13,7 @@ import {
 } from "@/lib/archivos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Database } from "@/types/supabase";
+import { mensajeDeError } from "@/lib/errores";
 
 type Banco = Pick<Database["public"]["Tables"]["bancos"]["Row"], "codigo" | "nombre" | "corto">;
 
@@ -107,7 +108,7 @@ export function FormularioReportarPago({
       if (cancelado) return;
       // El error se muestra: una tasa que "no carga" sin decir por qué
       // deja a la persona sin saber si es culpa suya o del sistema.
-      setErrorTasa(error ? error.message : null);
+      setErrorTasa(error ? mensajeDeError(error) : null);
       const r = Array.isArray(data) ? data[0] : data;
       setTasa(r && Number(r.tasa) > 0 ? { fecha: r.fecha, propia: r.propia, tasa: Number(r.tasa) } : null);
     });
@@ -205,7 +206,7 @@ export function FormularioReportarPago({
 
     if (error) {
       setEnviando(false);
-      setErrorGeneral(error.message);
+      setErrorGeneral(mensajeDeError(error));
       return;
     }
 
@@ -219,7 +220,7 @@ export function FormularioReportarPago({
 
       if (subida.error) {
         setEnviando(false);
-        setErrorGeneral("El pago quedó reportado, pero el comprobante no se pudo subir: " + subida.error.message);
+        setErrorGeneral("El pago quedó reportado, pero el comprobante no se pudo subir: " + mensajeDeError(subida.error));
         return;
       }
 
@@ -236,7 +237,7 @@ export function FormularioReportarPago({
       if (errorComprobante) {
         setEnviando(false);
         setErrorGeneral(
-          "El pago quedó reportado, pero no se pudo registrar el comprobante: " + errorComprobante.message
+          "El pago quedó reportado, pero no se pudo registrar el comprobante: " + mensajeDeError(errorComprobante)
         );
         return;
       }

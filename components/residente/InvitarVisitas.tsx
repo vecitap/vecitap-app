@@ -7,6 +7,7 @@ import { fechaHora } from "@/lib/formato";
 import { componerTarjetaVisita, generarQR, nombreArchivoTarjeta, type DatosTarjeta } from "@/lib/residente/tarjeta-visita";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Database } from "@/types/supabase";
+import { mensajeDeError } from "@/lib/errores";
 
 type InvitacionFila = Pick<
   Database["public"]["Tables"]["invitaciones_visita"]["Row"],
@@ -71,7 +72,7 @@ export function InvitarVisitas({
     setMensaje({ texto, tipo });
   }
   function fallo(e: unknown) {
-    notificar(e instanceof Error ? e.message : String(e), "error");
+    notificar(mensajeDeError(e), "error");
   }
 
   /* La tarjeta del código aparece ARRIBA del formulario y de la lista. Sin

@@ -11,6 +11,7 @@ import { LogoOrg } from "./LogoOrg";
 import { NuevoEdificio } from "./NuevoEdificio";
 import type { CategoriaConPartidas, EdificioAdmin, PartidaFija } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
+import { mensajeDeError } from "@/lib/errores";
 
 type ActualizarPartida = Database["public"]["Tables"]["partidas_fijas"]["Update"];
 type Mensaje = { texto: string; tipo: "ok" | "error" };
@@ -57,7 +58,7 @@ export function Ajustes({
     setMensaje({ texto, tipo });
   }
   function fallo(err: unknown) {
-    notificar(err instanceof Error ? err.message : String(err), "error");
+    notificar(mensajeDeError(err), "error");
   }
 
   async function guardarEdificio() {

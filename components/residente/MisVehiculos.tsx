@@ -6,6 +6,7 @@ import { Trash2 } from "lucide-react";
 import { Aviso, Button, Campo, Card, Input } from "@/components/ui";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Database } from "@/types/supabase";
+import { mensajeDeError } from "@/lib/errores";
 
 type Vehiculo = Pick<Database["public"]["Tables"]["vehiculos"]["Row"], "id" | "placa" | "marca" | "modelo" | "color" | "puesto">;
 
@@ -59,7 +60,7 @@ export function MisVehiculos({
       puesto: auto.puesto.trim() || null,
     });
     setOcupado(false);
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     setAuto(VACIO);
     router.refresh();
   }
@@ -67,7 +68,7 @@ export function MisVehiculos({
   async function quitar(id: string) {
     const supabase = crearClienteNavegador();
     const { error: e } = await supabase.from("vehiculos").delete().eq("id", id);
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     router.refresh();
   }
 

@@ -9,6 +9,7 @@ import { informeDeAsambleaEnPapel } from "@/lib/admin/papel-estadisticas";
 import { imprimirDocumento } from "@/lib/recibo-papel";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { DatosEstadisticas, PeriodoAdmin } from "@/lib/admin/tipos";
+import { mensajeDeError } from "@/lib/errores";
 
 const VACIO: DatosEstadisticas = { resumen: null, categorias: [], top: [], serie: [], mora: [] };
 
@@ -69,7 +70,7 @@ export function Estadisticas({
          es la peor forma de fallar: nadie sabe qué arreglar. */
       const err = [r1, r2, r3, r4, r5].map((x) => x.error).find(Boolean);
       if (err) {
-        setBloqueado(err.message || String(err));
+        setBloqueado(mensajeDeError(err));
         return;
       }
       setBloqueado(null);

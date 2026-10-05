@@ -6,6 +6,7 @@ import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
 import { horaCorta } from "@/lib/formato";
 import type { VisitaDentro } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { mensajeDeError } from "@/lib/errores";
 
 /**
  * Vista 2 · Adentro — garita.html:733-771. Lista de quién está adentro
@@ -29,7 +30,7 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
     const supabase = crearClienteNavegador();
     const { data, error } = await supabase.rpc("garita_dentro", { p_edificio: edificioId });
     setCargando(false);
-    if (error) return mostrarAviso(error.message, "mal");
+    if (error) return mostrarAviso(mensajeDeError(error), "mal");
     setAdentro(data ?? []);
   }, [edificioId, mostrarAviso]);
 
@@ -43,7 +44,7 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
     supabase.rpc("garita_dentro", { p_edificio: edificioId }).then(({ data, error }) => {
       if (!vivo) return;
       setCargando(false);
-      if (error) return mostrarAviso(error.message, "mal");
+      if (error) return mostrarAviso(mensajeDeError(error), "mal");
       setAdentro(data ?? []);
     });
     const id = setInterval(cargar, 60000);
@@ -63,7 +64,7 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
         n.delete(visitaId);
         return n;
       });
-      return mostrarAviso(error.message, "mal");
+      return mostrarAviso(mensajeDeError(error), "mal");
     }
     mostrarAviso("Salida registrada.");
     cargar();

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Campo, Card, Input } from "@/components/ui";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { mensajeDeError } from "@/lib/errores";
 
 /**
  * Portado del formulario de alta dentro de Organizaciones() en
@@ -37,7 +38,7 @@ export function CrearOrganizacion() {
       p_rif: rif.trim() || undefined,
     });
     setOcupado(false);
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     router.push(`/admin/${data}`);
     router.refresh();
   }

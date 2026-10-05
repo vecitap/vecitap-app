@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card } from "@/components/ui";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { mensajeDeError } from "@/lib/errores";
 
 /**
  * Portado de LogoOrg() en admin.html:5619-5665.
@@ -61,7 +62,7 @@ export function LogoOrg({
     try {
       setLogo(await redimensionarLogo(file));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(mensajeDeError(e));
     }
   }
 
@@ -71,7 +72,7 @@ export function LogoOrg({
     const supabase = crearClienteNavegador();
     const { error: e } = await supabase.from("organizaciones").update({ logo_url: logo || null }).eq("id", orgId);
     setOcupado(false);
-    if (e) return setError(e.message);
+    if (e) return setError(mensajeDeError(e));
     router.refresh();
   }
 
