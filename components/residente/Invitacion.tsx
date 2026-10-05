@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Campo, Card, Input } from "@/components/ui";
+import { Button, Campo, Card, Input, PantallaMarca } from "@/components/ui";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 
 /**
@@ -53,7 +53,7 @@ export function Invitacion({ correo }: { correo: string }) {
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: "0 auto", padding: 24 }}>
+    <PantallaMarca>
       <Card>
         <h1 style={{ marginTop: 0, fontFamily: "var(--font-titulos)", fontSize: 18 }}>
           Falta un paso
@@ -88,6 +88,6 @@ export function Invitacion({ correo }: { correo: string }) {
           </Link>
         </div>
       </Card>
-    </main>
+    </PantallaMarca>
   );
 }

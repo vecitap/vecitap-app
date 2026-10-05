@@ -10,6 +10,7 @@ export { Table } from "./Table";
 export { Dialog } from "./Dialog";
 export { ThemeToggle } from "./ThemeToggle";
 export { Logo } from "./Logo";
+export { PantallaMarca } from "./PantallaMarca";
 export { Aviso, type TonoAviso } from "./Aviso";
 export { Vacio } from "./Vacio";
 export { Cargando } from "./Cargando";
