@@ -3984,10 +3984,13 @@ revertidas en orden inverso**. La de `paga` volvió a pasar sus 24 casos.
    `REVOKE ... FROM PUBLIC`. Devuelve un booleano y mira `auth.uid()`, así
    que no filtra nada; anotado por consistencia.
 6. **Importador, heredado de `main`:** separa columnas por coma, punto y coma
-   o tabulación, así que escrito a mano con comas, un decimal con coma
-   (`2,41144`) se parte en dos columnas; el propio ejemplo del placeholder
-   lo hace. Pegado desde Excel (tabulaciones) funciona. No se tocó: es
-   paridad, y con las columnas nuevas el efecto es el mismo que antes.
+   o tabulación, así que un decimal con coma (`2,41144`) se parte en dos
+   columnas; el propio ejemplo del placeholder lo hace. **Corregido el
+   04-oct:** esto vale también para el pegado desde Excel. La expresión
+   corta en cualquier coma aunque la línea venga con tabulaciones, así que
+   un Excel en español (coma decimal) tampoco funciona. Detalle y el resto
+   de los hallazgos en "Importar unidades y Cargar saldos con la planilla
+   real del piloto (04-oct)", al final de este archivo.
 7. **"Debe N cuotas"**: ver arriba.
 8. **Supuesto pendiente con Gustavo:** "inquilino vigente" se define por
    `vinculos`, no por `membresias`.
@@ -4109,3 +4112,87 @@ Typecheck, lint y build en verde.
    "ya no ocupa la unidad"), importador, resumen del portal.
 4. Traer los 3 commits de `integration` a `dev`, y recién entonces mergear
    `dev` → `integration`.
+
+---
+
+## Importar unidades y Cargar saldos con la planilla real del piloto (04-oct)
+
+Diagnóstico contra la planilla con la que Gustavo cargó el edificio piloto
+(CSV y `.xlsx`, 54 filas). Se probó la lógica de la rama `dev` copiada tal
+cual en un script, sin tocar ninguna base y sin cambiar código. La planilla
+tiene datos personales reales: **no está en el repo** y no se la usa en
+pruebas. Para eso hay una copia anonimizada fuera del repo, con el mismo
+formato byte a byte salvo nombres, teléfonos y correos; el importador da
+fila por fila el mismo resultado con las dos. Las unidades se nombran por
+su código.
+
+Formato de la planilla: separada por comas, con comillas en los campos que
+tienen coma. Alícuota con coma decimal (`"1,48768"`). Saldo como texto con
+punto de miles, `$` y negativo con espacio (`"- 2.096,66 $"`, `"- 0,00 $"`,
+`-   $`). Siete columnas: código, alícuota, saldo, propietario, teléfono,
+correo y "Correo 2". Finales de línea CRLF. En el `.xlsx` la alícuota es un
+número y el saldo un texto, y los encabezados son otros (`COPROPIETARIOS`,
+`Celular`, `Correo 1`).
+
+**"Importar unidades" no tiene subida de archivo**, ni en `dev` ni en
+`integration` ni en `main`: solo un cuadro de texto. El único lugar que
+acepta `.csv`/`.xlsx` es "Cargar saldos", que no crea unidades.
+
+### Importar unidades (`components/admin/ImportarUnidades.tsx`)
+
+Pegado desde Excel: **0 de 55 filas cargables**. El CSV abierto como texto
+y pegado: también 0 de 55.
+
+| # | Problema | Filas | Causa |
+|---|---|---|---|
+| 1 | Cualquier coma corta la columna, aunque el pegado venga con tabulaciones. La alícuota queda en su parte entera y todo lo demás se corre. | Las 53 con alícuota. Nombres con coma: PB. L-B, 01C, 01D, 03A, 03B, 03D, 04A, 04C, 07A, 09A, 09B, 10A, 11C, 12B, Mz. L-B | `:68`, `split(/[\t;,]/)` |
+| 2 | Las comillas del CSV no se interpretan: la alícuota llega como `"14` y es ilegible. | Todas (CSV pegado) | `:68` |
+| 3 | `num()` no entiende `$` ni el espacio de `- 0,00 $`: el saldo da `null`, **no se marca error** y se carga 0 sin avisar. | Todas las que tienen saldo; las de más riesgo, las de miles y las negativas | `lib/formato.ts:66-71`, `:126` (`f.saldo \|\| 0`). `parseMonto` ya lee este formato |
+| 4 | **Regresión de la fase 1:** la columna 7 ("Correo 2") se lee como "quién paga" y da error. `integration` la ignoraba. | 30 filas con Correo 2 | `:75`, `:86` |
+| 5 | El encabezado aparece como una fila con error. | CODIGO | `:61-64` |
+| 6 | Fila sin alícuota: rechazada, que es lo correcto. | Estacionamiento | `:82` |
+| 7 | Teléfonos sin validar, guardados tal cual: con un nombre adentro (10C, 10D) y extranjeros (+52) que `normalizarTel` no entiende (12C, 12D). | 10C, 10D, 12C, 12D | `lib/admin/personas.ts:27` |
+| 8 | Un propietario repetido se crea como una persona por unidad. | 13 grupos; el mayor, 02A–02D, 08C, 08D | `vincular()`, `:107-110` |
+
+Lo que sí carga: 6 columnas separadas por tabulaciones, punto decimal, sin
+`$`, sin comas en el nombre y sin encabezado. Así cargan 53 de 54
+(Estacionamiento queda afuera).
+
+### Cargar saldos (`components/admin/ImportarSaldos.tsx`)
+
+`leerCSV` y SheetJS leen bien las columnas, pero **el monto es el último
+número de la fila** (`:88`). Con esta planilla escribe saldos falsos sin
+avisar: sale del teléfono (por ejemplo `0414-…` da 414) en 26 filas y de los
+dígitos de un correo en 19. Solo en 9 sale del saldo. El CSV y el `.xlsx` dan
+el mismo resultado.
+
+### Estado
+
+Nada corregido todavía: es el insumo del importador nuevo (bloque de mejoras
+para la próxima carga del piloto). Los datos que Gustavo cargó en producción
+fueron una prueba y se van a reemplazar.
+
+**Para quien pegue antes de que esté el importador nuevo**, con la fase 1 en
+producción: solo 6 columnas, porque una séptima ahora se lee como "quién
+paga".
+
+### Borrado de las dos organizaciones de prueba en producción
+
+`supabase/scripts/20261004_borrar_orgs_prueba_piloto.sql`. No es una
+migración (borra datos, no cambia el esquema) y no tiene rollback: el reverso
+es el respaldo. Por omisión corre en **modo ensayo**: hace todo, informa y
+termina con un error que deshace la transacción. Solo borra de verdad con
+`v_confirmar = true`. Lo corre Nicolás en producción, después del respaldo.
+
+- Un solo `DELETE` sobre `organizaciones`. Las 27 tablas que dependen de ella
+  tienen `ON DELETE CASCADE`, y `membresia_ultimo_admin()` deja pasar el
+  borrado cuando la organización ya no existe. Después se borra `auditoria`,
+  que tiene `org_id` sin clave foránea y además recibe filas nuevas del
+  propio borrado.
+- No toca usuarios de Auth ni Storage: el informe dice cuántas cuentas
+  quedan sin membresía y cuántos comprobantes hay que borrar a mano.
+- **Ensayo en vecitap-pruebas (04-oct)**, con dos organizaciones de pruebas
+  que tienen pagos, recibos, cortes, vínculos y personas (las relaciones
+  `RESTRICT` internas): borró 25 tablas con datos, todo quedó en 0, sin
+  errores. Después se comprobó que nada quedó escrito (las 5 organizaciones
+  y sus filas intactas).
