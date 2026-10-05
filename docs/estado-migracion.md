@@ -2323,6 +2323,23 @@ Como es una decisión de producto (cambia el flujo, no corrige un error
 de paridad con el original), queda para revisar con Nicolás antes de
 tocar el botón — no forma parte de ninguna fase todavía.
 
+### Pedidos de Gustavo para más adelante (04-oct)
+
+Anotados, sin plan ni fecha. Ninguno es parte del bloque de mejoras para
+la próxima carga del piloto.
+
+1. **Que el residente corrija sus propios datos de contacto** (teléfono,
+   correo, correo de respaldo) desde `/mi`. Hoy los cambia solo la
+   administración, en la ficha de la unidad. Ojo al diseñarlo: los datos
+   viven en `personas`, que es de la administración, mientras que el
+   residente entra por su cuenta (`membresias`), y no hay un vínculo entre
+   su cuenta y su persona. Hace falta decidir ese vínculo, y si el cambio
+   se aplica directo o pasa por aprobación de la administradora.
+2. **Distinguir el tipo de unidad** (oficina, local, estacionamiento…).
+   Hoy `unidades` no tiene ese dato. En la planilla del piloto aparece como
+   prefijo del código ("PB.", "Mz.") y como una fila "Estacionamiento" sin
+   alícuota, que el importador omite.
+
 ---
 
 ## Checklist de despliegue — piloto con datos reales (28-sep)
