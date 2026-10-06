@@ -21,9 +21,9 @@ GitHub Pages.
 Detalle en "Validación de la fase 1 en el Preview: tres problemas
 bloqueantes (05-oct)", al final de este archivo.
 
-**Pendiente de aprobación de Nicolás:** la migración
+**Aprobada y aplicada en pruebas (06-oct):** la migración
 `20261005120000_crear_invitacion_reemplaza_pendiente.sql`, con su rollback.
-Está escrita y sin aplicar. Después de la aprobación se aplica en pruebas.
+Verificada (md5 `d5807ae0…`). Sin aplicar en producción.
 
 **Hecho en `dev`, sin commit y sin validar en el Preview:**
 - Aceptar una segunda invitación (`/mi/agregar` y el botón "+ Agregar otra

@@ -1,8 +1,9 @@
 -- `crear_invitacion`: una invitación nueva anula la pendiente del mismo
 -- correo y el mismo alcance.
 --
--- SIN APLICAR. La aplica Nicolás: primero en vecitap-pruebas, después en
--- vecitap-produccion, con respaldo previo (docs/respaldo.md).
+-- Aplicada en vecitap-pruebas el 06-oct (verificación 1: md5 d5807ae0…).
+-- SIN APLICAR en vecitap-produccion: la aplica Nicolás, con respaldo previo
+-- (docs/respaldo.md).
 --
 -- ─────────────────────────────────────────────────────────────────────────
 -- EL PROBLEMA (validación de la fase 1 en el Preview, 04-oct)

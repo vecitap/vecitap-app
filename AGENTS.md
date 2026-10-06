@@ -112,8 +112,23 @@ pruebas, y la próxima migración que asuma el estado anterior se va a romper o,
 peor, va a pisar el cambio en silencio. Si hace falta corregir algo en
 producción, se escribe la migración y se aplica.
 
-Quien corre el SQL es **Nicolás**: un asistente entrega la consulta lista para
-copiar, más una de verificación, y no ejecuta nada contra ninguna base.
+Quién corre qué, por base:
+
+- **vecitap-pruebas — el asistente lee y escribe.** Aplica ahí las
+  migraciones aprobadas (el archivo tal cual, con `execute_sql`, no con
+  `apply_migration`, para no abrir un historial de migraciones que
+  producción no tiene), corre la verificación del propio archivo y prepara
+  los datos de prueba que haga falta. La base es compartida con el socio
+  comercial, que carga datos ahí en paralelo: toda escritura de datos va
+  acotada a las organizaciones o filas de la prueba, y nunca se borra ni se
+  pisa lo que no creó el asistente. Las reglas de arriba no cambian: la
+  migración sigue siendo un archivo con su rollback, y se escribe antes de
+  aplicarla, no después.
+- **vecitap-produccion — el asistente solo lee.** Consultas de lectura y
+  verificación, sí; nada que escriba (ni DDL, ni DML, ni funciones). Quien
+  aplica en producción es **Nicolás**, con el respaldo previo de abajo: el
+  asistente le entrega la lista de migraciones ya probadas en pruebas, en
+  orden, y verifica después por lectura que quedaron aplicadas.
 
 ### Respaldo antes de cualquier migración en producción
 
