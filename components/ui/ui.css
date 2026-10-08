@@ -82,6 +82,7 @@
 .badge-ambar  { color: var(--ambar); background: var(--ambar-bg); }
 .badge-rojo   { color: var(--rojo);  background: var(--rojo-bg); }
 .badge-azul   { color: var(--azul);  background: var(--azul-bg); }
+.badge-favor  { color: var(--a-favor); background: var(--a-favor-bg); }
 .badge-tenue  { color: var(--tenue); background: var(--lienzo-alt); }
 .badge-neutro { color: var(--tinta-2); background: var(--fondo); }
 .badge-marca  { color: var(--acento-texto); background: var(--acento-suave); }

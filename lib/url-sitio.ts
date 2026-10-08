@@ -118,6 +118,13 @@ export function rutaInterna(valor: string | null | undefined, porDefecto = "/des
     return porDefecto;
   }
 
+  // La portada de venta no es un destino de quien acaba de entrar (prueba 7
+  // del tramo 1, 07-oct): `/` sirve public/inicio.html por el rewrite de
+  // next.config.ts, una página estática que no sabe nada de la sesión.
+  if (parseada.pathname === "/" || parseada.pathname === "/inicio.html") {
+    return porDefecto;
+  }
+
   // Se devuelve la forma ya normalizada, no el texto crudo. El fragmento se
   // descarta a propósito: no le sirve a nadie en una cabecera Location y es
   // superficie de más.

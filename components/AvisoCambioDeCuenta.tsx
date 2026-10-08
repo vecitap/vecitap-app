@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { EVENTO_REVISAR_CUENTA } from "@/lib/cuenta-navegador";
 
 /**
  * Avisa cuando la sesión de ESTE navegador ya no es la de la cuenta con la
@@ -22,6 +23,10 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
  * al volver a la pestaña (`visibilitychange`) y en cada evento de sesión
  * del cliente. `getSession()` lee las cookies del navegador, sin viaje al
  * servidor; acá no decide ningún acceso, solo si mostrar el aviso.
+ *
+ * También revisa cuando una pantalla se lo pide (`EVENTO_REVISAR_CUENTA`,
+ * desde `otraCuentaEnNavegador()`): Accesos lo hace antes de cada acción y,
+ * si la cuenta cambió, no la envía (08-oct, prueba 5).
  */
 export function AvisoCambioDeCuenta({ usuarioId }: { usuarioId: string }) {
   const [otra, setOtra] = useState<"otra" | "ninguna" | null>(null);
@@ -42,12 +47,14 @@ export function AvisoCambioDeCuenta({ usuarioId }: { usuarioId: string }) {
     }
 
     document.addEventListener("visibilitychange", alVolver);
+    window.addEventListener(EVENTO_REVISAR_CUENTA, revisar);
     const { data: sub } = supabase.auth.onAuthStateChange(() => {
       revisar();
     });
     return () => {
       vivo = false;
       document.removeEventListener("visibilitychange", alVolver);
+      window.removeEventListener(EVENTO_REVISAR_CUENTA, revisar);
       sub.subscription.unsubscribe();
     };
   }, [usuarioId]);

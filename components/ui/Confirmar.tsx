@@ -9,6 +9,10 @@ import { Dialog } from "./Dialog";
  * componente solo cuando hay algo que confirmar (mismo patrón que el
  * original) — al montarse, abre el <dialog> nativo con showModal(); Escape
  * dispara el "close" nativo, que acá se traduce en onNo().
+ *
+ * `otra` (08-oct): una tercera salida, para cuando la pregunta no es solo
+ * sí/no — p. ej. la ficha de la unidad: "cambiar el inquilino" o "es el
+ * mismo, solo corregir el correo".
  */
 export function Confirmar({
   titulo,
@@ -17,6 +21,7 @@ export function Confirmar({
   tono = "primario",
   onSi,
   onNo,
+  otra,
 }: {
   titulo: string;
   texto: string;
@@ -24,6 +29,7 @@ export function Confirmar({
   tono?: "primario" | "peligro";
   onSi: () => void;
   onNo: () => void;
+  otra?: { boton: string; onClick: () => void };
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -35,10 +41,15 @@ export function Confirmar({
     <Dialog ref={ref} onClose={onNo}>
       <h3 style={{ marginTop: 0, fontSize: 17, fontFamily: "var(--font-titulos)" }}>{titulo}</h3>
       <p style={{ fontSize: 13.5, color: "var(--tinta-2)", lineHeight: 1.6 }}>{texto}</p>
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 18 }}>
         <Button type="button" variante="secundario" onClick={onNo}>
           No
         </Button>
+        {otra && (
+          <Button type="button" variante="secundario" onClick={otra.onClick}>
+            {otra.boton}
+          </Button>
+        )}
         <Button
           type="button"
           onClick={onSi}

@@ -12,11 +12,25 @@
  * en esta rama**: la referencia de paridad es `main`, congelada, y se lee
  * con `git show main:index.html`. Acá no queda nada que desduplicar.
  */
-export const nf = (decimales = 2) =>
-  new Intl.NumberFormat("es-VE", {
+export const nf = (decimales = 2) => {
+  const f = new Intl.NumberFormat("es-VE", {
     minimumFractionDigits: decimales,
     maximumFractionDigits: decimales,
   });
+  return {
+    /**
+     * Sin "-0,00" (ronda 2, 08-oct): un saldo de -0,004 —un residuo de
+     * redondeo— se redondea a cero pero Intl conserva el signo. Se le quita
+     * acá, en el único formateador, y no con `signDisplay: "negative"`, que
+     * en navegadores viejos de teléfono tira RangeError y rompería la
+     * pantalla entera.
+     */
+    format: (valor: number) => {
+      const t = f.format(valor);
+      return /^-0(?:[.,]0+)?$/.test(t) ? t.slice(1) : t;
+    },
+  };
+};
 
 export const usd = (valor: number | string | null | undefined) => "$ " + nf(2).format(Number(valor) || 0);
 
@@ -61,12 +75,41 @@ const partesDiaVecitap = new Intl.DateTimeFormat("en-US", {
 /**
  * En Venezuela se escribe 5.630,15. Un input numérico descarta la coma y
  * devuelve vacío, así que los montos de los formularios son de texto y se
- * interpretan con esta función (idéntica a la de los HTML originales).
+ * interpretan con esta función (la de los HTML originales, con los casos
+ * ambiguos corregidos el 08-oct — ver el comentario de adentro).
  */
 export function num(valor: string | number | null | undefined): number | null {
-  const texto = String(valor ?? "").trim();
+  if (typeof valor === "number") return Number.isFinite(valor) ? valor : null;
+  const texto = String(valor ?? "").replace(/\s/g, "");
   if (texto === "") return null;
-  const n = Number(texto.replace(/\.(?=\d{3}\b)/g, "").replace(",", "."));
+  if (!/^-?[\d.,]+$/.test(texto)) return null;
+
+  /* Ronda 2 (08-oct, caso 40). La versión de los HTML tomaba todo punto
+     seguido de tres dígitos como separador de miles, así que "0.123" (una
+     alícuota) se leía 123, y "1,234.56" daba NaN → 0 sin aviso. Ahora:
+       · con coma y punto, el que va último es el decimal;
+       · con coma sola, es el decimal (como se escribe en Venezuela);
+       · con un punto solo: decimal si no lo siguen exactamente tres
+         dígitos, o si la parte entera es 0 ("0.123"); si no, miles ("1.500");
+       · varios puntos y ninguna coma: miles ("1.234.567").
+     Lo que no encaja (dos comas, letras) da null, y la pantalla avisa. */
+  const coma = texto.lastIndexOf(",");
+  const punto = texto.lastIndexOf(".");
+  let t: string;
+  if (coma > -1 && punto > -1) {
+    t = coma > punto ? texto.replace(/\./g, "").replace(",", ".") : texto.replace(/,/g, "");
+  } else if (coma > -1) {
+    if (texto.indexOf(",") !== coma) return null;
+    t = texto.replace(",", ".");
+  } else if (punto > -1 && texto.indexOf(".") !== punto) {
+    t = texto.replace(/\./g, "");
+  } else if (punto > -1) {
+    const [entera, decimales] = texto.split(".");
+    t = decimales.length !== 3 || /^-?0*$/.test(entera) ? texto : texto.replace(".", "");
+  } else {
+    t = texto;
+  }
+  const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }
 

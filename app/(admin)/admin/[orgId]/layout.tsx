@@ -41,7 +41,9 @@ export default async function LayoutOrg({
   if (!user) redirect(`/entrar?volver=/admin/${orgId}`);
 
   const { data: tieneAcceso, error: errorRol } = await tieneRolOrganizacion(orgId, ROLES_ADMIN);
-  if (errorRol || tieneAcceso !== true) redirect("/");
+  // Sin rol en ESTA organización: a /destino, que lo lleva a donde sí tiene
+  // acceso (08-oct; antes "/", la portada de venta — ver proxy.ts).
+  if (errorRol || tieneAcceso !== true) redirect("/destino");
 
   // Ya autorizado: organizaciones, edificios (memoizado — lo reusan
   // [edificioId]/layout.tsx e inicio/page.tsx) y la tasa del día no dependen

@@ -2572,6 +2572,14 @@ export type Database = {
           vence_el: string
         }[]
       }
+      mis_cuotas: {
+        Args: never
+        Returns: {
+          cuotas: number
+          mas_de: boolean
+          unidad_id: string
+        }[]
+      }
       mis_modulos: {
         Args: { p_edificio?: string }
         Returns: {
@@ -2706,6 +2714,18 @@ export type Database = {
       reabrir_periodo: {
         Args: { p_confirmar?: boolean; p_periodo: string }
         Returns: undefined
+      }
+      reemplazar_inquilino: {
+        Args: {
+          p_correo: string
+          p_documento: string
+          p_enviar?: boolean
+          p_nombre: string
+          p_prefijo: string
+          p_telefono: string
+          p_unidad: string
+        }
+        Returns: number
       }
       residentes_de: {
         Args: { p_edificio: string }

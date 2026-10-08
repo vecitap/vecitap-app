@@ -55,8 +55,9 @@ export function Ficha({
   // había unificado contra `estado` de `saldos_actuales`
   // (docs/casos-de-uso-mejorados.md, caso 11); el criterio del 28-sep es
   // paridad con main, así que vuelven los literales.
-  const tono: TonoBadge = total > 0.01 ? "rojo" : total < -0.01 ? "azul" : "verde";
-  const color = total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--azul)" : "var(--verde)";
+  // Ronda 2 (caso 36): a favor en `--a-favor`, no en `--azul`.
+  const tono: TonoBadge = total > 0.01 ? "rojo" : total < -0.01 ? "favor" : "verde";
+  const color = total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--a-favor)" : "var(--verde)";
   const etiquetaEstado = total > 0.01 ? "debe" : total < -0.01 ? "a favor" : "al día";
 
   const filasImpresion: FilaMostrar[] = [
@@ -111,7 +112,7 @@ export function Ficha({
             <Tarjetita etiqueta="Condominio" valor={usd(saldo?.condominio)} />
             <Tarjetita etiqueta="Administración" valor={usd(saldo?.administracion)} />
             <Tarjetita etiqueta="Servicio" valor={usd(saldo?.servicio)} />
-            <Tarjetita etiqueta="Total" valor={usd(total)} color={color} />
+            <Tarjetita etiqueta={total < -0.01 ? "A favor" : "Total"} valor={usd(total < -0.01 ? Math.abs(total) : total)} color={color} />
           </div>
 
           {pendientes.length > 0 && (

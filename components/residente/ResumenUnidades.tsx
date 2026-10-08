@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { usd } from "@/lib/formato";
+import { estadoSinMonto } from "@/lib/residente/cuotas";
 import { aFavorSegunPortal, debeSegunPortal, type LineaResumen, type ResumenPortal } from "@/lib/residente/resumen";
 
 /**
  * Resumen de quien tiene varias unidades, arriba del selector (caso 31 de
  * docs/casos-de-uso-mejorados.md). No existe en `main`. Las cuentas viven en
- * lib/residente/resumen.ts; acá solo se muestran.
+ * lib/residente/resumen.ts y en la base (`mis_cuotas()`); acá solo se
+ * muestran.
  */
 export function ResumenUnidades({ resumen }: { resumen: ResumenPortal }) {
-  const { pagaUsted, totalDeuda, aFavor, pagaInquilino } = resumen;
+  const { pagaUsted, totalDeuda, pagaInquilino } = resumen;
 
   return (
     <Card style={{ marginBottom: 16 }}>
@@ -31,20 +33,6 @@ export function ResumenUnidades({ resumen }: { resumen: ResumenPortal }) {
               <Fila key={l.unidadId} linea={l} conMonto />
             ))}
           </ul>
-          {aFavor.length > 0 && (
-            <ul style={{ listStyle: "none", margin: "8px 0 0", padding: "8px 0 0", borderTop: "1px dashed var(--linea)" }}>
-              {aFavor.map((l) => (
-                <li key={l.unidadId} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "4px 0", fontSize: 13.5 }}>
-                  <span>
-                    Saldo a favor en <span className="mono">{l.codigo}</span>
-                  </span>
-                  <span className="mono" style={{ color: "var(--verde)" }}>
-                    {usd(Math.abs(l.saldo ?? 0))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
       )}
 
@@ -63,26 +51,47 @@ export function ResumenUnidades({ resumen }: { resumen: ResumenPortal }) {
 }
 
 /**
- * Una unidad. Con monto: "Debe $ X" o "Al día" — un saldo a favor dice "Al
- * día" acá y su monto va en la línea "Saldo a favor en …", que no se suma al
- * total. Sin monto (lo paga el inquilino): solo "Debe" o "Al día".
+ * Una unidad.
+ *  - Con monto (las que paga él): "Debe $ X", "A favor $ X" o "Al día". El
+ *    saldo a favor va en esta misma línea y no se resta del total (ronda 2:
+ *    antes la unidad salía dos veces, "A su favor" sin monto y otra línea
+ *    "Saldo a favor en …").
+ *  - Sin monto (lo paga el inquilino): "Al día" o "Debe N cuotas", de
+ *    `mis_cuotas()` — ver lib/residente/cuotas.ts.
  */
 function Fila({ linea, conMonto = false }: { linea: LineaResumen; conMonto?: boolean }) {
   const { saldo } = linea;
-  const debe = saldo !== null && debeSegunPortal(saldo);
 
-  let estado: string;
-  if (saldo === null) estado = "ver recibo";
-  else if (debe) estado = conMonto ? `Debe ${usd(saldo)}` : "Debe";
-  else estado = conMonto && aFavorSegunPortal(saldo) ? "A su favor" : "Al día";
+  let texto: string;
+  let color: string;
+  let mono = false;
+  if (!conMonto) {
+    const e = estadoSinMonto(saldo, linea.cuotas);
+    texto = e.texto;
+    color = saldo === null ? "var(--tenue)" : e.debe ? "var(--rojo)" : "var(--verde)";
+  } else if (saldo === null) {
+    texto = "ver recibo";
+    color = "var(--tenue)";
+  } else if (debeSegunPortal(saldo)) {
+    texto = `Debe ${usd(saldo)}`;
+    color = "var(--rojo)";
+    mono = true;
+  } else if (aFavorSegunPortal(saldo)) {
+    texto = `A favor ${usd(Math.abs(saldo))}`;
+    color = "var(--a-favor)";
+    mono = true;
+  } else {
+    texto = "Al día";
+    color = "var(--verde)";
+  }
 
   return (
     <li style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", fontSize: 13.5 }}>
       <Link href={`/mi/${linea.unidadId}/recibo`} style={{ color: "inherit" }}>
         {linea.edificio} · <span className="mono">{linea.codigo}</span>
       </Link>
-      <span className={conMonto && debe ? "mono" : undefined} style={{ color: saldo === null ? "var(--tenue)" : debe ? "var(--rojo)" : "var(--verde)" }}>
-        {estado}
+      <span className={mono ? "mono" : undefined} style={{ color }}>
+        {texto}
       </span>
     </li>
   );

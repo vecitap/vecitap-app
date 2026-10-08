@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import { Ajustes } from "@/components/admin/Ajustes";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { tieneRolOrganizacion } from "@/lib/admin/acceso";
+
+// Constante de módulo: tieneRolOrganizacion() memoiza por referencia.
+const ROLES_EDITAR_ORG = ["propietario_cuenta"] as const;
 import type { CategoriaConPartidas } from "@/lib/admin/tipos";
 
 /**
@@ -19,14 +23,17 @@ export default async function PaginaAjustes({
   const { orgId, edificioId } = await params;
   const supabase = await crearClienteServidor();
 
-  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: cats, error: eC }] = await Promise.all([
-    supabase.from("organizaciones").select("nombre,logo_url").eq("id", orgId).single(),
+  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: cats, error: eC }, { data: puedeEditarOrg }] = await Promise.all([
+    supabase.from("organizaciones").select("nombre,rif,logo_url").eq("id", orgId).single(),
     supabase.from("edificios").select("*").eq("id", edificioId).single(),
     supabase
       .from("categorias")
       .select("id,nombre,orden,partidas_fijas(id,concepto,referencia,monto,orden)")
       .eq("edificio_id", edificioId)
       .order("orden"),
+    // Lo mismo que pide la política org_editar (bloque C): solo para decidir
+    // si la tarjeta "Datos de la administradora" se puede editar.
+    tieneRolOrganizacion(orgId, ROLES_EDITAR_ORG),
   ]);
 
   if (eO || eE) notFound();
@@ -37,5 +44,13 @@ export default async function PaginaAjustes({
     partidas_fijas: [...(c.partidas_fijas ?? [])].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)),
   }));
 
-  return <Ajustes orgId={orgId} organizacion={org!} edificio={edificio!} categorias={categorias} />;
+  return (
+    <Ajustes
+      orgId={orgId}
+      organizacion={org!}
+      edificio={edificio!}
+      categorias={categorias}
+      puedeEditarOrg={puedeEditarOrg === true}
+    />
+  );
 }

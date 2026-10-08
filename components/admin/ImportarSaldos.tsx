@@ -4,13 +4,44 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Card } from "@/components/ui";
 import { nf } from "@/lib/formato";
-import { leerPDF, leerTabla, parseMonto } from "@/lib/admin/archivos-tabla";
+import { leerPDF, leerTabla, montoEstricto } from "@/lib/admin/archivos-tabla";
 import { normaliza } from "@/lib/admin/personas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Unidad } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
 
-type FilaLeida = { cod: string; monto: number | null; unidad: Unidad | null };
+type FilaLeida = { cod: string; monto: number | null; unidad: Unidad | null; celda: string };
+
+/** Encabezados que nombran la columna del saldo y la del código. */
+const PISTAS_SALDO = ["saldo", "deuda", "adeuda", "debe", "monto"];
+const PISTAS_CODIGO = ["unidad", "apto", "apartamento", "codigo", "código", "local", "inmueble", "casa"];
+
+const tieneAlguna = (celda: unknown, pistas: string[]) => {
+  const t = String(celda ?? "").toLowerCase().trim();
+  return !!t && pistas.some((p) => t.includes(p));
+};
+
+/**
+ * De qué columna sale el saldo (bloque B, 08-oct). `main` tomaba "el último
+ * número de la fila" (admin.html:2009-2016), y en una planilla con teléfono
+ * o correo después del saldo eso cargaba el teléfono como deuda — pasó con
+ * el archivo de Gustavo del 04-oct. Ahora:
+ *  - si alguna de las primeras filas tiene un encabezado de saldo ("Saldo",
+ *    "Deuda", "Monto"…), esa columna, y las filas de datos empiezan debajo;
+ *  - si no hay encabezado, la segunda columna;
+ *  - el código sale de la columna con encabezado de unidad, o de la primera.
+ */
+function columnas(crudas: string[][]): { saldo: number; codigo: number; desde: number; nombre: string } {
+  for (let r = 0; r < Math.min(crudas.length, 10); r++) {
+    const fila = crudas[r];
+    const saldo = fila.findIndex((c) => tieneAlguna(c, PISTAS_SALDO));
+    if (saldo > -1) {
+      const codigo = fila.findIndex((c) => tieneAlguna(c, PISTAS_CODIGO));
+      return { saldo, codigo: codigo > -1 && codigo !== saldo ? codigo : 0, desde: r + 1, nombre: `«${String(fila[saldo]).trim()}»` };
+    }
+  }
+  return { saldo: 1, codigo: 0, desde: 0, nombre: "la segunda columna" };
+}
 
 /* La lectura de archivos (`leerTabla` para Excel/CSV, `leerPDF`) y
    `parseMonto` viven en lib/admin/archivos-tabla.ts: los comparte con la
@@ -39,6 +70,7 @@ export function ImportarSaldos({
   const [nota, setNota] = useState<string | null>(null);
   const [leyendo, setLeyendo] = useState(false);
   const [hayCierres, setHayCierres] = useState<boolean | null>(null);
+  const [columna, setColumna] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = crearClienteNavegador();
@@ -66,34 +98,49 @@ export function ImportarSaldos({
          viene al principio) y el último monto que aparezca
          (admin.html:2009-2016). */
       let crudas: string[][];
+      let col: ReturnType<typeof columnas>;
       if (/\.pdf$/i.test(file.name)) {
+        // El PDF no tiene columnas; de cada renglón sale un par [código,
+        // monto] y el monto es la columna 2 de ese par.
         crudas = (await leerPDF(file)).map((l) => {
           const montos = l.match(/-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b/g) || [];
           const cod = (l.match(/^[A-Za-zÀ-ÿ0-9ºª.\- ]{1,12}/) || [""])[0].trim();
           return [cod, montos.length ? montos[montos.length - 1] : ""];
         });
+        col = { saldo: 1, codigo: 0, desde: 0, nombre: "el último monto de cada renglón del PDF" };
       } else {
         crudas = await leerTabla(file);
+        col = columnas(crudas);
       }
 
       /* Se descartan las filas de total: en las planillas reales siempre hay
          una al final que, si entra, se carga como si fuera una unidad. */
       const limpias = crudas
+        .slice(col.desde)
         .filter((f) => f.length >= 2)
-        .filter((f) => !/total|suma|deuda total/i.test(String(f[0] || "")));
+        .filter((f) => !/total|suma|deuda total/i.test(String(f[col.codigo] || "")));
 
       const res: FilaLeida[] = limpias
         .map((f) => {
-          const cod = String(f[0] || "").trim();
-          let monto: number | null = null;
-          for (let i = f.length - 1; i >= 1 && monto === null; i--) monto = parseMonto(f[i]);
-          return { cod, monto, unidad: porCodigo[normaliza(cod)] ?? null };
+          const cod = String(f[col.codigo] || "").trim();
+          const celda = String(f[col.saldo] ?? "").trim();
+          // Celda vacía o que no es un monto: null, y la fila no se aplica.
+          // Nunca se busca otro número en la fila.
+          const monto = celda === "" ? null : montoEstricto(celda);
+          return { cod, monto, celda, unidad: porCodigo[normaliza(cod)] ?? null };
         })
-        .filter((r) => r.cod && r.monto !== null);
+        // Una fila sin unidad conocida y sin monto legible es un renglón
+        // suelto de la planilla (título, nota): no se muestra.
+        .filter((r) => r.cod && (r.monto !== null || r.unidad));
 
       setFilas(res);
-      const cuantasCruzan = res.filter((r) => r.unidad).length;
-      setNota(`${res.length} filas leídas, ${cuantasCruzan} cruzan con una unidad.`);
+      setColumna(col.nombre);
+      const cuantasCruzan = res.filter((r) => r.unidad && r.monto !== null).length;
+      const ilegibles = res.filter((r) => r.unidad && r.monto === null).length;
+      setNota(
+        `${res.length} filas leídas, ${cuantasCruzan} listas para aplicar.` +
+          (ilegibles ? ` ${ilegibles} sin un saldo que se entienda: no se aplican.` : "")
+      );
     } catch (e) {
       setError(mensajeDeError(e));
     }
@@ -153,9 +200,11 @@ export function ImportarSaldos({
           style={{ padding: 10, marginTop: 14 }}
         />
         <p style={{ fontSize: 12, color: "var(--tenue)", marginTop: 8 }}>
-          Del archivo se toma la primera columna como código y el último número de la fila como
-          monto. La lectura de Excel y CSV es exacta; la de PDF es interpretada, así que revise la
-          previa con más cuidado.
+          El saldo sale de la columna cuyo encabezado diga «Saldo», «Deuda» o «Monto»; si el
+          archivo no tiene encabezados, de la segunda columna. El código, de la columna «Unidad» o
+          de la primera. Una celda que no sea un monto (un teléfono, un correo) no se carga: queda
+          marcada en la previa. La lectura de PDF es interpretada, así que revise la previa con
+          más cuidado.
         </p>
         {nota && (
           <p style={{ fontSize: 12.5, color: "var(--tinta-2)", marginTop: 8 }}>{nota}</p>
@@ -174,7 +223,8 @@ export function ImportarSaldos({
           <div style={{ padding: "16px 18px 0" }}>
             <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Previa</h2>
             <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--tenue)" }}>
-              {cruzan.length} de {filas.length} filas cruzan con una unidad
+              {cruzan.length} de {filas.length} filas se van a aplicar
+              {columna && <> · el saldo sale de {columna}</>}
             </p>
           </div>
           <div className="tabla-scroll" style={{ maxHeight: 380 }}>
@@ -188,13 +238,19 @@ export function ImportarSaldos({
               </thead>
               <tbody>
                 {filas.map((f, i) => (
-                  <tr key={i} style={{ background: f.unidad ? "transparent" : "var(--ambar-bg)" }}>
+                  <tr key={i} style={{ background: f.unidad && f.monto !== null ? "transparent" : "var(--ambar-bg)" }}>
                     <td className="mono">{f.cod}</td>
                     <td className="mono">
                       {f.unidad ? f.unidad.codigo : <span style={{ color: "var(--ambar)" }}>no se encontró</span>}
                     </td>
                     <td className="mono" style={{ textAlign: "right" }}>
-                      {f.monto === null ? "—" : nf(2).format(f.monto)}
+                      {f.monto !== null ? (
+                        nf(2).format(f.monto)
+                      ) : (
+                        <span style={{ color: "var(--ambar)" }}>
+                          {f.celda ? `no es un monto: «${f.celda}»` : "vacío"}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -8,6 +8,10 @@ import { fechaCorta } from "@/lib/formato";
 import { urlDelSitio } from "@/lib/url-sitio";
 import type { InvitacionAdmin, ResidenteAcceso, VigilanteAcceso } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
+import { otraCuentaEnNavegador } from "@/lib/cuenta-navegador";
+
+/** Correos de la ficha de cada unidad (vínculos vigentes), por relación. */
+export type CorreosFicha = Record<string, { propietario?: string; inquilino?: string }>;
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
 type Pestana = "invitar" | "pendientes" | "gente" | "vigilantes";
@@ -41,6 +45,8 @@ export function Accesos({
   edificios,
   unidades,
   hayGarita,
+  usuarioId,
+  correosFicha,
 }: {
   orgId: string;
   edificioId: string;
@@ -48,6 +54,9 @@ export function Accesos({
   edificios: { id: string; nombre: string }[];
   unidades: { id: string; codigo: string }[];
   hayGarita: boolean;
+  /** La cuenta con la que se armó la página (ver `otraCuentaEnNavegador`). */
+  usuarioId: string;
+  correosFicha: CorreosFicha;
 }) {
   const [pest, setPest] = useState<Pestana>("invitar");
   const [f, setF] = useState({ unidad: "", correo: "", relacion: "propietario" });
@@ -60,6 +69,18 @@ export function Accesos({
   const [ocupado, setOcupado] = useState(false);
   const [revocando, setRevocando] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
+  // El correo que se puso solo desde la ficha (ronda 2): si la persona lo
+  // cambia a mano, elegir otra unidad ya no se lo pisa.
+  const [prellenado, setPrellenado] = useState("");
+
+  /** Unidad o relación nuevas: trae el correo de la ficha si el campo está
+   *  vacío o todavía tiene el que se trajo antes. */
+  function conCorreoDeFicha(sig: { unidad: string; correo: string; relacion: string }) {
+    if (sig.correo.trim() !== "" && sig.correo !== prellenado) return sig;
+    const deFicha = correosFicha[sig.unidad]?.[sig.relacion === "inquilino" ? "inquilino" : "propietario"] ?? "";
+    setPrellenado(deFicha);
+    return { ...sig, correo: deFicha };
+  }
 
   function notificar(texto: string, tipo: "ok" | "error" = "ok") {
     setMensaje({ texto, tipo });
@@ -115,6 +136,7 @@ export function Accesos({
   }
 
   async function invitarVigilante() {
+    if (await otraCuentaEnNavegador(usuarioId)) return;
     const correo = (fv.correo || "").trim().toLowerCase();
     const ed = fv.edificio || edificioId;
     if (!ed) return notificar("Elija el edificio de la garita.", "error");
@@ -137,6 +159,7 @@ export function Accesos({
   }
 
   async function fijarVigilante(id: string, activo: boolean) {
+    if (await otraCuentaEnNavegador(usuarioId)) return;
     const supabase = crearClienteNavegador();
     const { error } = await supabase.rpc("fijar_vigilante", { p_membresia: id, p_activo: activo });
     if (error) return fallo(error);
@@ -150,6 +173,9 @@ export function Accesos({
     // otra unidad o de otro correo) como si fuera el recién pedido.
     setCodigo(null);
     setMensaje(null);
+    // Otra cuenta abierta en este navegador: no se envía nada y queda solo
+    // el aviso de abajo (prueba 5 del tramo 1).
+    if (await otraCuentaEnNavegador(usuarioId)) return;
     if (!f.unidad) return notificar("Elija la unidad.", "error");
     if (!correoValido(f.correo)) return notificar("Ese correo no se entiende.", "error");
     const correo = f.correo.trim().toLowerCase();
@@ -173,6 +199,7 @@ export function Accesos({
     if (error) return fallo(error);
     setCodigo({ token: data, correo });
     setF({ ...f, correo: "" });
+    setPrellenado("");
     if (reemplaza) {
       notificar(`Código nuevo generado. El anterior para ${correo} en ${codigoUnidad} quedó anulado.`);
     }
@@ -181,6 +208,7 @@ export function Accesos({
 
   async function revocar(id: string) {
     setMensaje(null);
+    if (await otraCuentaEnNavegador(usuarioId)) return;
     setRevocando(id);
     const supabase = crearClienteNavegador();
     const { error } = await supabase.rpc("revocar_invitacion", { p_id: id });
@@ -191,6 +219,7 @@ export function Accesos({
   }
 
   async function cambiarNivel(unidadId: string, nivel: string) {
+    if (await otraCuentaEnNavegador(usuarioId)) return;
     const supabase = crearClienteNavegador();
     const { error } = await supabase.from("unidades").update({ inquilino_ve: nivel }).eq("id", unidadId);
     if (error) return fallo(error);
@@ -199,6 +228,7 @@ export function Accesos({
   }
 
   async function darDeBaja(id: string) {
+    if (await otraCuentaEnNavegador(usuarioId)) return;
     const supabase = crearClienteNavegador();
     const { error } = await supabase.from("membresias").update({ activo: false }).eq("id", id);
     if (error) return fallo(error);
@@ -251,7 +281,7 @@ export function Accesos({
                   onChange={(e) => {
                     // Otra unidad: el código a la vista ya no corresponde.
                     setCodigo(null);
-                    setF({ ...f, unidad: e.target.value });
+                    setF(conCorreoDeFicha({ ...f, unidad: e.target.value }));
                   }}
                 >
                   <option value="">Elija</option>
@@ -262,7 +292,10 @@ export function Accesos({
                   ))}
                 </Select>
               </Campo>
-              <Campo etiqueta="Correo">
+              <Campo
+                etiqueta="Correo"
+                ayuda={f.correo && f.correo === prellenado ? "Tomado de la ficha de la unidad." : undefined}
+              >
                 <Input
                   value={f.correo}
                   placeholder="propietario@correo.com"
@@ -275,7 +308,13 @@ export function Accesos({
                 />
               </Campo>
               <Campo etiqueta="Es el..." ayuda="El inquilino puede ver menos que el propietario. Se configura por unidad.">
-                <Select value={f.relacion} onChange={(e) => setF({ ...f, relacion: e.target.value })}>
+                <Select
+                  value={f.relacion}
+                  onChange={(e) => {
+                    setCodigo(null);
+                    setF(conCorreoDeFicha({ ...f, relacion: e.target.value }));
+                  }}
+                >
                   <option value="propietario">Propietario</option>
                   <option value="inquilino">Inquilino</option>
                 </Select>
@@ -340,7 +379,9 @@ export function Accesos({
                         `${urlDelSitio(
                           `/entrar?volver=${encodeURIComponent(`/mi/agregar?codigo=${codigo.token}`)}`
                         )}\n\n` +
-                        `Cree su cuenta con el correo ${codigo.correo} y pegue este código:\n${codigo.token}`
+                        // "Entre o cree" (ronda 2): quien ya tiene cuenta —p. ej.
+                        // por otra unidad— no tiene que crear otra.
+                        `Entre o cree su cuenta con el correo ${codigo.correo} y pegue este código:\n${codigo.token}`
                     )
                   }
                 >

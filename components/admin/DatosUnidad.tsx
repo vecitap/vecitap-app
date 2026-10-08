@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Confirmar, Input, Select } from "@/components/ui";
-import { fechaCorta, hoyLocalISO, num0 } from "@/lib/formato";
+import { fechaCorta, hoyLocalISO, num, num0 } from "@/lib/formato";
 import { correoValido, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -38,6 +38,12 @@ function aForm(v: Vinculo | null): FormPersona {
  *  - "El inquilino ya no ocupa la unidad": le pone `hasta` a su vínculo. Si
  *    era el último inquilino, la base apaga además los accesos de inquilino
  *    de esta unidad (3b de la misma migración); su usuario sigue activo.
+ *
+ * Ronda 2 (08-oct, caso 38): escribir el correo de OTRO inquilino encima del
+ * que había ya no sobrescribe a la misma persona. Pide confirmación y llama
+ * a `reemplazar_inquilino` (20261008120000), que hace lo mismo que "El
+ * inquilino ya no ocupa la unidad" —con sus accesos y sus invitaciones
+ * pendientes— y carga al nuevo, en una sola transacción.
  */
 export function DatosUnidad({
   orgId,
@@ -65,6 +71,7 @@ export function DatosUnidad({
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<string | null>(null);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [confirmarReemplazo, setConfirmarReemplazo] = useState(false);
 
   // "Tiene inquilino" para la UI: el vigente que ya está en la base, o uno
   // que se va a crear en este mismo guardado. La base vuelve a comprobarlo
@@ -76,6 +83,13 @@ export function DatosUnidad({
   // muestra uno solo), la base no la toca y la pantalla tampoco.
   const otrosInquilinos = unidad.vinculos.filter((v) => v.tipo === "inquilino" && !v.hasta && v.id !== inq?.id).length;
   const pagaVuelve = pagaDe(unidad.paga) === "inquilino" && otrosInquilinos === 0;
+
+  // Otro inquilino, no una corrección: el vigente tenía correo y se escribió
+  // uno distinto. Corregir el nombre, el teléfono o completar un correo que
+  // faltaba sigue editando a la misma persona, como antes.
+  const correoViejo = (inq?.personas?.correo || "").trim().toLowerCase();
+  const correoNuevo = i.correo.trim().toLowerCase();
+  const reemplaza = !!inq && !!correoViejo && !!correoNuevo && correoNuevo !== correoViejo && !!i.nombre.trim();
 
   async function guardarVinculo(tipo: "propietario" | "inquilino", f: FormPersona, actual: Vinculo | null) {
     if (!f.nombre.trim()) return;
@@ -123,11 +137,35 @@ export function DatosUnidad({
     if (data[0].paga !== paga) throw new Error("La base guardó otro valor en quién paga el condominio.");
   }
 
-  async function guardar() {
+  /**
+   * `modo`: sin decidir todavía (abre la confirmación si cambió el correo
+   * del inquilino), "reemplazar" (es otro inquilino) o "corregir" (es la
+   * misma persona y el correo estaba mal: se edita en el lugar, como antes).
+   */
+  async function guardar(modo?: "reemplazar" | "corregir") {
+    if (reemplaza && !modo) {
+      setConfirmarReemplazo(true);
+      return;
+    }
+    const cambiaInquilino = reemplaza && modo === "reemplazar";
+    setConfirmarReemplazo(false);
     if (faltaInquilino) {
       setError(
         `La unidad ${unidad.codigo} no tiene un inquilino registrado. Cargue primero los datos del inquilino y después indique que él paga el condominio.`
       );
+      return;
+    }
+    // Un número que no se entiende ya no se guarda como 0 sin avisar
+    // (ronda 2, caso 40). Vacío sigue siendo 0, como antes.
+    const malEscrito = (
+      [
+        ["La alícuota", u.alicuota],
+        ["El saldo inicial de condominio", u.saldo],
+        ["El saldo inicial de administración", u.saldoHon],
+      ] as const
+    ).find(([, v]) => v.trim() !== "" && num(v) === null);
+    if (malEscrito) {
+      setError(`${malEscrito[0]} «${malEscrito[1]}» no se entiende. Use coma para los decimales, por ejemplo 1,25.`);
       return;
     }
     setOcupado(true);
@@ -141,8 +179,29 @@ export function DatosUnidad({
         .eq("id", unidad.id);
       if (error) throw error;
       await guardarVinculo("propietario", p, prop);
-      await guardarVinculo("inquilino", i, inq);
+      let aviso: string | null = null;
+      if (cambiaInquilino) {
+        const { data: apagados, error: e3 } = await supabase.rpc("reemplazar_inquilino", {
+          p_unidad: unidad.id,
+          p_prefijo: i.prefijo,
+          p_nombre: i.nombre,
+          p_documento: i.documento,
+          p_telefono: i.telefono,
+          p_correo: i.correo,
+          p_enviar: i.enviar,
+        });
+        if (e3) throw e3;
+        aviso = [
+          `${nombreDe(inq) || "El inquilino anterior"} ya no figura como inquilino de ${unidad.codigo}; ahora lo es ${[i.prefijo, i.nombre.trim()].filter(Boolean).join(" ")}.`,
+          (apagados ?? 0) > 0 ? "Al anterior también se le quitó el acceso a la app." : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+      } else {
+        await guardarVinculo("inquilino", i, inq);
+      }
       await guardarPaga();
+      if (aviso) setListo(aviso);
       router.refresh();
     } catch (e) {
       setError(mensajeDeError(e));
@@ -323,10 +382,29 @@ export function DatosUnidad({
       )}
 
       <div>
-        <Button type="button" disabled={ocupado} onClick={guardar}>
+        <Button type="button" disabled={ocupado} onClick={() => guardar()}>
           Guardar cambios
         </Button>
       </div>
+
+      {confirmarReemplazo && inq && (
+        <Confirmar
+          titulo="¿Cambia el inquilino?"
+          texto={[
+            `El correo ${i.correo.trim()} no es el de ${nombreDe(inq) || "el inquilino actual"} (${inq.personas?.correo}).`,
+            `Si sigue, ${nombreDe(inq) || "el inquilino actual"} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${fechaCorta(hoyLocalISO())}, igual que con «El inquilino ya no ocupa la unidad»: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes dejan de servir.`,
+            `Y se registra como inquilino nuevo a ${[i.prefijo, i.nombre.trim()].filter(Boolean).join(" ")}, con ese correo.`,
+            pagaDe(unidad.paga) === "inquilino" ? "La unidad sigue en «paga el inquilino»." : "",
+            "Si es la misma persona y solo estaba mal el correo, use «Es el mismo, corregir el correo»: no se le quita el acceso.",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          boton="Sí, cambiar el inquilino"
+          onSi={() => guardar("reemplazar")}
+          onNo={() => setConfirmarReemplazo(false)}
+          otra={{ boton: "Es el mismo, corregir el correo", onClick: () => guardar("corregir") }}
+        />
+      )}
 
       {confirmarSalida && inq && (
         <Confirmar

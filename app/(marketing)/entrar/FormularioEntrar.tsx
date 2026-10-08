@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Campo, CampoClave, Card, Input } from "@/components/ui";
 import { crearClienteNavegador } from "@/lib/supabase/client";
-import { urlDelSitio } from "@/lib/url-sitio";
+import { rutaInterna, urlDelSitio } from "@/lib/url-sitio";
 
 type Modo = "entrar" | "crear" | "olvide" | "clave-nueva";
 
@@ -44,7 +44,11 @@ export function FormularioEntrar() {
   // Sin `volver`, /destino resuelve el rol del lado del servidor. Antes
   // caía en `/` (la página en construcción), que no lleva a ningún lado
   // para ninguno de los tres roles.
-  const volver = searchParams.get("volver") || "/destino";
+  //
+  // 08-oct (prueba 7 del tramo 1): pasa por rutaInterna(), el mismo saneado
+  // que usa page.tsx del lado del servidor. Antes se usaba crudo: un
+  // `?volver=/` (o una URL ajena) llevaba ahí después de entrar.
+  const volver = rutaInterna(searchParams.get("volver"));
   // Puestos por /auth/confirmar después de canjear el enlace del correo.
   const vieneDeRecuperacion = searchParams.get("clave") === "nueva";
   const enlaceRoto = searchParams.get("error") === "enlace";
@@ -98,6 +102,22 @@ export function FormularioEntrar() {
     setModo(siguiente);
   }
 
+  /**
+   * Después de entrar (o de poner la clave nueva), una navegación completa
+   * y no `router.push()` + `router.refresh()` (08-oct, prueba 7). Esas dos
+   * corrían en paralelo: el push iba a `volver` y el refresh volvía a pedir
+   * /entrar, que con la sesión ya abierta redirige por su cuenta. En los
+   * logs de pruebas del 07-oct, después de un ingreso de la cuenta Admin de
+   * Gustavo (10:14) no se pidió /destino ni ninguna página de la app durante
+   * 22 segundos — lo que encaja con haber quedado en la portada de venta. La
+   * causa exacta no se pudo confirmar (no hay logs de Vercel de ese día).
+   * Con una sola navegación del navegador, el servidor recibe las cookies
+   * recién escritas y resuelve el destino una vez.
+   */
+  function irA(destino: string) {
+    window.location.assign(destino);
+  }
+
   async function enviar(evento: FormEvent) {
     evento.preventDefault();
     setError(null);
@@ -139,8 +159,7 @@ export function FormularioEntrar() {
       } catch {
         /* sin historial disponible */
       }
-      router.push(volver);
-      router.refresh();
+      irA(volver);
       return;
     }
 
@@ -179,8 +198,7 @@ export function FormularioEntrar() {
       return;
     }
 
-    router.push(volver);
-    router.refresh();
+    irA(volver);
   }
 
   const titulo =

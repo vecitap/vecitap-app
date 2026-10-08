@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronRight, FileSpreadsheet, Plus, Search, Upload } from "lucide-react";
 import { Badge, Button, Input } from "@/components/ui";
 import { nf, pct, usd } from "@/lib/formato";
@@ -25,9 +26,14 @@ const FILTROS: [string, string][] = [
  * había unificado contra la columna `estado` de `saldos_actuales`
  * (docs/casos-de-uso-mejorados.md, caso 11); el criterio del 28-sep es
  * paridad con `main`, así que vuelve el literal.
+ *
+ * Ronda 2 (08-oct, caso 36): a favor se lee "A favor $ X" en `--a-favor`
+ * (verde sobrio), en vez de "$ -X" en `--azul`, que en el tema claro es la
+ * tinta y parecía un número cualquiera.
  */
 const COLOR_TOTAL = (total: number) =>
-  total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--azul)" : "var(--verde)";
+  total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--a-favor)" : "var(--verde)";
+const TEXTO_TOTAL = (total: number) => (total < -0.01 ? `A favor ${usd(Math.abs(total))}` : usd(total));
 
 /**
  * Portado de Propietarios() en app.html:1449-1566. La ficha (antes un
@@ -52,6 +58,7 @@ export function Propietarios({
   const [filtro, setFiltro] = useState("todos");
   const [alta, setAlta] = useState(false);
   const [pantalla, setPantalla] = useState<"lista" | "importar" | "saldos">("lista");
+  const router = useRouter();
 
   const mapaSaldo = useMemo(() => {
     const m: Record<string, SaldoActual> = {};
@@ -144,10 +151,21 @@ export function Propietarios({
                 const total = Number(s?.total) || 0;
                 const p = vigente(u.vinculos, "propietario");
                 const i = vigente(u.vinculos, "inquilino");
+                const href = `${base}/${u.id}`;
                 return (
-                  <tr key={u.id}>
+                  <tr
+                    key={u.id}
+                    // Toda la fila abre la ficha (ronda 2, pedido de Gustavo).
+                    // Los dos <Link> se quedan: son los que alcanza el teclado
+                    // y los que permiten abrir en otra pestaña.
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest("a")) return;
+                      router.push(href);
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
                     <td className="mono cabeza" style={{ fontWeight: 600 }}>
-                      <Link href={`${base}/${u.id}`} style={{ color: "inherit", textDecoration: "none" }}>
+                      <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
                         {u.codigo}
                         {!u.activa && <span style={{ color: "var(--tenue)" }}> · inactiva</span>}
                       </Link>
@@ -172,10 +190,10 @@ export function Propietarios({
                       )}
                     </td>
                     <td className="mono" data-t="Saldo" style={{ textAlign: "right", fontWeight: 600, color: COLOR_TOTAL(total) }}>
-                      {usd(total)}
+                      {TEXTO_TOTAL(total)}
                     </td>
                     <td className="flecha" style={{ width: 28 }}>
-                      <Link href={`${base}/${u.id}`}>
+                      <Link href={href} aria-label={`Abrir la ficha de ${u.codigo}`}>
                         <ChevronRight size={15} style={{ color: "var(--tenue)" }} />
                       </Link>
                     </td>

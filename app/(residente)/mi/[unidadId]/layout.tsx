@@ -8,6 +8,7 @@ import { PestanasResidente } from "@/components/residente/PestanasResidente";
 import { ResumenUnidades } from "@/components/residente/ResumenUnidades";
 import { misUnidadesSesion } from "@/lib/residente/datos";
 import { resumenUnidades } from "@/lib/residente/resumen";
+import { estadoSinMonto, misCuotasSesion, soloEstado } from "@/lib/residente/cuotas";
 import { usuarioActual } from "@/lib/supabase/cache";
 import { AvisoCambioDeCuenta } from "@/components/AvisoCambioDeCuenta";
 import { esUuid } from "@/lib/validacion";
@@ -38,7 +39,13 @@ export default async function LayoutUnidad({
   // en la lista, o es un typo o alguien probó la unidad de otra persona.
   if (!unidad) notFound();
 
-  const resumen = resumenUnidades(unidades);
+  // mis_cuotas() solo hace falta si alguna unidad la paga el inquilino y
+  // quien mira es el propietario (ronda 2, casos 35 y 37): las demás
+  // muestran montos y no la usan.
+  const cuotas = unidades.some(soloEstado) ? await misCuotasSesion() : new Map();
+  const resumen = resumenUnidades(unidades, cuotas);
+  const sinMonto = soloEstado(unidad);
+  const saldoUnidad = unidad.saldo === null ? null : Number(unidad.saldo);
 
   return (
     <>
@@ -65,9 +72,9 @@ export default async function LayoutUnidad({
           </Link>
         </div>
 
-        <TarjetaSaldo unidad={unidad} />
+        <TarjetaSaldo unidad={unidad} estado={sinMonto ? estadoSinMonto(saldoUnidad, cuotas.get(unidad.unidad_id)) : undefined} />
 
-        <PestanasResidente unidadId={unidadId} edificioId={unidad.edificio_id} />
+        <PestanasResidente unidadId={unidadId} edificioId={unidad.edificio_id} reportar={!sinMonto} />
 
         {children}
       </div>

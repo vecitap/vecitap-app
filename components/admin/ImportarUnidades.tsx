@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Card } from "@/components/ui";
 import { nf, num, pct } from "@/lib/formato";
-import { correoValido, normaliza } from "@/lib/admin/personas";
+import { correoValido, normaliza, separarTratamiento } from "@/lib/admin/personas";
 import { leerPagaPegado, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Unidad } from "@/lib/admin/tipos";
@@ -106,7 +106,17 @@ export function ImportarUnidades({
     if (!filas.length) return null;
     const { data: pers, error: e1 } = await supabase
       .from("personas")
-      .insert(filas.map((f) => ({ org_id: orgId, nombre: f.persona.nombre, telefono: f.persona.telefono || null, correo: f.persona.correo || null })))
+      .insert(
+        filas.map((f) => {
+          // "Sr. Pérez" de la planilla → prefijo "Sr." + nombre "Pérez"
+          // (ronda 2, caso 39). Sin tratamiento no se manda `prefijo`, y
+          // `defaultToNull: false` deja que la base ponga el suyo por
+          // omisión, como antes.
+          const { prefijo, nombre } = separarTratamiento(f.persona.nombre);
+          return { org_id: orgId, nombre, ...(prefijo ? { prefijo } : {}), telefono: f.persona.telefono || null, correo: f.persona.correo || null };
+        }),
+        { defaultToNull: false }
+      )
       .select("id");
     if (e1 || !pers || pers.length !== filas.length) return e1?.message ?? `No se pudieron registrar los ${tipo}s.`;
     const { error: e2 } = await supabase

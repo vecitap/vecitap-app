@@ -906,8 +906,10 @@ separado, nunca el total, y no hay dónde decir que una oficina la paga el inqui
     la app.
   - **El total suma solo lo que se debe.** Cada unidad es una cuenta aparte: un saldo
     a favor no se resta de las otras. Va en una **línea aparte**, "Saldo a favor en
-    05A: $ X", para que no parezca perdido.
+    05A: $ X", para que no parezca perdido. **08-oct:** la unidad sale una sola vez,
+    "05A · A favor $ X" (caso 36).
   - "Debe N cuotas" no hace falta para el piloto: se muestra al día / debe.
+    **08-oct:** ya se muestra, ver caso 37.
   - El inquilino que alquila varias ve el mismo resumen (regla 3).
 - Al **importar unidades** se pueden agregar, al final de cada línea, quién paga y los
   datos del inquilino. Si dice "inquilino" pero falta su nombre, la fila se marca con
@@ -958,3 +960,185 @@ ese día, sin borrar su historia, y le quita el acceso a esa unidad en la app.
   cerrados quedan cerrados y los accesos ya apagados quedan apagados: no hay "deshacer".
   Si una salida se marcó por error, se vuelve a cargar al inquilino en la ficha y se le
   manda un código nuevo.
+
+## Ronda 2 del tramo 2 (08-oct)
+
+> Correcciones y mejoras que salieron de las pruebas de Gustavo del 06 y 07-oct en el
+> Preview de `dev`. **Estado de todas: construidas, sin validar en el navegador.** Las
+> dos migraciones nuevas (`20261008120000_reemplazar_inquilino.sql` y
+> `20261008130000_mis_cuotas.sql`) están **aplicadas en vecitap-pruebas** el 08-oct;
+> falta producción.
+
+### 33. "Cargar saldos" toma el saldo de su columna, nunca "el último número"
+
+**Caso de uso:** la administradora sube la planilla de saldos de su edificio.
+
+- **`main`:** de cada fila tomaba el último número que encontrara
+  (admin.html:2009-2016). En una planilla con teléfono o correo después del saldo, el
+  teléfono se cargaba como deuda ("0414-…" → 414). Pasó con el archivo de Gustavo del
+  04-oct.
+- **Ahora:**
+  - el saldo sale de la columna cuyo encabezado diga «Saldo», «Deuda» o «Monto»; sin
+    encabezados, de la segunda columna; el código, de la columna «Unidad» o de la
+    primera;
+  - una celda que no es un monto (un teléfono, un correo) o que está vacía **no se
+    carga**: queda marcada en la previa con lo que decía;
+  - la previa dice de qué columna salió el saldo.
+- El PDF sigue igual que en `main` (no tiene columnas).
+- **Cómo se revierte:** `components/admin/ImportarSaldos.tsx` y `montoEstricto` en
+  `lib/admin/archivos-tabla.ts`. Sin cambios en la base.
+
+### 34. Quien ya tiene sesión nunca cae en la portada de venta
+
+**Caso de uso:** Gustavo, con su cuenta Admin, entró y terminó en la página de venta
+(prueba 7 del tramo 1).
+
+- **`main`:** cada módulo era un archivo; no había una portada de venta en la misma
+  dirección.
+- **Ahora:**
+  - después de entrar (o de poner una clave nueva) el navegador hace **una sola**
+    navegación completa al destino, en lugar de dos pedidos en paralelo;
+  - el destino se sanea igual que del lado del servidor: `/` o una dirección ajena no
+    son un destino válido; se va a `/destino`, que decide por el rol (Operador, Admin,
+    Garita o Mi unidad);
+  - si alguien con sesión entra a una sección donde no tiene permiso (otra
+    administradora, Operador sin serlo, una garita que no es suya), va a `/destino` y
+    no a la portada.
+- **Causa de la prueba 7:** no se pudo confirmar. Su rol estaba bien (dueña de la
+  administradora, en los dos chequeos de rol). Los registros de la base muestran que
+  después de un ingreso con clave (10:14) no se pidió ninguna página de la app durante
+  22 segundos, lo que encaja con haber quedado en la portada. No hay registros de
+  Vercel de ese día. El cambio cierra los caminos posibles.
+- **Cómo se revierte:** `FormularioEntrar.tsx`, `rutaInterna()` en `lib/url-sitio.ts`,
+  y `"/destino"` → `"/"` en `proxy.ts`, `admin/[orgId]/layout.tsx` y `operador/page.tsx`.
+  Toca autenticación: pasa por revisión cruzada.
+
+### 35. El propietario de una unidad que paga el inquilino ve solo el estado
+
+**Caso de uso:** 08D la paga su inquilino. El resumen ya decía "Lo paga su inquilino",
+pero la tarjeta de la unidad decía "Propietario · Debe $ 83,75" y ofrecía "Reportar un
+pago".
+
+- **`main`:** no existe "quién paga" (ver caso 31).
+- **Ahora**, en esas unidades y solo para el propietario:
+  - la tarjeta dice **"Lo paga su inquilino"** y el estado ("Al día", "Debe 2
+    cuotas"), **sin monto**;
+  - **no aparece "Reportar un pago"**, y si se entra por el enlace directo, lleva a
+    "Mi recibo".
+- **El bloqueo es solo de pantalla, a propósito** (decisión de Nicolás del 08-oct): la
+  base sigue aceptando un pago del propietario en esa unidad, porque un propietario
+  puede querer pagar por su inquilino. Si hiciera falta, la administradora lo carga
+  desde Admin.
+- "Mi recibo" y "Mis pagos" siguen mostrando el recibo completo de la unidad, como
+  antes. **Para revisar con Gustavo:** si el propietario tampoco debería ver los montos
+  del recibo en esas unidades.
+- **Cómo se revierte:** `TarjetaSaldo.tsx`, `PestanasResidente.tsx`,
+  `mi/[unidadId]/layout.tsx` y `reportar/page.tsx`.
+
+### 36. Saldo a favor: "A favor $ X" en un verde sobrio
+
+- **`main`:** en Admin, el saldo a favor se veía como "$ -50,00" en azul (que en el
+  tema claro es casi negro); en Mi unidad, como "A su favor" en el verde de "al día"
+  (menta en el tema oscuro).
+- **Ahora:** en Propietarios, la ficha de la unidad, el resumen y la tarjeta de Mi
+  unidad dice **"A favor $ 50,00"**, en un verde sobrio propio (`--a-favor` en
+  `app/globals.css`). En el tema claro es el mismo verde de siempre; en el oscuro deja
+  de ser menta.
+- En el resumen de quien tiene varias unidades, la unidad con saldo a favor sale **una
+  sola vez** ("02D · A favor $ 50,00"). Antes salía dos veces: "A su favor" sin monto
+  y otra línea "Saldo a favor en 02D". Esto ajusta el caso 31. Sigue sin restarse del
+  total.
+- "- 0,00" se muestra "0,00" en toda la app (un residuo de redondeo conservaba el
+  signo).
+
+### 37. "Al día" o "Debe N cuotas" en las unidades que paga el inquilino
+
+**Caso de uso:** "Lo paga su inquilino · Debe" era vago. Lo acordado era "al día" o
+"debe N cuotas" (el caso 31 lo había dejado para después).
+
+- **Ahora** la base cuenta las cuotas (`mis_cuotas()`): recorre los recibos de los
+  meses cerrados, del más reciente al más viejo, hasta cubrir el saldo. Los pagos
+  cubren primero lo más viejo, así que lo que se debe son los últimos meses.
+- **Casos borde:**
+  - saldo cero o a favor → **"Al día"** (el monto a favor no se muestra en esta parte);
+  - saldo parcial, por ejemplo 1,3 cuotas → **"Debe 2 cuotas"**: son dos meses con
+    algo pendiente, que es lo que el propietario verá en los recibos;
+  - más deuda que todos los recibos (deuda de antes de Vecitap, cargada como saldo
+    inicial) → **"Debe más de N cuotas"**;
+  - sin ningún mes cerrado y con deuda → **"Con deuda"** (no hay cuota con qué
+    medirla). **Es lo que se ve hoy en la organización de prueba**: no tiene meses
+    cerrados.
+- **Cómo se revierte:** `supabase/rollbacks/20261008130000_mis_cuotas_rollback.sql`.
+  La pantalla aguanta sin la función: vuelve a "Con deuda" / "Al día".
+
+### 38. Cambiar el correo del inquilino en la ficha pide confirmación
+
+**Caso de uso:** en la ficha de la unidad, la administradora escribe el correo de
+**otro** inquilino encima del que había.
+
+- **`main`:** se sobrescribían los datos de la misma persona: el inquilino anterior
+  "se convertía" en el nuevo, sin preguntar, y si tenía cuenta seguía entrando a la
+  unidad.
+- **Ahora**, al guardar con un correo distinto, se pregunta:
+  - **"Sí, cambiar el inquilino"**: hace lo mismo que "El inquilino ya no ocupa la
+    unidad" (caso 32): fecha de salida hoy, se le quita el acceso a la app y sus
+    invitaciones pendientes dejan de servir. Después registra al nuevo. Si la unidad
+    estaba en "paga el inquilino", sigue así. Todo pasa junto o no pasa nada.
+  - **"Es el mismo, corregir el correo"**: el correo estaba mal escrito. Se corrige y
+    no se le quita nada.
+  - **"No"**: no guarda.
+- Corregir el nombre o el teléfono, o completar un correo que faltaba, sigue
+  editando a la misma persona, sin preguntar.
+- **Cómo se revierte:** `DatosUnidad.tsx` y
+  `supabase/rollbacks/20261008120000_reemplazar_inquilino_rollback.sql`.
+
+### 39. El "Sr." no se repite
+
+- **`main`:** la base pone "Sr." por omisión a toda persona nueva, y el importador
+  guardaba el nombre tal como venía en la planilla ("Sr. Pérez"): se leía "Sr. Sr.
+  Pérez".
+- **Ahora:**
+  - al importar, un tratamiento al principio del nombre ("Sr.", "Sra.", "Dr."…) pasa
+    al campo de tratamiento y el nombre queda sin él;
+  - en pantalla, si el nombre ya trae su tratamiento, no se le suma otro. Eso arregla
+    también lo que ya está cargado, sin tocar los datos.
+
+### 40. Los números de la ficha aceptan coma decimal, y avisan si no se entienden
+
+- **`main`:** la coma decimal ya funcionaba ("1,5"). Pero "0.123" (una alícuota
+  escrita con punto) se leía 123, y "1,234.56" se guardaba como 0 sin avisar.
+- **Ahora:** con coma y punto, el último es el decimal; un punto solo es decimal salvo
+  que parezca separador de miles ("1.500"); y en la ficha de la unidad un número que
+  no se entiende **no se guarda**: la ficha dice cuál y cómo escribirlo. La lectura
+  nueva vale para todos los montos de la app, que usan la misma función (`num()` en
+  `lib/formato.ts`).
+
+### 41. "Datos de la administradora" en Ajustes
+
+- **`main`:** el nombre y el RIF de la administradora se escribían una vez, al
+  crearla, y no había dónde corregirlos. Los ejemplos del formulario de alta parecían
+  datos reales.
+- **Ahora:** Ajustes tiene una tarjeta **"Datos de la administradora"** (nombre y RIF)
+  al lado del logo. Solo la cuenta dueña de la administradora puede cambiarlos (así lo
+  pide la base); para los demás roles se ve en modo lectura. Los ejemplos del alta son
+  ficticios ("Administradora Ejemplo, C.A.", "J-00000000-0", "Residencias Ejemplo").
+
+### 42. Accesos: menos pasos y menos avisos confusos
+
+- **Otra cuenta abierta en el navegador** (prueba 5): Accesos ya no envía nada y queda
+  solo el aviso de abajo. Antes la acción salía igual con la otra cuenta, y arriba se
+  sumaba "Sin permiso para invitar".
+- **El mensaje de invitación** dice "Entre o cree su cuenta con el correo…": quien ya
+  tiene cuenta (por ejemplo, por otra unidad) no tiene que crear otra.
+- **El correo se toma de la ficha de la unidad:** al elegir la unidad (y si es
+  propietario o inquilino), el campo se llena con el correo cargado en la ficha. Si se
+  escribe otro a mano, no se pisa.
+
+### 43. Detalles menores
+
+- **Propietarios:** toda la fila abre la ficha de la unidad, no solo el código y la
+  flecha.
+- **Edificio nuevo** (bloque D): al crear el primer edificio, el lateral y el selector
+  se actualizan en el acto. Antes parecía que no se había guardado hasta recargar.
+- **Ícono del sitio** (bloque F): la pestaña del navegador y el acceso directo del
+  teléfono muestran el ícono de Vecitap, el mismo de la portada, en lugar del de Next.js.

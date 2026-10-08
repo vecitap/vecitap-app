@@ -18,8 +18,20 @@ const PESTANAS = [
  * `garita` activo (index.html:634-641, `verVisitas`) — mismo patrón que
  * `hayModulo` en MarcoAdmin.tsx: si la consulta falla no se muestra la
  * pestaña, es preferible faltante a una pantalla mutilada.
+ *
+ * `reportar = false` (ronda 2, caso 35): la unidad la paga el inquilino y
+ * quien mira es el propietario — sin "Reportar un pago". La ruta también lo
+ * bloquea (reportar/page.tsx); la base no, a propósito.
  */
-export function PestanasResidente({ unidadId, edificioId }: { unidadId: string; edificioId: string }) {
+export function PestanasResidente({
+  unidadId,
+  edificioId,
+  reportar = true,
+}: {
+  unidadId: string;
+  edificioId: string;
+  reportar?: boolean;
+}) {
   const pathname = usePathname();
   const activa = pathname.split("/").filter(Boolean)[2];
 
@@ -37,7 +49,8 @@ export function PestanasResidente({ unidadId, edificioId }: { unidadId: string; 
     };
   }, [edificioId]);
 
-  const pestanas = verVisitas ? [...PESTANAS, { seg: "visitas", etiqueta: "Mis visitas" } as const] : PESTANAS;
+  const base = reportar ? PESTANAS : PESTANAS.filter((t) => t.seg !== "reportar");
+  const pestanas = verVisitas ? [...base, { seg: "visitas", etiqueta: "Mis visitas" } as const] : base;
 
   return (
     <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>

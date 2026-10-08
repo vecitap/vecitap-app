@@ -8,6 +8,7 @@ import { num, num0, usd } from "@/lib/formato";
 import { interpretarPegado } from "@/lib/admin/pegar-partidas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { LogoOrg } from "./LogoOrg";
+import { DatosAdministradora } from "./DatosAdministradora";
 import { NuevoEdificio } from "./NuevoEdificio";
 import type { CategoriaConPartidas, EdificioAdmin, PartidaFija } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
@@ -31,11 +32,13 @@ export function Ajustes({
   organizacion,
   edificio,
   categorias,
+  puedeEditarOrg,
 }: {
   orgId: string;
-  organizacion: { nombre: string; logo_url: string | null };
+  organizacion: { nombre: string; rif: string | null; logo_url: string | null };
   edificio: EdificioAdmin;
   categorias: CategoriaConPartidas[];
+  puedeEditarOrg: boolean;
 }) {
   const router = useRouter();
   const [e, setE] = useState({
@@ -203,6 +206,16 @@ export function Ajustes({
   return (
     <div style={{ display: "grid", gap: 20, maxWidth: 860 }}>
       {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "verde"}>{mensaje.texto}</Aviso>}
+
+      <DatosAdministradora
+        // key: después de guardar, router.refresh() trae el valor nuevo y la
+        // tarjeta se remonta con él (mismo patrón que las filas editables).
+        key={`${organizacion.nombre}|${organizacion.rif ?? ""}`}
+        orgId={orgId}
+        nombre={organizacion.nombre}
+        rif={organizacion.rif}
+        puedeEditar={puedeEditarOrg}
+      />
 
       <LogoOrg orgId={orgId} nombre={organizacion.nombre} logoUrl={organizacion.logo_url} />
 

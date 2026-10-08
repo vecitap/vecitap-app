@@ -60,7 +60,7 @@ export function CrearOrganizacion() {
           <Input
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
-            placeholder="Administradora Unión, c.a."
+            placeholder="Administradora Ejemplo, C.A."
           />
         </Campo>
         <Campo etiqueta="RIF (opcional)">
@@ -68,7 +68,7 @@ export function CrearOrganizacion() {
             className="mono"
             value={rif}
             onChange={(e) => setRif(e.target.value)}
-            placeholder="J-40048248-8"
+            placeholder="J-00000000-0"
           />
         </Campo>
       </div>

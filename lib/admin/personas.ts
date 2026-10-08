@@ -9,9 +9,34 @@ export function vigente(vinculos: Vinculo[] | undefined, tipo: "propietario" | "
   return (vinculos ?? []).find((v) => v.tipo === tipo && !v.hasta) ?? null;
 }
 
+/**
+ * Un tratamiento al principio de un nombre ("Sr. Pérez", "Sra Rosa",
+ * "Dra. Gil"). La planilla de Gustavo trae el nombre así, y la base le pone
+ * `prefijo = 'Sr.'` por omisión a toda persona nueva: sin esto se leía
+ * "Sr. Sr. Pérez" (ronda 2, caso 39).
+ */
+export const TRATAMIENTO_INICIAL = /^(sr|sra|srta|sres|sras|dr|dra|ing|lic|abg)(?:\.\s*|\s+)(?=\S)/i;
+
 export function nombreDe(v: Vinculo | null): string {
   if (!v?.personas) return "";
-  return [v.personas.prefijo, v.personas.nombre].filter(Boolean).join(" ");
+  const nombre = v.personas.nombre ?? "";
+  // Si el nombre ya trae su tratamiento, manda ese: no se le suma el prefijo.
+  if (TRATAMIENTO_INICIAL.test(nombre)) return nombre;
+  return [v.personas.prefijo, nombre].filter(Boolean).join(" ");
+}
+
+/**
+ * Separa el tratamiento de un nombre pegado de la planilla: "Sr. Pérez" →
+ * { prefijo: "Sr.", nombre: "Pérez" }. Sin tratamiento, `prefijo` es
+ * `undefined` y la base pone el suyo por omisión, como siempre.
+ */
+export function separarTratamiento(texto: string): { prefijo?: string; nombre: string } {
+  const t = texto.trim();
+  const m = t.match(TRATAMIENTO_INICIAL);
+  if (!m) return { nombre: t };
+  const base = m[1].toLowerCase();
+  const prefijo = base.charAt(0).toUpperCase() + base.slice(1) + ".";
+  return { prefijo, nombre: t.slice(m[0].length).trim() };
 }
 
 /** Portado de `normaliza` en app.html:409-410 — para cruzar códigos de unidad sin importar tildes/puntuación. */

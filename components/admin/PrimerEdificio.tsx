@@ -36,7 +36,11 @@ export function PrimerEdificio({ orgId }: { orgId: string }) {
       .single();
     setOcupado(false);
     if (e) return setError(mensajeDeError(e));
+    // Bloque D (08-oct): sin refresh(), el layout de la organización (lateral
+    // y selector de edificios) seguía sin el edificio nuevo, y parecía que
+    // "no se había guardado". NuevoEdificio.tsx ya lo hacía.
     router.push(`/admin/${orgId}/${data.id}/inicio`);
+    router.refresh();
   }
 
   return (
@@ -49,7 +53,7 @@ export function PrimerEdificio({ orgId }: { orgId: string }) {
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
         <div style={{ gridColumn: "1 / -1" }}>
           <Campo etiqueta="Nombre">
-            <Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Edificio Administradora Unión" />
+            <Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Residencias Ejemplo" />
           </Campo>
         </div>
         <Campo etiqueta="Prefijo del recibo" ayuda="Único dentro de la administradora. Sale en cada número de recibo.">

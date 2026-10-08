@@ -68,6 +68,13 @@ function redirigirConCookies(
  *    edificio). /mi/* se queda sin gate de rol acá: no es un rol, es tener
  *    al menos una unidad asociada, y eso lo resuelve cada Server Component
  *    con mis_unidades().
+ *    Quien tiene sesión pero no el rol va a /destino, no a `/` (08-oct,
+ *    prueba 7 del tramo 1): `/` es la portada de venta, y alguien con sesión
+ *    no tiene nada que hacer ahí. /destino lo manda a lo que sí puede ver.
+ *    No hay bucle: /destino decide con es_operador / administra_algo /
+ *    edificios_del_vigilante, y la página a la que manda (/operador,
+ *    /admin, /garita, /mi a secas) no pasa por ninguna de estas tres ramas
+ *    —/admin a secas lista solo las organizaciones donde tiene_rol() da sí.
  *
  * Sin distinción por sección todavía (Session 1 del inventario de Admin):
  * cualquiera de los 4 roles entra a /admin/[orgId]/* completo, igual que
@@ -169,7 +176,7 @@ export async function proxy(request: NextRequest) {
 
     if (!esOperador) {
       const url = request.nextUrl.clone();
-      url.pathname = "/";
+      url.pathname = "/destino";
       url.search = "";
       return redirigirConCookies(url, response);
     }
@@ -195,7 +202,7 @@ export async function proxy(request: NextRequest) {
 
     if (!tieneAcceso) {
       const url = request.nextUrl.clone();
-      url.pathname = "/";
+      url.pathname = "/destino";
       url.search = "";
       return redirigirConCookies(url, response);
     }
@@ -222,7 +229,7 @@ export async function proxy(request: NextRequest) {
 
     if (!tieneAcceso) {
       const url = request.nextUrl.clone();
-      url.pathname = "/";
+      url.pathname = "/destino";
       url.search = "";
       return redirigirConCookies(url, response);
     }

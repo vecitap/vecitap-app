@@ -16,6 +16,97 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 2 del tramo 2 (08-oct) — construida, sin validar
+
+Todo en `dev`, **sin commit** al cierre del 08-oct. `npx tsc --noEmit`,
+`npm run lint` y `npm run build` en verde. Desvíos frente a `main`: casos 33
+a 43 de `docs/casos-de-uso-mejorados.md` (y dos notas en el 31).
+
+**Toca autenticación (punto 2): pasa por revisión cruzada antes de
+`integration`.** Archivos: `app/(marketing)/entrar/FormularioEntrar.tsx`,
+`lib/url-sitio.ts` (`rutaInterna`), `proxy.ts`,
+`app/(admin)/admin/[orgId]/layout.tsx`, `app/(interno)/operador/page.tsx`.
+
+### Migraciones nuevas — aplicadas en vecitap-pruebas el 08-oct
+
+| Migración | Qué hace | Verificación en pruebas |
+|---|---|---|
+| `20261008120000_reemplazar_inquilino.sql` | RPC `SECURITY INVOKER`: cierra al inquilino vigente (con los disparadores de 20260930120000), anula sus invitaciones pendientes, carga al nuevo y conserva `paga` | `prosecdef=false`, `search_path=public`, EXECUTE solo `authenticated`. Sin sesión: "Sin permiso…". Como la administradora de Gustavo, en transacción deshecha: 04D → 1 acceso apagado, invitación de prueba anulada, viejo con `hasta` = hoy, nuevo vigente; 08D → `paga` sigue en inquilino |
+| `20261008130000_mis_cuotas.sql` | RPC `SECURITY DEFINER`, mismo alcance que `mis_unidades()`: cuotas pendientes por unidad | `prosecdef=true`, `search_path=public`, EXECUTE solo `authenticated`. Sin sesión: 0 filas. Como +propietario: hoy todas sus unidades dan 0 cuotas (la org de prueba no tiene meses cerrados → "Con deuda" / "Al día"). Con dos meses cerrados de 30 simulados en transacción deshecha: 08D (143,75) → 2 cuotas, `mas_de`; 02D (a favor) → 0 |
+
+Las dos con su rollback en `supabase/rollbacks/`. **Producción no se tocó.**
+Cuando esta ronda vaya a `integration`, producción necesita, en orden: las 4
+del tramo 1 (20260930120000, 20260930130000, 20260930140000,
+20261005120000) y después estas 2.
+
+**Sobre la promoción del tramo 1:** sale de `2312db0`, no de la punta de
+`dev`. Si esta ronda se commitea en `dev` antes de promover, el merge a
+`integration` tiene que ser de ese commit (o de una rama creada en él), no de
+`dev`.
+
+### Prueba 7: qué se encontró
+
+- La cuenta Admin de Gustavo (`+admin`) es `propietario_cuenta` activa de
+  "Administradora Prueba Gustavo". Ese rol está en `administra_algo()` y en
+  `ROLES_ADMIN`: la sospecha de un desajuste de roles **no se confirmó**.
+- Sí hay una diferencia entre las dos, que no causó esto: `administra_algo()`
+  no filtra `membresias.activo` y `tiene_rol()` sí. Con una membresía de
+  administración inactiva, `/destino` manda a `/admin` y ahí no aparece
+  ninguna organización (se ve "Nueva administradora"). Queda anotado; no se
+  tocó (es una función de seguridad).
+- Logs de Auth de pruebas del 07-oct: el `/entrar` con sesión abierta de las
+  10:16 llegó bien a Admin (`/destino` → `/admin`). Después del ingreso con
+  clave de las **10:14** el servidor confirmó la sesión una vez y no se pidió
+  ninguna página de la app durante 22 segundos: encaja con haber quedado en
+  la portada. Después de entrar, el formulario hacía `router.push(volver)` y
+  `router.refresh()` en paralelo, y `volver` llegaba sin sanear del lado del
+  cliente. No hay logs de Vercel de ese día para confirmarlo.
+- Corrección (caso 34): una sola navegación completa después de entrar,
+  `volver` saneado con `rutaInterna()` (que además rechaza `/`), y los
+  rechazos por rol del proxy y de los layouts van a `/destino` en vez de `/`.
+
+### Anotado para la Fase 5, sin tocar
+
+La política `org_editar` de `organizaciones` deja que `propietario_cuenta`
+haga UPDATE de **cualquier** columna, sin `WITH CHECK` (vista el 08-oct al
+armar la tarjeta "Datos de la administradora", que solo escribe `nombre` y
+`rif`). Revisar si incluye columnas que no le corresponden (por ejemplo,
+`plan`).
+
+### Para probar en el Preview de `dev` (Gustavo, mismas cuentas del tramo 1)
+
+Perfiles de Chrome: **Admin** (`+admin`), **Propietario** (`+propietario`,
+6 unidades) e **Inquilino** (`+inquilino`). Probar también en tema oscuro y
+a ancho de teléfono lo marcado con (📱).
+
+| # | Qué | Cuenta / perfil | Qué hacer | Qué tiene que pasar |
+|---|---|---|---|---|
+| R1 | Cargar saldos (B) | Admin | Propietarios → Cargar saldos → subir la planilla del 04-oct (la que tiene teléfono y correo). Mirar la previa y **Descartar** | Arriba dice de qué columna sale el saldo («Saldo» o «la segunda columna»). Ningún teléfono ni correo aparece como saldo. Las celdas raras salen en ámbar ("no es un monto: «…»" o "vacío") y no cuentan en "se van a aplicar" |
+| R2 | 08D sin monto (📱) | Propietario | /mi → elegir 08D | La tarjeta dice "Lo paga su inquilino" y "Con deuda", sin monto. No hay pestaña "Reportar un pago". En el resumen de arriba, "Lo paga su inquilino: 08D · Con deuda". Las otras 5 unidades siguen igual |
+| R3 | Ruta bloqueada | Propietario | Estando en 02D en "Reportar un pago", tocar 08D en el selector | Lleva a "Mi recibo" de 08D, no al formulario |
+| R4 | 02D una sola vez (📱) | Propietario | Mirar el resumen de arriba | 02D sale **una** vez: "02D · A favor $ 50,00", en verde (no menta en oscuro). El total sigue en $ 356,50 |
+| R5 | `/entrar` con sesión (prueba 7) | Admin | Con la sesión abierta, escribir `…/entrar` en la barra | Entra a Admin, nunca a la página de venta |
+| R6 | Entrar con clave | Admin | Salir → en la portada "Iniciar sesión" → correo y clave | Entra directo a Admin |
+| R7 | Sin permiso → a lo suyo | Admin | Escribir `…/operador` en la barra | Lleva a Admin, no a la página de venta |
+| R8 | Olvidé mi contraseña | Admin | Salir → "Olvidé mi contraseña" → enlace del correo → clave nueva | Pide la clave nueva y después entra a Admin |
+| R9 | Cambiar el inquilino | Admin | Ficha de **06B** → Datos → en Inquilino, nombre "Nuevo prueba" y correo `gustavobricenob+inquilino2@gmail.com` → Guardar | Sale "¿Cambia el inquilino?" con 3 botones. "Sí, cambiar el inquilino" → "art ya no figura como inquilino de 06B; ahora lo es… Al anterior también se le quitó el acceso a la app". **Esto le quita 06B a la cuenta Inquilino para siempre** |
+| R10 | …y el inquilino lo ve | Inquilino | Recargar /mi | 06B ya no está en su selector; las otras 3 sí |
+| R11 | Corregir sin quitar acceso | Admin | Ficha de **07A** → correo del inquilino con una letra cambiada → Guardar → "Es el mismo, corregir el correo". Después volver a poner el correo bueno, igual | No se le quita nada: la cuenta Inquilino sigue viendo 07A |
+| R12 | Otra cuenta abierta (prueba 5) | Admin + Inquilino en el **mismo** perfil | Accesos abierto como Admin; en otra pestaña entrar como Inquilino; volver a Accesos y tocar "Generar la invitación" | Solo el aviso de abajo ("En este navegador se abrió otra cuenta…"). Arriba **no** aparece "Sin permiso para invitar". No se crea ninguna invitación |
+| R13 | Mensaje de invitación | Admin | Accesos → generar una invitación → "Copiar el mensaje completo" → pegarlo en una nota | Dice "Entre o cree su cuenta con el correo…" |
+| R14 | Correo de la ficha | Admin | Accesos → Unidad 08D → "Es el…" Inquilino; después cambiar a Propietario; después escribir otro correo a mano y cambiar de unidad | Se llena solo con el correo de la ficha, con la nota "Tomado de la ficha de la unidad". Cambia al pasar a Propietario. El que se escribió a mano no se pisa |
+| R15 | Fila completa | Admin | Propietarios → tocar el nombre o la alícuota de una fila | Abre la ficha. Ctrl/Cmd + clic en el código sigue abriendo otra pestaña |
+| R16 | A favor en Admin | Admin | Propietarios → fila 02D; abrir su ficha | "A favor $ 50,00" en verde (no "$ -50,00" oscuro). En la ficha, la etiqueta y la tarjeta dicen "A favor" |
+| R17 | Coma decimal | Admin | Ficha de una unidad → Alícuota: probar "abc" → Guardar; después volver a poner **el valor original** con coma | "abc": aviso "La alícuota «abc» no se entiende…" y no guarda. Con coma, guarda bien |
+| R18 | Sr. | Admin | Propietarios → buscar las unidades importadas el 04-oct | Ningún nombre dice "Sr. Sr.": si alguno lo decía, ahora dice "Sr." una sola vez |
+| R19 | Datos de la administradora | Admin | Ajustes → "Datos de la administradora" → cambiar el RIF → Guardar | "Datos guardados", y el RIF nuevo queda al recargar |
+| R20 | Ícono | cualquiera | Mirar la pestaña del navegador | El ícono de Vecitap, no el triángulo de Next.js |
+
+No hace falta probar: "Debe N cuotas" con números (la org de prueba no tiene
+meses cerrados: se ve "Con deuda"; el cálculo se verificó en la base), el
+bloque D (crea un edificio de verdad) y el "- 0,00" (no se puede forzar a
+mano).
+
 ## Tramo 1 validado (07-oct)
 
 **Punto validado: `2312db0`** (`2312db0c2f5209ed18bc8913c9de38cf9dcb414c`,
@@ -30,6 +121,12 @@ la fase 1 de varias unidades funcionan:
 - **OK:** pruebas 1, 2, 3, 4, 6, 8, 9, 10 y 12.
 - **OK con observaciones:** 5 y 13. Las observaciones pasan a la ronda 2 del
   tramo 2.
+  - 5: con otra cuenta abierta en el navegador, arriba salía también "Sin
+    permiso para invitar" además del aviso de abajo.
+  - 13: la misma observación que el punto 1 de la ronda 2 (08D, que paga el
+    inquilino, se veía contradictoria: "Lo paga su inquilino" en el resumen y
+    "Propietario · Debe $ 83,75" con "Reportar un pago" en la tarjeta) y que
+    la 02D repetida ("A su favor" sin monto y "Saldo a favor en 02D $ 50,00").
 - **Falla menor:** 7 (`/entrar` con la sesión abierta lleva a `/`, la página
   de ventas, en vez de entrar al módulo). También pasa a la ronda 2.
 - **No aplicaron:** 14 y Garita.

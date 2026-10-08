@@ -1,3 +1,5 @@
+import { num } from "@/lib/formato";
+
 /**
  * Lectura de archivos tabulares (extracto del banco, planilla de saldos) y
  * detección de columnas. Portado de admin.html:189-201, 300-399 —
@@ -36,6 +38,30 @@ export function parseMonto(v: unknown): number | null {
   }
   const n = parseFloat(s);
   return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Como `parseMonto`, pero solo acepta una celda que sea un monto y nada
+ * más: dígitos, separadores, signo y, como mucho, un símbolo de moneda
+ * ("$", "Bs", "USD"). Para "Cargar saldos" (bloque B, 08-oct): `parseMonto`
+ * borra todo lo que no sea dígito, así que un teléfono "0414-555…" o un
+ * correo con números se leían como un saldo. Acá eso da `null` y la fila se
+ * marca, en vez de cargarse callada.
+ */
+export function montoEstricto(v: unknown): number | null {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (v === null || v === undefined) return null;
+  const t = String(v)
+    .trim()
+    .replace(/^(?:US\$|USD|Bs\.?S?\.?|\$)\s*/i, "")
+    .replace(/\s*(?:US\$|USD|Bs\.?S?\.?|\$)$/i, "")
+    .trim();
+  if (!/^-?\s*\d[\d.,]*$|^\(\s*\d[\d.,]*\s*\)$/.test(t)) return null;
+  // (1.234,56) es negativo en planillas contables.
+  const negativo = t.startsWith("(");
+  // num() y no parseMonto(): "1.000" es mil, no uno (ver lib/formato.ts).
+  const n = num(t.replace(/[()\s]/g, ""));
+  return n === null ? null : negativo ? -n : n;
 }
 
 /** La referencia más larga de 6 dígitos o más que aparezca en el texto. admin.html:205-208. */
