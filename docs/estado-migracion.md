@@ -16,6 +16,35 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Tramo 1 validado (07-oct)
+
+**Punto validado: `2312db0`** (`2312db0c2f5209ed18bc8913c9de38cf9dcb414c`,
+"Permisos por base y migración 20261005120000 aplicada en pruebas", último
+commit de `dev`). Al 08-oct, `dev` local coincide con `origin/dev` y no hay
+cambios sin commitear.
+
+Gustavo probó en el Preview de `dev` el 06 y 07-oct. Los arreglos del 05-oct y
+la fase 1 de varias unidades funcionan:
+- **Totales del propietario con 6 unidades:** dieron lo esperado,
+  $ 524,01 → $ 440,26 → $ 356,50.
+- **OK:** pruebas 1, 2, 3, 4, 6, 8, 9, 10 y 12.
+- **OK con observaciones:** 5 y 13. Las observaciones pasan a la ronda 2 del
+  tramo 2.
+- **Falla menor:** 7 (`/entrar` con la sesión abierta lleva a `/`, la página
+  de ventas, en vez de entrar al módulo). También pasa a la ronda 2.
+- **No aplicaron:** 14 y Garita.
+
+**La promoción a `integration` sale de ese commit, más adelante**, con los
+pasos de "Lo que sigue" de la sección de abajo:
+1. Respaldo de producción.
+2. Las 4 migraciones en producción: 20260930120000, 20260930130000,
+   20260930140000 y 20261005120000.
+3. Merge a `integration`.
+4. Borrado de las Orgs A y B, primero en modo ensayo.
+
+Lo que se haga en `dev` después de `2312db0` (ronda 2) **no** forma parte de
+esa promoción salvo que se valide aparte.
+
 ## Dónde quedamos (05-oct)
 
 Detalle en "Validación de la fase 1 en el Preview: tres problemas
