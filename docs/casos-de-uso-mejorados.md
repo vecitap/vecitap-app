@@ -1004,6 +1004,7 @@ ese día, sin borrar su historia, y le quita el acceso a esa unidad en la app.
   - si alguien con sesión entra a una sección donde no tiene permiso (otra
     administradora, Operador sin serlo, una garita que no es suya), va a `/destino` y
     no a la portada.
+    **Ronda 3:** ya no va a `/destino` sino a una pantalla propia, "Sin acceso" (caso 45).
 - **Causa de la prueba 7:** no se pudo confirmar. Su rol estaba bien (dueña de la
   administradora, en los dos chequeos de rol). Los registros de la base muestran que
   después de un ingreso con clave (10:14) no se pidió ninguna página de la app durante
@@ -1142,3 +1143,99 @@ pago".
   se actualizan en el acto. Antes parecía que no se había guardado hasta recargar.
 - **Ícono del sitio** (bloque F): la pestaña del navegador y el acceso directo del
   teléfono muestran el ícono de Vecitap, el mismo de la portada, en lugar del de Next.js.
+
+## Ronda 3 (08-oct)
+
+> Ajustes de la revisión cruzada de la ronda 2 y bloques nuevos. **Estado: construidos,
+> sin validar en el navegador.** Las migraciones nuevas
+> (`20261008140000_reemplazar_propietario.sql`, `20261008150000_indices_saldo_unidad.sql`)
+> están **aplicadas en vecitap-pruebas** el 08-oct; falta producción. El importador
+> nuevo (bloque A) y el tipo de unidad todavía no están.
+
+### 44. Cambiar el propietario en la ficha pide confirmación, igual que el inquilino
+
+**Caso de uso:** en la ficha de la unidad, la administradora escribe el correo de otro
+propietario encima del que había (por ejemplo, la unidad se vendió).
+
+- **`main`:** se sobrescribían los datos de la misma persona: el dueño anterior "se
+  convertía" en el nuevo y, si tenía cuenta, seguía entrando a la unidad.
+- **Ahora**, los mismos tres botones que en el caso 38:
+  - **"Sí, cambiar el propietario"**: el anterior deja de figurar como propietario de
+    esa unidad desde hoy, pierde el acceso a **esa** unidad en la app y sus invitaciones
+    pendientes para esa unidad dejan de servir. Se registra al nuevo. Todo pasa junto o
+    no pasa nada.
+  - **"Es el mismo, corregir el correo"** y **"No"**, como en el caso 38.
+- **Un propietario con varias unidades no pierde las otras:** se cierra solo el vínculo
+  de esa unidad, se apaga solo el acceso a esa unidad y se anulan solo las invitaciones
+  de esa unidad. Verificado en pruebas con la cuenta del propietario de 6 unidades.
+- Lo que se debía hasta hoy sigue en la cuenta de la unidad (la deuda es de la unidad,
+  no de la persona).
+- **Regla nueva de la base, dicha explícitamente:** cuando se va el último propietario
+  de una unidad —por la ficha o por cualquier otro camino—, se apagan los accesos de
+  propietario de esa unidad. Es la misma regla que ya regía para el inquilino (caso 32).
+- **Cómo se revierte:** `DatosUnidad.tsx` y
+  `supabase/rollbacks/20261008140000_reemplazar_propietario_rollback.sql`.
+
+### 45. Sin permiso para una sección: una pantalla propia, "Sin acceso"
+
+Ajusta el caso 34.
+
+- **Antes (ronda 2):** quien tenía sesión pero no el rol de la sección (otra
+  administradora, `/operador` sin ser operador, una garita que no es suya) iba a
+  `/destino`, que lo mandaba a lo suyo.
+- **Ahora:** va a **`/sin-acceso`**: "La cuenta … no tiene acceso a la sección que
+  abrió", con **"Ir a mi inicio"** y **"Salir"**. No salta sola a ningún lado.
+- **Por qué** (revisión cruzada): la decisión de "a dónde va cada uno" y la de "puede
+  entrar acá" usan criterios distintos, y un salto automático entre las dos podría dar
+  vueltas sin fin el día que alguien agregue otro salto en `/admin` o `/garita`.
+
+### 46. Crear una cuenta con un correo que ya tiene cuenta
+
+- **Antes:** decía "Cuenta creada. Confirme su correo", y el correo nunca llegaba
+  (Supabase no manda nada en ese caso, para no revelar qué correos existen). Le pasó a
+  Gustavo el 04-oct.
+- **Ahora:** "Ese correo ya tiene una cuenta. Entre con su clave, o use «Olvidé mi
+  contraseña»". Es un desvío consciente: deja saber que ese correo está registrado, a
+  cambio de no dejar a la persona esperando un correo que no va a llegar.
+- Además (revisión cruzada): sin sesión abierta, la pantalla de entrar **nunca**
+  navega, en ningún modo. Antes solo lo cuidaba al crear la cuenta.
+
+### 47. Un solo patrón de botones en toda la app (bloque E)
+
+- **Antes:** cada pantalla resolvía la espera a su manera: algunos botones cambiaban el
+  texto ("Revocando…"), la mayoría solo se apagaba, y apagado se veía casi igual que
+  prendido (el naranja a media opacidad). Después de guardar, unas pantallas mostraban
+  un aviso arriba, otras nada.
+- **Ahora:**
+  - **Mientras la acción corre**, el botón muestra un indicador girando en lugar del
+    texto, sin cambiar de tamaño, y no se puede volver a tocar.
+  - **Desactivado** ("no se puede": faltan datos, no hay nada que cargar) se ve gris,
+    sin el naranja, con el cursor de prohibido.
+  - **Al guardar**, "Guardado ✓" aparece al lado del botón y se va solo a los 3
+    segundos; si algo falla, el error queda ahí mismo. Está en: datos del edificio,
+    logo, datos de la administradora, ficha de la unidad y suscripción (Operador).
+  - Los avisos que dan un resultado con datos ("Se encolaron 12 correos", "3 pagos
+    conciliados") siguen arriba, como antes.
+- Los botones de la garita (más grandes, para tablet) siguen su propio estilo, con el
+  mismo indicador mientras esperan.
+
+### 48. Sin conexión con la base: "No pudimos conectar", también en la primera pantalla
+
+- **Antes:** si la sesión estaba por renovarse justo cuando la base no contestaba, la
+  app mandaba a Entrar, como si se hubiera cerrado la sesión. Los layouts ya lo
+  distinguían desde el 05-oct; el primer filtro (el proxy) no.
+- **Ahora:** muestra **"No pudimos conectar. Reintente"** sin cambiar la dirección de la
+  página, así "Reintentar" vuelve a pedir la misma. La sesión no se toca. Verificado
+  contra un build de producción local con la base apagada.
+
+### 49. Un número mal escrito no se guarda como 0, en ningún formulario
+
+Extiende el caso 40 (que lo había resuelto solo en la ficha de la unidad).
+
+- **`main`:** en "Nueva unidad" (alícuota y saldos iniciales) y en Cobros (monto e IVA
+  de un concepto, también al editarlo en la fila), un valor que no se entendía se
+  guardaba como 0 sin avisar.
+- **Ahora:** se avisa cuál campo no se entiende y no se guarda; en la fila de Cobros, el
+  campo vuelve a lo que tenía. En los gastos del mes, "Falta el monto" se dice solo si
+  está vacío; si hay algo escrito que no es un número, se dice eso. "Reportar un pago"
+  ya avisaba ("El monto no se entiende").

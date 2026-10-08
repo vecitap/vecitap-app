@@ -108,6 +108,7 @@ export function PanelModulos({
                 <button
                   type="button"
                   disabled={ocupado}
+                  aria-busy={ocupado || undefined}
                   onClick={() => fijar(f.clave, !f.activo, null)}
                   title={f.activo ? "Quitarle este módulo al cliente" : "Darle este módulo al cliente"}
                   style={{
@@ -177,7 +178,7 @@ export function PanelModulos({
             </Campo>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <Button type="button" mini disabled={!nuevo.clave || !nuevo.edificio || ocupado} onClick={() => fijar(nuevo.clave, true, nuevo.edificio)}>
+            <Button type="button" mini cargando={ocupado} disabled={!nuevo.clave || !nuevo.edificio} onClick={() => fijar(nuevo.clave, true, nuevo.edificio)}>
               Habilitar solo ahí
             </Button>
             <Button
@@ -185,7 +186,8 @@ export function PanelModulos({
               variante="secundario"
               mini
               style={{ color: "var(--rojo)" }}
-              disabled={!nuevo.clave || !nuevo.edificio || ocupado}
+              cargando={ocupado}
+              disabled={!nuevo.clave || !nuevo.edificio}
               onClick={() => fijar(nuevo.clave, false, nuevo.edificio)}
             >
               Apagar solo ahí

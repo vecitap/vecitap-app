@@ -269,7 +269,7 @@ function TasaCabecera({ inicial }: { inicial: TasaViva | null }) {
       <div>
         <div className="admin-tasa-rotulo">
           Tasa BCV de hoy
-          <button type="button" onClick={actualizar} disabled={cargando} title="Actualizar" aria-label="Actualizar la tasa">
+          <button type="button" onClick={actualizar} disabled={cargando} aria-busy={cargando || undefined} title="Actualizar" aria-label="Actualizar la tasa">
             <RefreshCw size={12} />
           </button>
         </div>

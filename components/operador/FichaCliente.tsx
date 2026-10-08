@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Campo, Card, Input, Select, Table, Textarea } from "@/components/ui";
+import { Button, Campo, Card, EstadoGuardado, Input, Select, Table, Textarea } from "@/components/ui";
+import { useAccion } from "@/hooks/useAccion";
 import { hoyLocalISO, nf, num0, usd, usd0 } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularCuotaPrevista, PLANES, DESCUENTO } from "@/lib/operador/planes";
@@ -64,7 +65,6 @@ export function FichaCliente({
   // (sección "Operador"): el campo de abajo necesita ser controlado para
   // reflejar el monto real una vez que `servicio` carga de forma asíncrona.
   const [montoServicio, setMontoServicio] = useState("0");
-  const [ocupado, setOcupado] = useState(false);
 
   useEffect(() => {
     const supabase = crearClienteNavegador();
@@ -101,8 +101,8 @@ export function FichaCliente({
     unidades: c.unidades || 0,
   });
 
-  async function guardar() {
-    setOcupado(true);
+  // Bloque E: "Guardado ✓" al lado del botón, en vez del aviso de arriba.
+  const guardar = useAccion(async () => {
     const supabase = crearClienteNavegador();
     const fila = {
       org_id: c.org_id,
@@ -126,11 +126,9 @@ export function FichaCliente({
     } else if (!error && s.estado === "activa") {
       await supabase.from("organizaciones").update({ plan: "activo" }).eq("id", c.org_id);
     }
-    setOcupado(false);
-    if (error) return fallo(error);
-    notificar("Suscripción guardada.");
+    if (error) throw error;
     onGuardado();
-  }
+  });
 
   async function generar() {
     const supabase = crearClienteNavegador();
@@ -521,7 +519,8 @@ export function FichaCliente({
             <Button type="button" variante="secundario" onClick={onCerrar}>
               Cerrar
             </Button>
-            <Button type="button" disabled={ocupado} onClick={guardar}>
+            <EstadoGuardado estado={guardar.estado} error={guardar.error} />
+            <Button type="button" cargando={guardar.enviando} onClick={() => guardar.ejecutar()}>
               Guardar
             </Button>
           </div>

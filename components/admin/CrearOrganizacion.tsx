@@ -73,7 +73,7 @@ export function CrearOrganizacion() {
         </Campo>
       </div>
       <div style={{ marginTop: 18 }}>
-        <Button type="button" disabled={ocupado} onClick={crear}>
+        <Button type="button" cargando={ocupado} onClick={crear}>
           Crear administradora
         </Button>
       </div>

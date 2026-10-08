@@ -294,8 +294,8 @@ export function InvitarVisitas({
         <Campo etiqueta="Cuántas entradas" ayuda="Una sola para una visita normal. Varias si va a entrar y salir el mismo día.">
           <Input className="mono" inputMode="numeric" value={f.usos} onChange={(e) => setF({ ...f, usos: e.target.value })} />
         </Campo>
-        <Button type="button" onClick={crear} disabled={ocupado} style={{ width: "100%" }}>
-          {ocupado ? "Creando…" : "Crear la invitación"}
+        <Button type="button" onClick={crear} cargando={ocupado} style={{ width: "100%" }}>
+          Crear la invitación
         </Button>
       </Card>
 
@@ -336,11 +336,11 @@ export function InvitarVisitas({
                     type="button"
                     variante="secundario"
                     mini
-                    disabled={anulando === i.id}
+                    cargando={anulando === i.id}
                     style={{ color: "var(--rojo)" }}
                     onClick={() => anular(i.id)}
                   >
-                    {anulando === i.id ? "Anulando…" : "Anular"}
+                    Anular
                   </Button>
                 </div>
               </div>

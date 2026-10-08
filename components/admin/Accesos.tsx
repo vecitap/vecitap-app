@@ -321,7 +321,7 @@ export function Accesos({
               </Campo>
             </div>
             <div style={{ marginTop: 14 }}>
-              <Button type="button" disabled={ocupado} onClick={invitar}>
+              <Button type="button" cargando={ocupado} onClick={invitar}>
                 Generar la invitación
               </Button>
             </div>
@@ -437,10 +437,11 @@ export function Accesos({
                           type="button"
                           variante="secundario"
                           mini
+                          cargando={revocando === i.id}
                           disabled={revocando !== null}
                           onClick={() => revocar(i.id)}
                         >
-                          {revocando === i.id ? "Revocando…" : "Revocar"}
+                          Revocar
                         </Button>
                       )}
                     </td>
@@ -549,7 +550,7 @@ export function Accesos({
               unidad y el nombre de quien vive ahí. No ve saldos, ni recibos, ni pagos, ni teléfonos.
             </div>
             <div style={{ marginTop: 14 }}>
-              <Button type="button" disabled={ocupado} onClick={invitarVigilante}>
+              <Button type="button" cargando={ocupado} onClick={invitarVigilante}>
                 Generar la invitación
               </Button>
             </div>

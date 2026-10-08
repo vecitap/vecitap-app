@@ -2715,6 +2715,18 @@ export type Database = {
         Args: { p_confirmar?: boolean; p_periodo: string }
         Returns: undefined
       }
+      reemplazar_propietario: {
+        Args: {
+          p_correo: string
+          p_documento: string
+          p_enviar?: boolean
+          p_nombre: string
+          p_prefijo: string
+          p_telefono: string
+          p_unidad: string
+        }
+        Returns: number
+      }
       reemplazar_inquilino: {
         Args: {
           p_correo: string

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Aviso, Button, Campo, Card } from "@/components/ui";
+import { Aviso, Button, Campo, Card, EstadoGuardado } from "@/components/ui";
+import { useAccion } from "@/hooks/useAccion";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { mensajeDeError } from "@/lib/errores";
 
@@ -53,7 +54,6 @@ export function LogoOrg({
 }) {
   const router = useRouter();
   const [logo, setLogo] = useState(logoUrl ?? "");
-  const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function subirLogo(file: File | undefined) {
@@ -66,15 +66,17 @@ export function LogoOrg({
     }
   }
 
-  async function guardar() {
-    setOcupado(true);
+  // Bloque E: "Guardado ✓" al lado del botón.
+  const guardar = useAccion(async () => {
     setError(null);
     const supabase = crearClienteNavegador();
-    const { error: e } = await supabase.from("organizaciones").update({ logo_url: logo || null }).eq("id", orgId);
-    setOcupado(false);
-    if (e) return setError(mensajeDeError(e));
+    // Con .select(): un UPDATE que RLS filtra no da error, devuelve 0 filas
+    // (la política org_editar solo deja a propietario_cuenta).
+    const { data, error: e } = await supabase.from("organizaciones").update({ logo_url: logo || null }).eq("id", orgId).select("id");
+    if (e) throw e;
+    if (!data || data.length === 0) throw new Error("No se pudo guardar. Solo la cuenta dueña de la administradora puede cambiar el logo.");
     router.refresh();
-  }
+  });
 
   return (
     <Card>
@@ -120,15 +122,16 @@ export function LogoOrg({
           </div>
         </Campo>
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-        <Button type="button" disabled={ocupado} onClick={guardar}>
+      <div style={{ display: "flex", gap: 8, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+        <Button type="button" cargando={guardar.enviando} onClick={() => guardar.ejecutar()}>
           Guardar logo
         </Button>
         {logo && (
-          <Button type="button" variante="secundario" disabled={ocupado} onClick={() => setLogo("")}>
+          <Button type="button" variante="secundario" disabled={guardar.enviando} onClick={() => setLogo("")}>
             Quitar
           </Button>
         )}
+        <EstadoGuardado estado={guardar.estado} error={guardar.error} />
       </div>
     </Card>
   );

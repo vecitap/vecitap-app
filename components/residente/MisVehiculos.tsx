@@ -150,8 +150,8 @@ export function MisVehiculos({
       </div>
       {/* Nota: `modelo` no tiene campo propio — ver el comentario de arriba
           del componente. */}
-      <Button type="button" variante="secundario" disabled={ocupado} onClick={guardar} style={{ width: "100%" }}>
-        {ocupado ? "Agregando…" : "Agregar el vehículo"}
+      <Button type="button" variante="secundario" cargando={ocupado} onClick={guardar} style={{ width: "100%" }}>
+        Agregar el vehículo
       </Button>
     </Card>
   );

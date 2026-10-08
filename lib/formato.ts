@@ -113,6 +113,17 @@ export function num(valor: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * El primer campo numérico que no se entiende, como mensaje para mostrar; o
+ * `null` si todos se entienden. Vacío cuenta como bien (es 0, como siempre).
+ * Ronda 2-3: un número mal escrito ya no se guarda como 0 sin avisar
+ * (casos 40 y 49 de docs/casos-de-uso-mejorados.md).
+ */
+export function numeroMalEscrito(campos: [etiqueta: string, valor: string][]): string | null {
+  const mal = campos.find(([, v]) => v.trim() !== "" && num(v) === null);
+  return mal ? `${mal[0]} «${mal[1]}» no se entiende. Use coma para los decimales, por ejemplo 1,25.` : null;
+}
+
 export function num0(valor: string | number | null | undefined): number {
   return num(valor) ?? 0;
 }

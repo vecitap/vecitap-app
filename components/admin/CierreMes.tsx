@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ReceiptText, RotateCcw, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Flechas, Input, Select } from "@/components/ui";
-import { nf, num, num0, usd } from "@/lib/formato";
+import { nf, num, num0, usd, numeroMalEscrito } from "@/lib/formato";
 import { MESES } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { CategoriaAdmin, ConceptoCobro, GastoAdmin, PeriodoAdmin, SimulacionCierre } from "@/lib/admin/tipos";
@@ -183,7 +183,9 @@ export function CierreMes({
   async function agregarGasto() {
     if (!periodoAbierto) return;
     const monto = num(nuevo.monto);
-    if (monto === null) return notificar("Falta el monto.", "error");
+    // Ronda 3 (caso 49): "Falta" solo si está vacío; si hay algo escrito que
+    // no es un número, se dice eso.
+    if (monto === null) return notificar(nuevo.monto.trim() ? (numeroMalEscrito([["El monto", nuevo.monto]]) ?? "El monto no se entiende.") : "Falta el monto.", "error");
     if (nuevo.tipo === "directo" && !nuevo.unidad) return notificar("Un gasto directo tiene que decir a qué unidad se le carga.", "error");
     const enEsaCat = gastos.filter((g) => (g.categoria_id || "") === (nuevo.categoria || ""));
     const ultimo = Math.max(0, ...enEsaCat.map((g) => g.orden || 0));
@@ -359,7 +361,7 @@ export function CierreMes({
             </div>
           )}
           <div style={{ marginTop: 16 }}>
-            <Button type="button" disabled={ocupado || !mesPermitido} onClick={abrirMes}>
+            <Button type="button" cargando={ocupado} disabled={!mesPermitido} onClick={abrirMes}>
               Abrir el mes
             </Button>
           </div>
@@ -408,7 +410,7 @@ export function CierreMes({
                     puede deshacer. Los pagos ya registrados no se tocan.
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Button type="button" mini disabled={ocupado} style={{ background: "var(--rojo)", borderColor: "var(--rojo)" }} onClick={descartarMes}>
+                    <Button type="button" mini cargando={ocupado} style={{ background: "var(--rojo)", borderColor: "var(--rojo)" }} onClick={descartarMes}>
                       Sí, descartar {periodoAbierto.etiqueta}
                     </Button>
                     <Button type="button" variante="secundario" mini onClick={() => setDescartando(false)}>
@@ -596,7 +598,7 @@ export function CierreMes({
           )}
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button type="button" disabled={ocupado} onClick={() => setConfirma({ que: "cerrar" })}>
+            <Button type="button" cargando={ocupado} onClick={() => setConfirma({ que: "cerrar" })}>
               <ReceiptText size={16} /> Cerrar el mes y emitir recibos
             </Button>
             {cerrados.length > 0 && (

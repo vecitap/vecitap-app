@@ -127,7 +127,7 @@ export function VistaBitacora({ edificioId }: { edificioId: string }) {
             </div>
           </div>
           <div className="garita-fila">
-            <button type="submit" className="garita-boton ancho" disabled={enviandoNota}>
+            <button type="submit" className="garita-boton ancho" disabled={enviandoNota} aria-busy={enviandoNota || undefined}>
               Anotar
             </button>
           </div>

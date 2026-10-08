@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Campo, Input, Select } from "@/components/ui";
-import { num0 } from "@/lib/formato";
+import { num0, numeroMalEscrito } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 
 const TRATAMIENTOS = ["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""];
@@ -36,6 +36,12 @@ export function AltaUnidad({
 
   async function crear() {
     if (!f.codigo.trim()) return setError("Falta el código de la unidad.");
+    const malEscrito = numeroMalEscrito([
+      ["La alícuota", f.alicuota],
+      ["El saldo inicial de condominio", f.saldo],
+      ["El saldo inicial de administración", f.saldoHon],
+    ]);
+    if (malEscrito) return setError(malEscrito);
     setOcupado(true);
     setError(null);
     const supabase = crearClienteNavegador();
@@ -167,7 +173,7 @@ export function AltaUnidad({
           <Button type="button" variante="secundario" onClick={onCerrar}>
             Cancelar
           </Button>
-          <Button type="button" disabled={ocupado} onClick={crear}>
+          <Button type="button" cargando={ocupado} onClick={crear}>
             Registrar
           </Button>
         </div>

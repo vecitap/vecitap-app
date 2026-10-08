@@ -16,9 +16,141 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 3 (08-oct) — bloques 1, 2, 3, 5 y 6 construidos; A pendiente
+
+Todo en `dev`, **sin commit**. `npx tsc --noEmit`, `npm run lint` y
+`npm run build` en verde. Desvíos frente a `main`: casos 44 a 49 de
+`docs/casos-de-uso-mejorados.md` (y una nota en el 34).
+
+**El bloque A (importador "Cargar datos" + tipo de unidad) no se empezó:** se
+pidió avisar antes de arrancar un bloque largo, y A es el más largo (A1 a A6,
+≈ 6,5 días en el plan, con dos migraciones). Se hicieron primero 5 y 6, que
+eran cortos.
+
+**Toca autenticación (1a, 1b y 5): revisión cruzada antes de `integration`.**
+Archivos: `proxy.ts`, `app/sin-acceso/page.tsx`, `app/sin-conexion/*`,
+`app/(admin)/admin/[orgId]/layout.tsx`, `app/(interno)/operador/page.tsx`,
+`app/(marketing)/entrar/FormularioEntrar.tsx`, `lib/supabase/conexion.ts`,
+`lib/supabase/cache.ts`.
+
+### Qué se hizo
+
+- **1a.** Los rechazos por rol (3 ramas del proxy, el layout de la
+  organización y `/operador`) van a **`/sin-acceso`**: no redirige a ningún
+  lado, ofrece "Ir a mi inicio" (/destino) y "Salir". Caso 45.
+- **1b.** Sin sesión, `/entrar` no navega nunca, en ningún modo. Además, crear
+  una cuenta con un correo ya registrado lo dice (antes: "Confirme su correo"
+  y el correo nunca llegaba). Caso 46.
+- **1d.** Cerrar un mes en la organización de Gustavo en pruebas **es
+  seguro**:
+  - `cerrar_periodo()` no encola ningún correo: emite recibos y cortes, nada
+    más. Los correos solo se encolan si alguien toca "Enviar" en Cortes
+    (`encolar_recibos()`, que además exige el módulo `correo` y la
+    organización al día).
+  - Aun si se envían, irían a 48 direcciones `delivered+…@resend.dev` (el
+    buzón de prueba de Resend: no le llega a nadie) y a los alias de Gustavo
+    (`+propietario` ×6, `+inquilino` ×5). Ninguna dirección real.
+  - Lo que sí cambia: los saldos de toda la organización (cada unidad suma su
+    parte del gasto). Por eso va al final de la lista de pruebas, y después
+    "Cargar saldos" muestra el aviso de meses cerrados.
+  - Se puede deshacer con "Reabrir" en Cierre del mes.
+- **2.** Cambio de propietario en la ficha: migración
+  `20261008140000_reemplazar_propietario.sql`. Caso 44.
+- **3 (bloque E).** `<Button cargando>`, `useAccion()` y `<EstadoGuardado>`;
+  desactivado visible. Caso 47.
+- **5.**
+  - **Sin conexión en el proxy:** con el token vencido y Auth caído (o una
+    RPC de rol que no contesta), reescribe a `/sin-conexion` ("No pudimos
+    conectar. Reintente") en vez de mandar a Entrar. **Verificado contra
+    `next start`** con la base apuntando a un puerto cerrado y una sesión
+    falsa vencida: `/admin` y `/mi` → 200 "No pudimos conectar"; sin cookie →
+    307 a /entrar. Caso 48.
+  - **`tiene_rol` repetido:** los logs del 07-oct mostraban más de 40 en tres
+    segundos. Venían del prefetch de los `<Link>`: cada enlace visible
+    pide la ruta, y cada pedido pasa por el proxy. Dos cambios:
+    - los enlaces de cada fila de Propietarios van con `prefetch={false}`
+      (eran 106 con 53 unidades; la fila igual navega al tocarla, y Next
+      sigue haciendo prefetch al pasar el mouse);
+    - el proxy **recuerda por 30 s, en memoria de la instancia, los SÍ** de
+      `tiene_rol` / `es_operador` / `edificios_del_vigilante`, con el `sub`
+      verificado en la clave. Los "no" y los errores se vuelven a preguntar
+      siempre. Contrapartida, anotada en el código: si a alguien le quitan el
+      rol, el proxy lo puede dejar pasar hasta 30 s más; no ve datos, porque
+      RLS decide en cada consulta.
+  - **Costo de `saldos_actuales`:** medido como la administradora de Gustavo,
+    ~108 ms para 53 unidades (≈2 ms por unidad; llama a `saldo_unidad()` por
+    unidad). Hoy alcanza. Faltaban índices por `unidad_id` en `recibos`,
+    `pagos` y `ajustes` (los que hay empiezan por `org_id` y
+    `saldo_unidad()` filtra solo por unidad): migración
+    `20261008150000_indices_saldo_unidad.sql`. No se reescribió la vista;
+    si con meses cerrados pasa de ~300 ms, el paso siguiente es calcular los
+    saldos del edificio en una sola consulta en vez de una por unidad.
+- **6.** `/design-system` ya no entra al build: sus archivos son
+  `page.vitrina.tsx` / `layout.vitrina.tsx` y `next.config.ts` solo suma esa
+  extensión en los Preview de Vercel (o en local con `MOSTRAR_VITRINA=1`).
+  Verificado: el build no lista la ruta y `next start` da 404.
+- **num() fuera de la ficha:** "Nueva unidad" y Cobros (concepto nuevo y
+  edición en la fila) guardaban 0 sin avisar ante un número mal escrito;
+  ahora avisan. Caso 49.
+
+### Migraciones nuevas — aplicadas en vecitap-pruebas el 08-oct
+
+| Migración | Verificación en pruebas |
+|---|---|
+| `20261008140000_reemplazar_propietario.sql` | `reemplazar_propietario`: INVOKER, `search_path=public`, EXECUTE solo `authenticated`. Disparador `vinculos_propietario_sale_accesos`: DEFINER, sin EXECUTE para nadie. Sin sesión: "Sin permiso…". Como la administradora, en transacción deshecha, sobre 02B de +propietario: 1 acceso apagado en 02B, **sus otras 5 unidades siguen activas**, ningún otro vínculo cerrado |
+| `20261008150000_indices_saldo_unidad.sql` | Los 3 índices existen |
+
+Producción necesita, en orden: las 4 del tramo 1, las 2 de la ronda 2
+(20261008120000, 20261008130000) y estas 2.
+
+### Lista única de pruebas — rondas 2 y 3 (Preview de `dev`)
+
+Reemplaza a la lista de la ronda 2. Perfiles de Chrome: **Admin** (`+admin`),
+**Propietario** (`+propietario`, 6 unidades), **Inquilino** (`+inquilino`).
+(📱) = probar también en tema oscuro y a ancho de teléfono. **El orden
+importa:** las que cambian datos para siempre van al final.
+
+| # | Perfil | Qué hacer | Qué tiene que pasar |
+|---|---|---|---|
+| R1 | Admin | Propietarios → Cargar saldos → subir **piloto-orga-anonimo.csv** → mirar la previa → **Descartar** | Arriba: "el saldo sale de «SALDO INICIAL»". "- 0,00 $" se lee 0,00 y "387,69 $" se lee 387,69. Ningún teléfono ni correo aparece como saldo. Las celdas raras salen en ámbar y no cuentan |
+| R2 📱 | Propietario | /mi → 08D | Tarjeta: "Lo paga su inquilino" y "Con deuda", sin monto. Sin pestaña "Reportar un pago". Resumen: "Lo paga su inquilino: 08D · Con deuda" |
+| R3 | Propietario | En 02D, pestaña "Reportar un pago"; tocar 08D en el selector | Lleva a "Mi recibo" de 08D. **Pregunta para Gustavo (caso 35):** "Mi recibo" de 08D muestra el monto completo del recibo; ¿el propietario debería verlo, si lo paga el inquilino? |
+| R4 📱 | Propietario | Mirar el resumen | 02D sale una sola vez, "A favor $ 50,00" en verde (no menta en oscuro). Total $ 356,50 |
+| R5 | Admin | Con la sesión abierta, escribir `…/entrar` | Entra a Admin |
+| R6 | Admin | Salir → "Iniciar sesión" → correo y clave | Entra directo a Admin |
+| R7 | Admin | Escribir `…/operador` | Pantalla **"Sin acceso a esta sección"** con su correo, "Ir a mi inicio" y "Salir". "Ir a mi inicio" lleva a Admin |
+| R8 | Admin | Olvidé mi contraseña → enlace → clave nueva | Pide la clave y entra a Admin |
+| R9 | sin sesión | /entrar → "Crear cuenta" con el correo `+admin` | "Ese correo ya tiene una cuenta. Entre con su clave…". No dice "Confirme su correo" |
+| R10 | Admin | Accesos con Admin; Inquilino en otra pestaña del **mismo** perfil; volver y "Generar la invitación" | Solo el aviso de abajo; arriba nada; no se crea invitación |
+| R11 | Admin | Generar una invitación → "Copiar el mensaje completo" | "Entre o cree su cuenta con el correo…" |
+| R12 | Admin | Accesos → 08D → Inquilino; después Propietario; después escribir otro correo y cambiar de unidad | Se llena con el correo de la ficha ("Tomado de la ficha…"); lo escrito a mano no se pisa |
+| R13 | Admin | Propietarios → tocar nombre o alícuota de una fila | Abre la ficha. Ctrl/Cmd + clic en el código abre otra pestaña |
+| R14 | Admin | Propietarios y ficha de 02D | "A favor $ 50,00" en verde |
+| R15 | Admin | Revisar los nombres | Ningún "Sr. Sr." |
+| R16 | Admin | Ajustes → "Datos de la administradora" → cambiar el RIF → Guardar | El botón gira mientras guarda y aparece "Guardado ✓" al lado, que se va solo. El RIF queda al recargar |
+| R17 | Admin | Ajustes → Datos del edificio → Guardar; ficha de una unidad → Guardar cambios | Igual: giro mientras guarda y "Guardado ✓" al lado del botón |
+| R18 | Admin | Cortes → "Enviar por correo" sin recibos; Ajustes → "Pegar categorías" con una fila con problemas | El botón se ve **gris** (no naranja apagado) y no se puede tocar |
+| R19 | Admin | Ícono de la pestaña | El de Vecitap |
+| N1 | Propietario | 02A → Reportar un pago → monto (en Bs) **"83,75"**, después **"1.234,56"**, después **"abc"** → tocar "Reportar el pago" solo con "abc" | Con 83,75 y 1.234,56, la línea "su pago equivale a $ …" da el monto dividido por la tasa del día (1.234,56 se lee mil doscientos treinta y cuatro, no 1,23). Con "abc": "El monto no se entiende" y no se envía. **No reportar** los dos válidos |
+| N2 | Admin | Cobros → concepto nuevo "Prueba" con monto **"83,75"** → Agregar; en su fila cambiar el monto a **"1.234,56"** y salir del campo; después **"abc"** y salir | Se crea con 83,75; la fila guarda 1.234,56; con "abc" avisa y el campo vuelve a 1.234,56. **Borrar el concepto "Prueba" al terminar** (si no, entra en el cierre de N5) |
+| N3 | Admin | Ficha de 01A → Saldo inicial de condominio: **"83,75"** → Guardar; **"1.234,56"** → Guardar; **"abc"** → Guardar. **Volver a poner el valor original** | Guarda 83,75 y 1.234,56 (se ven en la ficha); con "abc" avisa y no guarda |
+| N4 | Admin | Propietarios → Nueva unidad → código "PRUEBA", saldo **"abc"** → Crear | Avisa que el saldo no se entiende y **no** crea la unidad |
+| N5 | Admin | **Cierre del mes:** abrir octubre 2026 (tasa sugerida) → agregar un **gasto común de 1.000,00** → Cerrar el mes. **No** tocar "Enviar" en Cortes | Se emiten 53 recibos. Ningún correo encolado |
+| N6 📱 | Propietario | /mi después de N5 | **08D: "Debe más de 1 cuota"** (tenía deuda de antes del primer mes: 83,75 + 14,88 = 98,63). 02D: "A favor $ 35,12". Total "Lo que usted paga": **$ 419,89** |
+| R20 | Admin | Ficha de **06B** → correo del inquilino `+inquilino2`, nombre nuevo → Guardar → "Sí, cambiar el inquilino" | Tres botones; "…ya no figura… Al anterior también se le quitó el acceso". **06B sale de la cuenta Inquilino para siempre** |
+| R21 | Inquilino | Recargar /mi | 06B ya no está |
+| R22 | Admin | Ficha de 07A → una letra mal en el correo del inquilino → "Es el mismo, corregir el correo"; después volver a dejarlo bien | El inquilino sigue viendo 07A |
+| R23 | Admin | Ficha de **08C** → correo del **propietario** a `+propietario2`, nombre nuevo → Guardar → "Sí, cambiar el propietario" | "…ya no figura como propietario de 08C… Al anterior también se le quitó el acceso a esta unidad". **08C sale de la cuenta Propietario para siempre** |
+| R24 | Propietario | Recargar /mi | 08C ya no está; **las otras 5 unidades siguen** |
+
+No se puede probar en el Preview: "No pudimos conectar" (hay que tirar la
+base; se verificó contra `next start` local) y que `/design-system` dé 404
+(en el Preview existe a propósito; se ve después del merge, en vecitap.com).
+Pendiente: las pruebas del bloque A (importador y tipo de unidad).
+
 ## Ronda 2 del tramo 2 (08-oct) — construida, sin validar
 
-Todo en `dev`, **sin commit** al cierre del 08-oct. `npx tsc --noEmit`,
+En `dev`, commit `4c55679` (08-oct). `npx tsc --noEmit`,
 `npm run lint` y `npm run build` en verde. Desvíos frente a `main`: casos 33
 a 43 de `docs/casos-de-uso-mejorados.md` (y dos notas en el 31).
 
@@ -67,45 +199,17 @@ del tramo 1 (20260930120000, 20260930130000, 20260930140000,
 
 ### Anotado para la Fase 5, sin tocar
 
+(Pasó a "Pendientes para fases futuras → Fase 5" el 08-oct.)
+
 La política `org_editar` de `organizaciones` deja que `propietario_cuenta`
 haga UPDATE de **cualquier** columna, sin `WITH CHECK` (vista el 08-oct al
 armar la tarjeta "Datos de la administradora", que solo escribe `nombre` y
 `rif`). Revisar si incluye columnas que no le corresponden (por ejemplo,
 `plan`).
 
-### Para probar en el Preview de `dev` (Gustavo, mismas cuentas del tramo 1)
+### Para probar en el Preview de `dev`
 
-Perfiles de Chrome: **Admin** (`+admin`), **Propietario** (`+propietario`,
-6 unidades) e **Inquilino** (`+inquilino`). Probar también en tema oscuro y
-a ancho de teléfono lo marcado con (📱).
-
-| # | Qué | Cuenta / perfil | Qué hacer | Qué tiene que pasar |
-|---|---|---|---|---|
-| R1 | Cargar saldos (B) | Admin | Propietarios → Cargar saldos → subir la planilla del 04-oct (la que tiene teléfono y correo). Mirar la previa y **Descartar** | Arriba dice de qué columna sale el saldo («Saldo» o «la segunda columna»). Ningún teléfono ni correo aparece como saldo. Las celdas raras salen en ámbar ("no es un monto: «…»" o "vacío") y no cuentan en "se van a aplicar" |
-| R2 | 08D sin monto (📱) | Propietario | /mi → elegir 08D | La tarjeta dice "Lo paga su inquilino" y "Con deuda", sin monto. No hay pestaña "Reportar un pago". En el resumen de arriba, "Lo paga su inquilino: 08D · Con deuda". Las otras 5 unidades siguen igual |
-| R3 | Ruta bloqueada | Propietario | Estando en 02D en "Reportar un pago", tocar 08D en el selector | Lleva a "Mi recibo" de 08D, no al formulario |
-| R4 | 02D una sola vez (📱) | Propietario | Mirar el resumen de arriba | 02D sale **una** vez: "02D · A favor $ 50,00", en verde (no menta en oscuro). El total sigue en $ 356,50 |
-| R5 | `/entrar` con sesión (prueba 7) | Admin | Con la sesión abierta, escribir `…/entrar` en la barra | Entra a Admin, nunca a la página de venta |
-| R6 | Entrar con clave | Admin | Salir → en la portada "Iniciar sesión" → correo y clave | Entra directo a Admin |
-| R7 | Sin permiso → a lo suyo | Admin | Escribir `…/operador` en la barra | Lleva a Admin, no a la página de venta |
-| R8 | Olvidé mi contraseña | Admin | Salir → "Olvidé mi contraseña" → enlace del correo → clave nueva | Pide la clave nueva y después entra a Admin |
-| R9 | Cambiar el inquilino | Admin | Ficha de **06B** → Datos → en Inquilino, nombre "Nuevo prueba" y correo `gustavobricenob+inquilino2@gmail.com` → Guardar | Sale "¿Cambia el inquilino?" con 3 botones. "Sí, cambiar el inquilino" → "art ya no figura como inquilino de 06B; ahora lo es… Al anterior también se le quitó el acceso a la app". **Esto le quita 06B a la cuenta Inquilino para siempre** |
-| R10 | …y el inquilino lo ve | Inquilino | Recargar /mi | 06B ya no está en su selector; las otras 3 sí |
-| R11 | Corregir sin quitar acceso | Admin | Ficha de **07A** → correo del inquilino con una letra cambiada → Guardar → "Es el mismo, corregir el correo". Después volver a poner el correo bueno, igual | No se le quita nada: la cuenta Inquilino sigue viendo 07A |
-| R12 | Otra cuenta abierta (prueba 5) | Admin + Inquilino en el **mismo** perfil | Accesos abierto como Admin; en otra pestaña entrar como Inquilino; volver a Accesos y tocar "Generar la invitación" | Solo el aviso de abajo ("En este navegador se abrió otra cuenta…"). Arriba **no** aparece "Sin permiso para invitar". No se crea ninguna invitación |
-| R13 | Mensaje de invitación | Admin | Accesos → generar una invitación → "Copiar el mensaje completo" → pegarlo en una nota | Dice "Entre o cree su cuenta con el correo…" |
-| R14 | Correo de la ficha | Admin | Accesos → Unidad 08D → "Es el…" Inquilino; después cambiar a Propietario; después escribir otro correo a mano y cambiar de unidad | Se llena solo con el correo de la ficha, con la nota "Tomado de la ficha de la unidad". Cambia al pasar a Propietario. El que se escribió a mano no se pisa |
-| R15 | Fila completa | Admin | Propietarios → tocar el nombre o la alícuota de una fila | Abre la ficha. Ctrl/Cmd + clic en el código sigue abriendo otra pestaña |
-| R16 | A favor en Admin | Admin | Propietarios → fila 02D; abrir su ficha | "A favor $ 50,00" en verde (no "$ -50,00" oscuro). En la ficha, la etiqueta y la tarjeta dicen "A favor" |
-| R17 | Coma decimal | Admin | Ficha de una unidad → Alícuota: probar "abc" → Guardar; después volver a poner **el valor original** con coma | "abc": aviso "La alícuota «abc» no se entiende…" y no guarda. Con coma, guarda bien |
-| R18 | Sr. | Admin | Propietarios → buscar las unidades importadas el 04-oct | Ningún nombre dice "Sr. Sr.": si alguno lo decía, ahora dice "Sr." una sola vez |
-| R19 | Datos de la administradora | Admin | Ajustes → "Datos de la administradora" → cambiar el RIF → Guardar | "Datos guardados", y el RIF nuevo queda al recargar |
-| R20 | Ícono | cualquiera | Mirar la pestaña del navegador | El ícono de Vecitap, no el triángulo de Next.js |
-
-No hace falta probar: "Debe N cuotas" con números (la org de prueba no tiene
-meses cerrados: se ve "Con deuda"; el cálculo se verificó en la base), el
-bloque D (crea un edificio de verdad) y el "- 0,00" (no se puede forzar a
-mano).
+La lista de la ronda 2 quedó dentro de la **lista única de pruebas de la ronda 3**, más arriba (R1 a R24 y N1 a N6).
 
 ## Tramo 1 validado (07-oct)
 
@@ -2427,6 +2531,22 @@ Pendiente puntual:
   `puede_operar`/`tiene_rol`/`es_operador` de más arriba — así que
   cualquier edición acá merece la misma revisión cuidadosa, no un cambio
   de una línea sin más.
+- **`administra_algo()` no filtra `membresias.activo`** (anotado el 08-oct,
+  revisión cruzada de la ronda 2). `tiene_rol()` sí lo filtra. Con una
+  membresía de administración desactivada, `/destino` manda a `/admin`, y
+  ahí no aparece ninguna organización (se ve "Nueva administradora"). No da
+  acceso a nada, pero los dos criterios tienen que ser el mismo. Es una
+  función `SECURITY DEFINER` de la lista de arriba: cambio con revisión
+  cuidadosa, en su propia migración. Mientras tanto, los rechazos por rol ya
+  no saltan a /destino sino a /sin-acceso (ronda 3), así que la diferencia no
+  puede generar un bucle.
+- **Política `org_editar` de `organizaciones`** (anotado el 08-oct):
+  `USING tiene_rol(id, [propietario_cuenta])` sin `WITH CHECK`, para
+  UPDATE de la fila entera. El plan C (05-oct) dice que un disparador
+  bloquea `plan`, tipo y tope de edificios y que hay permisos por columna;
+  falta verificarlo contra la base y decidir si la política tiene que
+  limitarse a las columnas que la administradora sí puede tocar (nombre,
+  RIF, logo).
 - El aviso "La API respondió: …" que muestra "Traer ahora" cuando falla
   es confuso: ese mensaje sale del `error` que devuelve la propia base
   (el bug de arriba), no de una respuesta real de DolarAPI — vale la pena

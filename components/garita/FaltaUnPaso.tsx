@@ -83,7 +83,7 @@ export function FaltaUnPaso({ correo, errorCarga }: { correo: string; errorCarga
           )}
 
           <div className="garita-fila">
-            <button type="submit" className="garita-boton ancho" disabled={enviando}>
+            <button type="submit" className="garita-boton ancho" disabled={enviando} aria-busy={enviando || undefined}>
               {enviando ? "Comprobando…" : "Usar la invitación"}
             </button>
           </div>

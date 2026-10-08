@@ -383,8 +383,8 @@ export function Cortes({
             >
               <Mail size={15} /> Probar el correo
             </Button>
-            <Button type="button" mini disabled={!recibos.length || enviando} onClick={() => setConfirmaEnvio(true)}>
-              <Send size={15} /> {enviando ? "Enviando…" : "Enviar por correo"}
+            <Button type="button" mini cargando={enviando} disabled={!recibos.length} onClick={() => setConfirmaEnvio(true)}>
+              <Send size={15} /> Enviar por correo
             </Button>
             {periodo &&
               (periodo.enviado_en ? (
@@ -534,7 +534,7 @@ export function Cortes({
                   <Input type="date" value={nota.hasta} onChange={(e) => setNota({ ...nota, hasta: e.target.value })} />
                 </Campo>
                 <div style={{ alignSelf: "end", display: "flex", gap: 8 }}>
-                  <Button type="button" disabled={guardandoNota} onClick={() => guardarNota(nota.texto, nota.hasta)}>
+                  <Button type="button" cargando={guardandoNota} onClick={() => guardarNota(nota.texto, nota.hasta)}>
                     Guardar
                   </Button>
                   {nota.texto && (
@@ -794,8 +794,8 @@ export function Cortes({
                       />
                     </Campo>
                   </div>
-                  <Button type="button" disabled={enviando} onClick={enviarPrueba}>
-                    <Send size={14} /> {enviando ? "Enviando…" : "Enviar la prueba"}
+                  <Button type="button" cargando={enviando} onClick={enviarPrueba}>
+                    <Send size={14} /> Enviar la prueba
                   </Button>
                 </div>
 

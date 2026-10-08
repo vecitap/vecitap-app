@@ -225,6 +225,23 @@ textarea.garita-campo {
   cursor: not-allowed;
 }
 
+/* Bloque E (08-oct): mismo criterio que .btn-cargando de components/ui —
+   una acción en curso se ve "ya va" (color pleno, giro), no "no se puede".
+   Los botones de la garita marcan la espera con aria-busy. */
+.garita-boton[aria-busy="true"]:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+.garita-boton[aria-busy="true"]::after {
+  content: "";
+  width: 0.9em;
+  height: 0.9em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-giro 0.7s linear infinite;
+}
+
 .garita-fila {
   display: flex;
   gap: 10px;

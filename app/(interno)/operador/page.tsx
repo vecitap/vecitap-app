@@ -21,7 +21,7 @@ export default async function OperadorHome() {
   if (!user) redirect("/entrar?volver=/operador");
 
   const { data: esOperador } = await supabase.rpc("es_operador");
-  if (!esOperador) redirect("/destino");
+  if (!esOperador) redirect("/sin-acceso");
 
   const [{ data: cartera, error }, { data: tareaLog }, { data: tasa }, { data: tasaLog }] = await Promise.all([
     supabase.rpc("cartera_operador"),

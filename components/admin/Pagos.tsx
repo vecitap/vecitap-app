@@ -486,7 +486,7 @@ export function Pagos({
                     onChange={(e) => setHuecoTasa(e.target.value)}
                   />
                 </div>
-                <Button type="button" variante="secundario" mini disabled={guardandoTasa} onClick={guardarHueco}>
+                <Button type="button" variante="secundario" mini cargando={guardandoTasa} onClick={guardarHueco}>
                   Guardar la tasa del {f.fecha}
                 </Button>
               </div>
@@ -494,7 +494,7 @@ export function Pagos({
           )}
 
           <div style={{ marginTop: 16 }}>
-            <Button type="button" disabled={ocupado} onClick={registrar}>
+            <Button type="button" cargando={ocupado} onClick={registrar}>
               Registrar como reportado
             </Button>
           </div>
@@ -665,7 +665,7 @@ export function Pagos({
                     </table>
                   </div>
                   <div style={{ padding: 18, borderTop: "1px solid var(--linea)" }}>
-                    <Button type="button" disabled={ocupado} onClick={conciliarLote}>
+                    <Button type="button" cargando={ocupado} onClick={conciliarLote}>
                       Conciliar {cruce.casan.length} pagos
                     </Button>
                   </div>

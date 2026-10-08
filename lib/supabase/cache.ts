@@ -1,7 +1,7 @@
 import { cache } from "react";
-import { isAuthRetryableFetchError, type AuthError } from "@supabase/supabase-js";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { ErrorSinConexion } from "@/lib/sin-conexion";
+import { esErrorDeConexionAuth } from "@/lib/supabase/conexion";
 
 /**
  * `getUser()` memoizado por petición con `cache()` de React: cuando más de
@@ -54,12 +54,6 @@ export const usuarioActual = cache(async () => {
     throw new ErrorSinConexion(e);
   }
   const { data, error } = resultado;
-  if (error && esErrorDeConexion(error)) throw new ErrorSinConexion(error);
+  if (esErrorDeConexionAuth(error)) throw new ErrorSinConexion(error);
   return data.user;
 });
-
-function esErrorDeConexion(error: AuthError): boolean {
-  if (isAuthRetryableFetchError(error)) return true;
-  // Por si una versión futura de auth-js deja pasar un 5xx con otra clase.
-  return typeof error.status === "number" && error.status >= 500;
-}

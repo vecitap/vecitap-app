@@ -232,7 +232,7 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
           />
         </div>
         <div className="garita-fila">
-          <button type="button" className="garita-boton ancho" disabled={validando} onClick={comprobarCodigoManual}>
+          <button type="button" className="garita-boton ancho" disabled={validando} aria-busy={validando || undefined} onClick={comprobarCodigoManual}>
             {validando ? "Comprobando…" : "Comprobar"}
           </button>
         </div>
@@ -307,7 +307,7 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
             </div>
           </div>
           <div className="garita-fila">
-            <button type="submit" className="garita-boton ancho" disabled={enviandoSinAnunciar}>
+            <button type="submit" className="garita-boton ancho" disabled={enviandoSinAnunciar} aria-busy={enviandoSinAnunciar || undefined}>
               Registrar y avisar al residente
             </button>
           </div>

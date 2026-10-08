@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Input, Select, type TonoBadge } from "@/components/ui";
-import { num0 } from "@/lib/formato";
+import { num0, numeroMalEscrito } from "@/lib/formato";
 import { BOLSILLOS, MODOS_COBRO } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { ConceptoCobro } from "@/lib/admin/tipos";
@@ -49,6 +49,11 @@ export function Cobros({
 
   async function agregar() {
     if (!nuevo.nombre.trim()) return setError("Falta el nombre.");
+    const malEscrito = numeroMalEscrito([
+      ["El monto", nuevo.monto],
+      ["El IVA", nuevo.iva],
+    ]);
+    if (malEscrito) return setError(malEscrito);
     setError(null);
     const supabase = crearClienteNavegador();
     const { error: e } = await supabase.from("conceptos_cobro").insert({
@@ -125,7 +130,13 @@ export function Cobros({
             </thead>
             <tbody>
               {conceptos.map((c) => (
-                <FilaConcepto key={`${c.id}:${c.nombre}:${c.monto}:${c.iva}`} concepto={c} onEditar={editar} onEliminar={() => setBorrar(c)} />
+                <FilaConcepto
+                  key={`${c.id}:${c.nombre}:${c.monto}:${c.iva}`}
+                  concepto={c}
+                  onEditar={editar}
+                  onEliminar={() => setBorrar(c)}
+                  onError={setError}
+                />
               ))}
             </tbody>
           </table>
@@ -203,10 +214,13 @@ function FilaConcepto({
   concepto: c,
   onEditar,
   onEliminar,
+  onError,
 }: {
   concepto: ConceptoCobro;
   onEditar: (id: string, campos: ActualizarConcepto) => void;
   onEliminar: () => void;
+  /** Un número que no se entiende: se avisa y el campo vuelve a lo guardado. */
+  onError: (mensaje: string) => void;
 }) {
   const [nombre, setNombre] = useState(c.nombre);
   const [monto, setMonto] = useState(String(c.monto));
@@ -243,6 +257,12 @@ function FilaConcepto({
           disabled={deVecitap}
           onChange={(e) => setMonto(e.target.value)}
           onBlur={() => {
+            const mal = numeroMalEscrito([["El monto", monto]]);
+            if (mal) {
+              onError(mal);
+              setMonto(String(c.monto));
+              return;
+            }
             const v = num0(monto);
             if (v !== Number(c.monto)) onEditar(c.id, { monto: v });
           }}
@@ -256,6 +276,12 @@ function FilaConcepto({
           disabled={deVecitap}
           onChange={(e) => setIva(e.target.value)}
           onBlur={() => {
+            const mal = numeroMalEscrito([["El IVA", iva]]);
+            if (mal) {
+              onError(mal);
+              setIva(String(c.iva));
+              return;
+            }
             const v = num0(iva);
             if (v !== Number(c.iva)) onEditar(c.id, { iva: v });
           }}

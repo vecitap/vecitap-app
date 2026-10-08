@@ -272,7 +272,7 @@ export function ImportarUnidades({
             </table>
           </div>
           <div style={{ padding: 18, borderTop: "1px solid var(--linea)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button type="button" disabled={!buenas.length || ocupado} onClick={aplicar}>
+            <Button type="button" cargando={ocupado} disabled={!buenas.length} onClick={aplicar}>
               Cargar {buenas.length} unidades
             </Button>
             <Button type="button" variante="secundario" onClick={() => setTexto("")}>

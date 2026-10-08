@@ -424,8 +424,8 @@ export function FormularioReportarPago({
           </div>
         )}
 
-        <Button type="submit" disabled={enviando} style={{ width: "100%" }}>
-          {enviando ? "Enviando…" : "Reportar el pago"}
+        <Button type="submit" cargando={enviando} style={{ width: "100%" }}>
+          Reportar el pago
         </Button>
       </form>
     </Card>

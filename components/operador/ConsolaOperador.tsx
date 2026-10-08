@@ -241,8 +241,8 @@ export function ConsolaOperador({
             <Button type="button" variante="secundario" mini onClick={cargarTasaAMano}>
               Guardar la de hoy
             </Button>
-            <Button type="button" variante="secundario" mini disabled={buscandoTasa} onClick={traerTasa}>
-              {buscandoTasa ? "Buscando…" : "Traer ahora"}
+            <Button type="button" variante="secundario" mini cargando={buscandoTasa} onClick={traerTasa}>
+              Traer ahora
             </Button>
           </div>
         </div>
@@ -280,8 +280,8 @@ export function ConsolaOperador({
               Corre a las 7:00 de Caracas. Nunca suspende a nadie: eso se decide a mano.
             </div>
           </div>
-          <Button type="button" variante="secundario" disabled={corriendo} onClick={correrAhora}>
-            {corriendo ? "Corriendo…" : "Correr ahora"}
+          <Button type="button" variante="secundario" cargando={corriendo} onClick={correrAhora}>
+            Correr ahora
           </Button>
         </div>
       </Card>

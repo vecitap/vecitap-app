@@ -16,3 +16,4 @@ export { Vacio } from "./Vacio";
 export { Cargando } from "./Cargando";
 export { Flechas } from "./Flechas";
 export { Confirmar } from "./Confirmar";
+export { EstadoGuardado } from "./EstadoGuardado";

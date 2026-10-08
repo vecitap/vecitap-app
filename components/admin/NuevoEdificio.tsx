@@ -102,7 +102,7 @@ export function NuevoEdificio({ orgId, onCerrar }: { orgId: string; onCerrar: ()
           <Button type="button" variante="secundario" onClick={onCerrar}>
             Cancelar
           </Button>
-          <Button type="button" disabled={ocupado} onClick={crear}>
+          <Button type="button" cargando={ocupado} onClick={crear}>
             Crear
           </Button>
         </div>

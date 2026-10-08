@@ -102,8 +102,8 @@ export function Invitacion({
               placeholder="a1b2c3…"
             />
           </Campo>
-          <Button type="submit" disabled={enviando} style={{ width: "100%" }}>
-            {enviando ? "Comprobando…" : "Usar la invitación"}
+          <Button type="submit" cargando={enviando} style={{ width: "100%" }}>
+            Usar la invitación
           </Button>
         </form>
         {agregar ? (

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/supabase";
 import { esUuid } from "@/lib/validacion";
 import { ROLES_ADMIN } from "@/lib/admin/constantes";
+import { esErrorDeConexionAuth, esRespuestaSinConexion } from "@/lib/supabase/conexion";
 
 const RUTAS_PROTEGIDAS = ["/admin", "/mi", "/operador", "/garita"];
 const RUTA_OPERADOR = "/operador";
@@ -49,6 +50,86 @@ function redirigirConCookies(
 }
 
 /**
+ * "No pudimos conectar. Reintente" (ronda 3, punto 5): **reescribe** a
+ * /sin-conexion, sin cambiar la URL, así "Reintentar" vuelve a pedir la
+ * página que se quería ver. Conserva las cookies igual que
+ * `redirigirConCookies` (si hubo un refresco de sesión antes del fallo, no
+ * se pierde).
+ */
+function sinConexionConCookies(request: NextRequest, response: NextResponse) {
+  const reescritura = NextResponse.rewrite(new URL("/sin-conexion", request.url));
+  for (const cookie of response.cookies.getAll()) {
+    reescritura.cookies.set(cookie);
+  }
+  return reescritura;
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   Permisos recién confirmados (ronda 3, punto 5: "más de 15 tiene_rol en
+   el mismo segundo").
+
+   Cada `<Link>` visible hace prefetch, y cada prefetch es una petición que
+   pasa por acá. Al abrir una sección de Admin, los 9 enlaces del lateral
+   disparaban 9 `tiene_rol()` casi juntos (logs de pruebas del 07-oct: más
+   de 40 en tres segundos con la tabla de Propietarios en pantalla). El
+   proxy no puede distinguir un prefetch de una navegación: Next 16 le
+   quita a propósito la cabecera `next-router-prefetch`.
+
+   Por eso se recuerda, **solo en memoria de esta instancia y por 30 s**,
+   que una cuenta ya pasó un chequeo. La clave lleva el `sub` verificado del
+   token (getClaims, firma comprobada), así que nunca se reusa entre cuentas.
+
+   Qué cambia en seguridad, dicho explícitamente:
+     · Solo se recuerdan los SÍ. Un "no" o un error se vuelve a preguntar
+       cada vez (fallar cerrado no cambia).
+     · Si a alguien le quitan el rol, el proxy lo puede dejar pasar hasta
+       30 s más en esta instancia. No le da datos: cada consulta de la
+       página pasa por RLS en la base, que lo ve al instante, y el layout de
+       la organización vuelve a preguntar `tiene_rol()` en cada carga.
+     · Una instancia nueva (o cada 30 s) empieza de cero.
+   ─────────────────────────────────────────────────────────────────────── */
+const PERMISO_VIGENCIA_MS = 30_000;
+const PERMISOS_MAXIMO = 5_000;
+const permisosConfirmados = new Map<string, number>();
+
+function permisoReciente(clave: string): boolean {
+  const vence = permisosConfirmados.get(clave);
+  if (vence === undefined) return false;
+  if (vence > Date.now()) return true;
+  permisosConfirmados.delete(clave);
+  return false;
+}
+
+function recordarPermiso(clave: string) {
+  // Tope de memoria: si se llena, se vacía entera (vuelve a preguntar).
+  if (permisosConfirmados.size >= PERMISOS_MAXIMO) permisosConfirmados.clear();
+  permisosConfirmados.set(clave, Date.now() + PERMISO_VIGENCIA_MS);
+}
+
+type Chequeo = "si" | "no" | "sin-conexion";
+
+/**
+ * Un chequeo de rol, con el recuerdo de 30 s de arriba. Falla cerrado: un
+ * error de la base es "no", salvo que sea de conexión, que es
+ * "sin-conexion" (pantalla de reintentar, que tampoco deja pasar).
+ */
+async function chequear(
+  clave: string,
+  preguntar: () => Promise<{ ok: boolean; status: number; error: unknown }>
+): Promise<Chequeo> {
+  if (permisoReciente(clave)) return "si";
+  try {
+    const r = await preguntar();
+    if (r.error) return esRespuestaSinConexion(r.status) ? "sin-conexion" : "no";
+    if (!r.ok) return "no";
+    recordarPermiso(clave);
+    return "si";
+  } catch {
+    return "sin-conexion";
+  }
+}
+
+/**
  * Se llamaba middleware.ts hasta Next.js 15; en Next 16 el archivo pasó a
  * llamarse proxy.ts (export `proxy`, no `middleware` — mismo mecanismo).
  *
@@ -68,13 +149,13 @@ function redirigirConCookies(
  *    edificio). /mi/* se queda sin gate de rol acá: no es un rol, es tener
  *    al menos una unidad asociada, y eso lo resuelve cada Server Component
  *    con mis_unidades().
- *    Quien tiene sesión pero no el rol va a /destino, no a `/` (08-oct,
- *    prueba 7 del tramo 1): `/` es la portada de venta, y alguien con sesión
- *    no tiene nada que hacer ahí. /destino lo manda a lo que sí puede ver.
- *    No hay bucle: /destino decide con es_operador / administra_algo /
- *    edificios_del_vigilante, y la página a la que manda (/operador,
- *    /admin, /garita, /mi a secas) no pasa por ninguna de estas tres ramas
- *    —/admin a secas lista solo las organizaciones donde tiene_rol() da sí.
+ *    Quien tiene sesión pero no el rol va a /sin-acceso (revisión cruzada
+ *    de la ronda 2, 08-oct): una página que no redirige a ningún lado y
+ *    ofrece "Ir a mi inicio" (/destino) y "Salir". No va a `/` (la portada
+ *    de venta, prueba 7 del tramo 1) ni salta solo a /destino: /destino y
+ *    estas ramas deciden con criterios distintos (administra_algo() no
+ *    filtra `activo`, tiene_rol() sí), y un salto automático podría
+ *    terminar en un bucle. Ver app/sin-acceso/page.tsx.
  *
  * Sin distinción por sección todavía (Session 1 del inventario de Admin):
  * cualquiera de los 4 roles entra a /admin/[orgId]/* completo, igual que
@@ -146,15 +227,33 @@ export async function proxy(request: NextRequest) {
           las ramas que redirigen pasan por `redirigirConCookies()`, que las
           copia a la redirección (antes se perdían ahí — ver esa función).
      ───────────────────────────────────────────────────────────────────── */
-  const { data: verificado, error: errorClaims } = await supabase.auth.getClaims();
+  let verificado: Awaited<ReturnType<typeof supabase.auth.getClaims>>["data"] = null;
+  let errorClaims: Awaited<ReturnType<typeof supabase.auth.getClaims>>["error"] = null;
+  let sinConexion = false;
+  try {
+    ({ data: verificado, error: errorClaims } = await supabase.auth.getClaims());
+    // Ronda 3, punto 5: con el token vencido, getClaims() tiene que
+    // renovarlo antes de contestar. Si Auth no responde, eso NO es "sin
+    // sesión" (no se sabe): no se manda a /entrar.
+    sinConexion = esErrorDeConexionAuth(errorClaims);
+  } catch {
+    // Si algo LANZA (red, runtime), tampoco es "sin sesión".
+    sinConexion = true;
+  }
 
   // Falla cerrado, cubriendo las tres formas del tipo de retorno (es una
   // unión de 3: con claims, con error, y **sin ninguno de los dos** cuando
   // simplemente no hay sesión — por eso no alcanza con mirar `error`).
   const sub = verificado?.claims?.sub;
-  const haySesion = !errorClaims && typeof sub === "string" && sub.length > 0;
+  const haySesion = !sinConexion && !errorClaims && typeof sub === "string" && sub.length > 0;
 
   const esRutaProtegida = RUTAS_PROTEGIDAS.some((ruta) => request.nextUrl.pathname.startsWith(ruta));
+
+  // Sigue fallando cerrado (no deja pasar a nadie): solo cambia la pantalla,
+  // "Reintente" en vez de Entrar.
+  if (sinConexion && esRutaProtegida) {
+    return sinConexionConCookies(request, response);
+  }
 
   if (!haySesion && esRutaProtegida) {
     const url = request.nextUrl.clone();
@@ -164,19 +263,17 @@ export async function proxy(request: NextRequest) {
   }
 
   if (haySesion && request.nextUrl.pathname.startsWith(RUTA_OPERADOR)) {
-    // Falla cerrado: cualquier error de red o de la función RPC se trata
-    // igual que "no es operador", nunca se deja pasar.
-    let esOperador = false;
-    try {
-      const { data, error } = await supabase.rpc("es_operador");
-      esOperador = !error && data === true;
-    } catch {
-      esOperador = false;
-    }
+    // Falla cerrado: cualquier error de la base es "no es operador"; uno de
+    // conexión, "reintente". Nunca se deja pasar.
+    const chequeo = await chequear(`${sub}|operador`, async () => {
+      const { data, error, status } = await supabase.rpc("es_operador");
+      return { ok: data === true, status, error };
+    });
+    if (chequeo === "sin-conexion") return sinConexionConCookies(request, response);
 
-    if (!esOperador) {
+    if (chequeo === "no") {
       const url = request.nextUrl.clone();
-      url.pathname = "/destino";
+      url.pathname = "/sin-acceso";
       url.search = "";
       return redirigirConCookies(url, response);
     }
@@ -187,22 +284,20 @@ export async function proxy(request: NextRequest) {
     const orgId = enAdmin[1];
     // Un orgId con formato inválido (typo, URL armada a mano) ni siquiera
     // llega a tiene_rol(): se corta acá, antes de la consulta.
-    let tieneAcceso = false;
-    if (esUuid(orgId)) {
-      // Mismo fail-closed que /operador: un orgId ajeno también cae acá,
-      // porque tiene_rol() devuelve false (no error) cuando el usuario no
-      // tiene ninguna membresía visible en esa organización.
-      try {
-        const { data, error } = await supabase.rpc("tiene_rol", { p_org: orgId, p_roles: [...ROLES_ADMIN] });
-        tieneAcceso = !error && data === true;
-      } catch {
-        tieneAcceso = false;
-      }
-    }
+    // Mismo fail-closed que /operador: un orgId ajeno también cae en "no",
+    // porque tiene_rol() devuelve false (no error) cuando el usuario no
+    // tiene ninguna membresía visible en esa organización.
+    const chequeo: Chequeo = !esUuid(orgId)
+      ? "no"
+      : await chequear(`${sub}|admin|${orgId}`, async () => {
+          const { data, error, status } = await supabase.rpc("tiene_rol", { p_org: orgId, p_roles: [...ROLES_ADMIN] });
+          return { ok: data === true, status, error };
+        });
+    if (chequeo === "sin-conexion") return sinConexionConCookies(request, response);
 
-    if (!tieneAcceso) {
+    if (chequeo === "no") {
       const url = request.nextUrl.clone();
-      url.pathname = "/destino";
+      url.pathname = "/sin-acceso";
       url.search = "";
       return redirigirConCookies(url, response);
     }
@@ -217,19 +312,17 @@ export async function proxy(request: NextRequest) {
   const enGarita = haySesion ? request.nextUrl.pathname.match(RUTA_GARITA_EDIFICIO) : null;
   if (enGarita) {
     const edificioId = enGarita[1];
-    let tieneAcceso = false;
-    if (esUuid(edificioId)) {
-      try {
-        const { data, error } = await supabase.rpc("edificios_del_vigilante");
-        tieneAcceso = !error && Array.isArray(data) && data.includes(edificioId);
-      } catch {
-        tieneAcceso = false;
-      }
-    }
+    const chequeo: Chequeo = !esUuid(edificioId)
+      ? "no"
+      : await chequear(`${sub}|garita|${edificioId}`, async () => {
+          const { data, error, status } = await supabase.rpc("edificios_del_vigilante");
+          return { ok: Array.isArray(data) && data.includes(edificioId), status, error };
+        });
+    if (chequeo === "sin-conexion") return sinConexionConCookies(request, response);
 
-    if (!tieneAcceso) {
+    if (chequeo === "no") {
       const url = request.nextUrl.clone();
-      url.pathname = "/destino";
+      url.pathname = "/sin-acceso";
       url.search = "";
       return redirigirConCookies(url, response);
     }

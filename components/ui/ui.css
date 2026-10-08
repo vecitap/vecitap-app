@@ -18,8 +18,57 @@
   cursor: pointer;
   transition: filter .15s ease;
 }
-.btn:hover { filter: brightness(1.05); }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn { position: relative; }
+.btn-texto { display: inline-flex; align-items: center; justify-content: center; gap: inherit; }
+.btn:hover:not(:disabled) { filter: brightness(1.05); }
+
+/* Desactivado (bloque E, 08-oct): antes era solo opacidad .5 sobre el
+   naranja, que en el tema claro seguía pareciendo un botón que se puede
+   tocar. Ahora pierde el color: fondo hundido, texto tenue, borde de línea
+   y cursor de prohibido. Vale para primario y secundario. */
+.btn:disabled {
+  background: var(--lienzo-alt);
+  border-color: var(--linea);
+  color: var(--tenue);
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* Cargando: conserva el color del botón (no es "no se puede", es "ya va"),
+   esconde el texto sin quitarle el lugar y muestra el giro encima. */
+.btn.btn-cargando:disabled {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: var(--acento-sobre);
+  cursor: progress;
+}
+.btn-secundario.btn-cargando:disabled {
+  background: transparent;
+  border-color: var(--linea-fuerte);
+  color: var(--acento-texto);
+}
+.btn-cargando .btn-texto { visibility: hidden; }
+.btn-giro {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.05em;
+  height: 1.05em;
+  margin: -0.525em 0 0 -0.525em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-giro .7s linear infinite;
+}
+@keyframes btn-giro { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .btn-giro { animation-duration: 2s; }
+}
+
+/* "Guardado ✓" / el error, al lado del botón (EstadoGuardado.tsx). */
+.estado-guardado { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.estado-guardado-ok { color: var(--verde); }
+.estado-guardado-error { color: var(--rojo); font-weight: 500; }
 
 .btn-secundario {
   background: transparent;

@@ -193,8 +193,24 @@ export function FormularioEntrar() {
     // mirando esta pantalla con la sesión hecha y sin botón que la lleve a
     // ningún lado. Con la confirmación encendida no hay sesión todavía, y
     // ahí sí corresponde el aviso de "revise su bandeja".
-    if (modo === "crear" && !data.session) {
-      setAviso("Cuenta creada. Confirme su correo y vuelva a entrar.");
+    //
+    // Revisión cruzada de la ronda 2 (08-oct): **sin sesión no se navega
+    // nunca**, en ningún modo. Ir a /destino sin sesión solo rebota a
+    // /entrar y se pierde el aviso.
+    if (!data.session) {
+      if (modo === "crear") {
+        // Supabase no avisa que el correo ya tenía cuenta (para no revelar
+        // qué correos existen): devuelve un usuario sin identidades y no
+        // manda ningún correo. Antes decía "Cuenta creada. Confirme su
+        // correo", y el correo nunca llegaba (validación del 04-oct, 20:47).
+        if (data.user && (data.user.identities?.length ?? 0) === 0) {
+          setError("Ese correo ya tiene una cuenta. Entre con su clave, o use «Olvidé mi contraseña».");
+          return;
+        }
+        setAviso("Cuenta creada. Confirme su correo y vuelva a entrar.");
+      } else {
+        setError("No se pudo abrir la sesión. Intente de nuevo.");
+      }
       return;
     }
 
@@ -300,7 +316,7 @@ export function FormularioEntrar() {
         )}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-          <Button type="submit" disabled={enviando}>
+          <Button type="submit" cargando={enviando}>
             {enviando
               ? "Un momento…"
               : modo === "clave-nueva"

@@ -2,8 +2,9 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Aviso, Button, Campo, Card, Confirmar, Input, Select } from "@/components/ui";
-import { fechaCorta, hoyLocalISO, num, num0 } from "@/lib/formato";
+import { Aviso, Button, Campo, Card, Confirmar, EstadoGuardado, Input, Select } from "@/components/ui";
+import { useAccion } from "@/hooks/useAccion";
+import { fechaCorta, hoyLocalISO, num0, numeroMalEscrito } from "@/lib/formato";
 import { correoValido, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -13,6 +14,9 @@ import { mensajeDeError } from "@/lib/errores";
 const TRATAMIENTOS = ["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""];
 
 type FormPersona = { prefijo: string; nombre: string; documento: string; telefono: string; correo: string; enviar: boolean };
+type Tipo = "propietario" | "inquilino";
+/** Qué hacer con cada persona cuyo correo cambió (ver `guardar`). */
+type Decisiones = Partial<Record<Tipo, "reemplazar" | "corregir">>;
 
 function aForm(v: Vinculo | null): FormPersona {
   return {
@@ -44,6 +48,10 @@ function aForm(v: Vinculo | null): FormPersona {
  * a `reemplazar_inquilino` (20261008120000), que hace lo mismo que "El
  * inquilino ya no ocupa la unidad" —con sus accesos y sus invitaciones
  * pendientes— y carga al nuevo, en una sola transacción.
+ *
+ * Ronda 3 (caso 44): lo mismo para el propietario, con
+ * `reemplazar_propietario` (20261008140000). Solo toca ESTA unidad: un
+ * propietario con varias conserva las otras, sus accesos y sus invitaciones.
  */
 export function DatosUnidad({
   orgId,
@@ -71,7 +79,9 @@ export function DatosUnidad({
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<string | null>(null);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
-  const [confirmarReemplazo, setConfirmarReemplazo] = useState(false);
+  // La pregunta abierta "¿cambia el propietario/inquilino?", con lo que ya
+  // se decidió para el otro (si cambiaron los dos, se pregunta uno por vez).
+  const [pregunta, setPregunta] = useState<{ tipo: Tipo; decisiones: Decisiones } | null>(null);
 
   // "Tiene inquilino" para la UI: el vigente que ya está en la base, o uno
   // que se va a crear en este mismo guardado. La base vuelve a comprobarlo
@@ -84,12 +94,44 @@ export function DatosUnidad({
   const otrosInquilinos = unidad.vinculos.filter((v) => v.tipo === "inquilino" && !v.hasta && v.id !== inq?.id).length;
   const pagaVuelve = pagaDe(unidad.paga) === "inquilino" && otrosInquilinos === 0;
 
-  // Otro inquilino, no una corrección: el vigente tenía correo y se escribió
+  // ¿Otra persona, no una corrección? El vigente tenía correo y se escribió
   // uno distinto. Corregir el nombre, el teléfono o completar un correo que
   // faltaba sigue editando a la misma persona, como antes.
-  const correoViejo = (inq?.personas?.correo || "").trim().toLowerCase();
-  const correoNuevo = i.correo.trim().toLowerCase();
-  const reemplaza = !!inq && !!correoViejo && !!correoNuevo && correoNuevo !== correoViejo && !!i.nombre.trim();
+  function cambiaPersona(actual: Vinculo | null, f: FormPersona) {
+    const viejo = (actual?.personas?.correo || "").trim().toLowerCase();
+    const nuevo = f.correo.trim().toLowerCase();
+    return !!actual && !!viejo && !!nuevo && nuevo !== viejo && !!f.nombre.trim();
+  }
+  const cambia: Record<Tipo, boolean> = { propietario: cambiaPersona(prop, p), inquilino: cambiaPersona(inq, i) };
+  const actualDe: Record<Tipo, Vinculo | null> = { propietario: prop, inquilino: inq };
+  const formDe: Record<Tipo, FormPersona> = { propietario: p, inquilino: i };
+
+  /** El RPC de la base que cambia a la persona de ese tipo, en una transacción. */
+  async function reemplazar(tipo: Tipo): Promise<string> {
+    const f = formDe[tipo];
+    const supabase = crearClienteNavegador();
+    const args = {
+      p_unidad: unidad.id,
+      p_prefijo: f.prefijo,
+      p_nombre: f.nombre,
+      p_documento: f.documento,
+      p_telefono: f.telefono,
+      p_correo: f.correo,
+      p_enviar: f.enviar,
+    };
+    const { data: apagados, error } =
+      tipo === "inquilino"
+        ? await supabase.rpc("reemplazar_inquilino", args)
+        : await supabase.rpc("reemplazar_propietario", args);
+    if (error) throw error;
+    const anterior = nombreDe(actualDe[tipo]) || `El ${tipo} anterior`;
+    return [
+      `${anterior} ya no figura como ${tipo} de ${unidad.codigo}; ahora lo es ${[f.prefijo, f.nombre.trim()].filter(Boolean).join(" ")}.`,
+      (apagados ?? 0) > 0 ? "Al anterior también se le quitó el acceso a esta unidad en la app." : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
 
   async function guardarVinculo(tipo: "propietario" | "inquilino", f: FormPersona, actual: Vinculo | null) {
     if (!f.nombre.trim()) return;
@@ -138,17 +180,17 @@ export function DatosUnidad({
   }
 
   /**
-   * `modo`: sin decidir todavía (abre la confirmación si cambió el correo
-   * del inquilino), "reemplazar" (es otro inquilino) o "corregir" (es la
-   * misma persona y el correo estaba mal: se edita en el lugar, como antes).
+   * `decisiones`, por cada persona cuyo correo cambió: todavía sin decidir
+   * (abre la confirmación), "reemplazar" (es otra persona) o "corregir" (es
+   * la misma y el correo estaba mal: se edita en el lugar, como antes).
    */
-  async function guardar(modo?: "reemplazar" | "corregir") {
-    if (reemplaza && !modo) {
-      setConfirmarReemplazo(true);
+  async function guardar(decisiones: Decisiones = {}) {
+    const sinDecidir = (["propietario", "inquilino"] as const).find((t) => cambia[t] && !decisiones[t]);
+    if (sinDecidir) {
+      setPregunta({ tipo: sinDecidir, decisiones });
       return;
     }
-    const cambiaInquilino = reemplaza && modo === "reemplazar";
-    setConfirmarReemplazo(false);
+    setPregunta(null);
     if (faltaInquilino) {
       setError(
         `La unidad ${unidad.codigo} no tiene un inquilino registrado. Cargue primero los datos del inquilino y después indique que él paga el condominio.`
@@ -157,57 +199,37 @@ export function DatosUnidad({
     }
     // Un número que no se entiende ya no se guarda como 0 sin avisar
     // (ronda 2, caso 40). Vacío sigue siendo 0, como antes.
-    const malEscrito = (
-      [
-        ["La alícuota", u.alicuota],
-        ["El saldo inicial de condominio", u.saldo],
-        ["El saldo inicial de administración", u.saldoHon],
-      ] as const
-    ).find(([, v]) => v.trim() !== "" && num(v) === null);
+    const malEscrito = numeroMalEscrito([
+      ["La alícuota", u.alicuota],
+      ["El saldo inicial de condominio", u.saldo],
+      ["El saldo inicial de administración", u.saldoHon],
+    ]);
     if (malEscrito) {
-      setError(`${malEscrito[0]} «${malEscrito[1]}» no se entiende. Use coma para los decimales, por ejemplo 1,25.`);
+      setError(malEscrito);
       return;
     }
-    setOcupado(true);
     setError(null);
     setListo(null);
-    try {
-      const supabase = crearClienteNavegador();
-      const { error } = await supabase
-        .from("unidades")
-        .update({ codigo: u.codigo.trim(), alicuota: num0(u.alicuota), saldo_inicial: num0(u.saldo), saldo_inicial_hon: num0(u.saldoHon), activa: u.activa })
-        .eq("id", unidad.id);
-      if (error) throw error;
-      await guardarVinculo("propietario", p, prop);
-      let aviso: string | null = null;
-      if (cambiaInquilino) {
-        const { data: apagados, error: e3 } = await supabase.rpc("reemplazar_inquilino", {
-          p_unidad: unidad.id,
-          p_prefijo: i.prefijo,
-          p_nombre: i.nombre,
-          p_documento: i.documento,
-          p_telefono: i.telefono,
-          p_correo: i.correo,
-          p_enviar: i.enviar,
-        });
-        if (e3) throw e3;
-        aviso = [
-          `${nombreDe(inq) || "El inquilino anterior"} ya no figura como inquilino de ${unidad.codigo}; ahora lo es ${[i.prefijo, i.nombre.trim()].filter(Boolean).join(" ")}.`,
-          (apagados ?? 0) > 0 ? "Al anterior también se le quitó el acceso a la app." : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-      } else {
-        await guardarVinculo("inquilino", i, inq);
-      }
-      await guardarPaga();
-      if (aviso) setListo(aviso);
-      router.refresh();
-    } catch (e) {
-      setError(mensajeDeError(e));
-    }
-    setOcupado(false);
+    await escribir.ejecutar(decisiones);
   }
+
+  // Bloque E: la escritura, con "Guardado ✓" (o el error) al lado del botón.
+  const escribir = useAccion(async (decisiones: Decisiones) => {
+    const supabase = crearClienteNavegador();
+    const { error } = await supabase
+      .from("unidades")
+      .update({ codigo: u.codigo.trim(), alicuota: num0(u.alicuota), saldo_inicial: num0(u.saldo), saldo_inicial_hon: num0(u.saldoHon), activa: u.activa })
+      .eq("id", unidad.id);
+    if (error) throw error;
+    const avisos: string[] = [];
+    for (const tipo of ["propietario", "inquilino"] as const) {
+      if (cambia[tipo] && decisiones[tipo] === "reemplazar") avisos.push(await reemplazar(tipo));
+      else await guardarVinculo(tipo, formDe[tipo], actualDe[tipo]);
+    }
+    await guardarPaga();
+    if (avisos.length) setListo(avisos.join(" "));
+    router.refresh();
+  });
 
   async function inquilinoSeFue() {
     if (!inq) return;
@@ -374,37 +396,46 @@ export function DatosUnidad({
         "Se registra para poder enviarle el corte, pero la deuda sigue siendo del propietario.",
         inq && (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--linea)" }}>
-            <Button type="button" variante="secundario" mini disabled={ocupado} onClick={() => setConfirmarSalida(true)}>
+            <Button type="button" variante="secundario" mini cargando={ocupado} disabled={escribir.enviando} onClick={() => setConfirmarSalida(true)}>
               El inquilino ya no ocupa la unidad
             </Button>
           </div>
         )
       )}
 
-      <div>
-        <Button type="button" disabled={ocupado} onClick={() => guardar()}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <Button type="button" cargando={escribir.enviando} disabled={ocupado} onClick={() => guardar()}>
           Guardar cambios
         </Button>
+        <EstadoGuardado estado={escribir.estado} error={escribir.error} />
       </div>
 
-      {confirmarReemplazo && inq && (
-        <Confirmar
-          titulo="¿Cambia el inquilino?"
-          texto={[
-            `El correo ${i.correo.trim()} no es el de ${nombreDe(inq) || "el inquilino actual"} (${inq.personas?.correo}).`,
-            `Si sigue, ${nombreDe(inq) || "el inquilino actual"} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${fechaCorta(hoyLocalISO())}, igual que con «El inquilino ya no ocupa la unidad»: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes dejan de servir.`,
-            `Y se registra como inquilino nuevo a ${[i.prefijo, i.nombre.trim()].filter(Boolean).join(" ")}, con ese correo.`,
-            pagaDe(unidad.paga) === "inquilino" ? "La unidad sigue en «paga el inquilino»." : "",
-            "Si es la misma persona y solo estaba mal el correo, use «Es el mismo, corregir el correo»: no se le quita el acceso.",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          boton="Sí, cambiar el inquilino"
-          onSi={() => guardar("reemplazar")}
-          onNo={() => setConfirmarReemplazo(false)}
-          otra={{ boton: "Es el mismo, corregir el correo", onClick: () => guardar("corregir") }}
-        />
-      )}
+      {pregunta && actualDe[pregunta.tipo] && (() => {
+        const { tipo, decisiones } = pregunta;
+        const actual = actualDe[tipo]!;
+        const f = formDe[tipo];
+        const quien = nombreDe(actual) || `el ${tipo} actual`;
+        return (
+          <Confirmar
+            titulo={`¿Cambia el ${tipo}?`}
+            texto={[
+              `El correo ${f.correo.trim()} no es el de ${quien} (${actual.personas?.correo}).`,
+              tipo === "inquilino"
+                ? `Si sigue, ${quien} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${fechaCorta(hoyLocalISO())}, igual que con «El inquilino ya no ocupa la unidad»: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes dejan de servir.`
+                : `Si sigue, ${quien} deja de figurar como propietario de ${unidad.codigo} desde hoy, ${fechaCorta(hoyLocalISO())}: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes para esta unidad dejan de servir. Si es propietario de otras unidades, esas no se tocan. Lo que se debía hasta hoy sigue en la cuenta de la unidad.`,
+              `Y se registra como ${tipo} nuevo a ${[f.prefijo, f.nombre.trim()].filter(Boolean).join(" ")}, con ese correo.`,
+              tipo === "inquilino" && pagaDe(unidad.paga) === "inquilino" ? "La unidad sigue en «paga el inquilino»." : "",
+              "Si es la misma persona y solo estaba mal el correo, use «Es el mismo, corregir el correo»: no se le quita el acceso.",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            boton={`Sí, cambiar el ${tipo}`}
+            onSi={() => guardar({ ...decisiones, [tipo]: "reemplazar" })}
+            onNo={() => setPregunta(null)}
+            otra={{ boton: "Es el mismo, corregir el correo", onClick: () => guardar({ ...decisiones, [tipo]: "corregir" }) }}
+          />
+        );
+      })()}
 
       {confirmarSalida && inq && (
         <Confirmar

@@ -258,7 +258,7 @@ export function ImportarSaldos({
             </table>
           </div>
           <div style={{ padding: 18, borderTop: "1px solid var(--linea)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button type="button" disabled={!cruzan.length || ocupado} onClick={aplicar}>
+            <Button type="button" cargando={ocupado} disabled={!cruzan.length} onClick={aplicar}>
               Aplicar {cruzan.length} saldos
             </Button>
             <Button type="button" variante="secundario" onClick={() => setFilas([])}>

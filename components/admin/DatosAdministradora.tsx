@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Aviso, Button, Campo, Card, Input } from "@/components/ui";
+import { Button, Campo, Card, EstadoGuardado, Input } from "@/components/ui";
+import { useAccion } from "@/hooks/useAccion";
 import { crearClienteNavegador } from "@/lib/supabase/client";
-import { mensajeDeError } from "@/lib/errores";
 
 /**
  * Nombre y RIF de la administradora (bloque C, 08-oct). No existe en
@@ -30,15 +30,9 @@ export function DatosAdministradora({
 }) {
   const router = useRouter();
   const [f, setF] = useState({ nombre, rif: rif ?? "" });
-  const [ocupado, setOcupado] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [listo, setListo] = useState(false);
 
-  async function guardar() {
-    if (!f.nombre.trim()) return setError("Falta el nombre de la administradora.");
-    setOcupado(true);
-    setError(null);
-    setListo(false);
+  const guardar = useAccion(async () => {
+    if (!f.nombre.trim()) throw new Error("Falta el nombre de la administradora.");
     const supabase = crearClienteNavegador();
     // Con .select(): un UPDATE que RLS filtra no da error, devuelve 0 filas.
     const { data, error: e } = await supabase
@@ -46,12 +40,10 @@ export function DatosAdministradora({
       .update({ nombre: f.nombre.trim(), rif: f.rif.trim() || null })
       .eq("id", orgId)
       .select("id");
-    setOcupado(false);
-    if (e) return setError(mensajeDeError(e));
-    if (!data || data.length === 0) return setError("No se pudo guardar. Solo la cuenta dueña de la administradora puede cambiar estos datos.");
-    setListo(true);
+    if (e) throw e;
+    if (!data || data.length === 0) throw new Error("No se pudo guardar. Solo la cuenta dueña de la administradora puede cambiar estos datos.");
     router.refresh();
-  }
+  });
 
   return (
     <Card>
@@ -60,16 +52,6 @@ export function DatosAdministradora({
         Salen en el recibo impreso y en el estado de cuenta que recibe el propietario.
         {!puedeEditar && " Solo la cuenta dueña de la administradora puede cambiarlos."}
       </p>
-      {error && (
-        <div style={{ marginBottom: 12 }}>
-          <Aviso tono="rojo">{error}</Aviso>
-        </div>
-      )}
-      {listo && (
-        <div style={{ marginBottom: 12 }}>
-          <Aviso tono="verde">Datos guardados.</Aviso>
-        </div>
-      )}
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
         <Campo etiqueta="Nombre">
           <Input value={f.nombre} disabled={!puedeEditar} onChange={(e) => setF({ ...f, nombre: e.target.value })} />
@@ -79,10 +61,11 @@ export function DatosAdministradora({
         </Campo>
       </div>
       {puedeEditar && (
-        <div style={{ marginTop: 16 }}>
-          <Button type="button" disabled={ocupado} onClick={guardar}>
+        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Button type="button" cargando={guardar.enviando} onClick={() => guardar.ejecutar()}>
             Guardar datos
           </Button>
+          <EstadoGuardado estado={guardar.estado} error={guardar.error} />
         </div>
       )}
     </Card>

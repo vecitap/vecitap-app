@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
-import { Aviso, Button, Campo, Card, Flechas, Input, Select, Textarea } from "@/components/ui";
+import { Aviso, Button, Campo, Card, EstadoGuardado, Flechas, Input, Select, Textarea } from "@/components/ui";
+import { useAccion } from "@/hooks/useAccion";
 import { num, num0, usd } from "@/lib/formato";
 import { interpretarPegado } from "@/lib/admin/pegar-partidas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -64,8 +65,8 @@ export function Ajustes({
     notificar(mensajeDeError(err), "error");
   }
 
-  async function guardarEdificio() {
-    setOcupado(true);
+  // Bloque E: "Guardado ✓" al lado del botón, en vez del aviso de arriba.
+  const guardarEdificio = useAccion(async () => {
     const supabase = crearClienteNavegador();
     const { error } = await supabase
       .from("edificios")
@@ -79,11 +80,9 @@ export function Ajustes({
         tolerancia_redondeo: num0(e.redondeo),
       })
       .eq("id", edificio.id);
-    setOcupado(false);
-    if (error) return fallo(error);
-    notificar("Edificio actualizado.");
+    if (error) throw error;
     router.refresh();
-  }
+  });
 
   /** Acepta varias de una vez: pegar una columna de Excel crea todas. */
   async function agregarCat(texto?: string) {
@@ -208,9 +207,8 @@ export function Ajustes({
       {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "verde"}>{mensaje.texto}</Aviso>}
 
       <DatosAdministradora
-        // key: después de guardar, router.refresh() trae el valor nuevo y la
-        // tarjeta se remonta con él (mismo patrón que las filas editables).
-        key={`${organizacion.nombre}|${organizacion.rif ?? ""}`}
+        // Sin key: lo que se ve ya es lo guardado, y remontar la tarjeta
+        // después del refresh() borraría el "Guardado ✓".
         orgId={orgId}
         nombre={organizacion.nombre}
         rif={organizacion.rif}
@@ -263,10 +261,11 @@ export function Ajustes({
             </Campo>
           </div>
         </div>
-        <div style={{ marginTop: 16 }}>
-          <Button type="button" disabled={ocupado} onClick={guardarEdificio}>
+        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Button type="button" cargando={guardarEdificio.enviando} onClick={() => guardarEdificio.ejecutar()}>
             Guardar
           </Button>
+          <EstadoGuardado estado={guardarEdificio.estado} error={guardarEdificio.error} />
         </div>
       </Card>
 
@@ -396,7 +395,7 @@ Mantenimiento`}
                   </Select>
                 </Campo>
               </div>
-              <Button type="button" disabled={ocupado || problemas > 0} onClick={guardarPegado}>
+              <Button type="button" cargando={ocupado} disabled={problemas > 0} onClick={guardarPegado}>
                 Cargar {leido.filter((r) => r.tipo === "partida").length} partidas
               </Button>
             </div>

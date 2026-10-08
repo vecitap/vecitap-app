@@ -42,7 +42,7 @@ export default function ErrorDeLaApp({
         </p>
         <Button
           type="button"
-          disabled={reintentando}
+          cargando={reintentando}
           style={{ width: "100%" }}
           onClick={() => {
             setReintentando(true);
@@ -53,7 +53,7 @@ export default function ErrorDeLaApp({
             setTimeout(() => setReintentando(false), 4000);
           }}
         >
-          {reintentando ? "Reintentando…" : "Reintentar"}
+          Reintentar
         </Button>
         {error.digest && !sinConexion && (
           <p className="mono" style={{ color: "var(--tenue)", fontSize: 11.5, marginBottom: 0, textAlign: "center" }}>

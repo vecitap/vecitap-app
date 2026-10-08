@@ -98,6 +98,7 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
                   type="button"
                   className="garita-boton chico"
                   disabled={saliendoIds.has(v.visita_id)}
+                  aria-busy={saliendoIds.has(v.visita_id) || undefined}
                   onClick={() => registrarSalida(v.visita_id)}
                 >
                   Registrar salida

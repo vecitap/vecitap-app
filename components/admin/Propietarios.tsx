@@ -157,7 +157,10 @@ export function Propietarios({
                     key={u.id}
                     // Toda la fila abre la ficha (ronda 2, pedido de Gustavo).
                     // Los dos <Link> se quedan: son los que alcanza el teclado
-                    // y los que permiten abrir en otra pestaña.
+                    // y los que permiten abrir en otra pestaña. Sin prefetch
+                    // (ronda 3): con 53 unidades eran 106 pedidos al servidor
+                    // —cada uno con su tiene_rol()— apenas se abría la lista.
+                    // Next igual hace prefetch al pasar el mouse por encima.
                     onClick={(e) => {
                       if ((e.target as HTMLElement).closest("a")) return;
                       router.push(href);
@@ -165,7 +168,7 @@ export function Propietarios({
                     style={{ cursor: "pointer" }}
                   >
                     <td className="mono cabeza" style={{ fontWeight: 600 }}>
-                      <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
+                      <Link href={href} prefetch={false} style={{ color: "inherit", textDecoration: "none" }}>
                         {u.codigo}
                         {!u.activa && <span style={{ color: "var(--tenue)" }}> · inactiva</span>}
                       </Link>
@@ -193,7 +196,7 @@ export function Propietarios({
                       {TEXTO_TOTAL(total)}
                     </td>
                     <td className="flecha" style={{ width: 28 }}>
-                      <Link href={href} aria-label={`Abrir la ficha de ${u.codigo}`}>
+                      <Link href={href} prefetch={false} aria-label={`Abrir la ficha de ${u.codigo}`}>
                         <ChevronRight size={15} style={{ color: "var(--tenue)" }} />
                       </Link>
                     </td>

@@ -75,7 +75,7 @@ export function PrimerEdificio({ orgId }: { orgId: string }) {
         </div>
       </div>
       <div style={{ marginTop: 18 }}>
-        <Button type="button" disabled={ocupado} onClick={crear}>
+        <Button type="button" cargando={ocupado} onClick={crear}>
           Crear edificio
         </Button>
       </div>
