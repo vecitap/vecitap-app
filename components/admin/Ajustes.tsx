@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { Aviso, Button, Campo, Card, EstadoGuardado, Flechas, Input, Select, Textarea } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
-import { num, num0, usd } from "@/lib/formato";
+import { num, num0, paraCampo, usd } from "@/lib/formato";
 import { interpretarPegado } from "@/lib/admin/pegar-partidas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { LogoOrg } from "./LogoOrg";
@@ -47,9 +47,9 @@ export function Ajustes({
     rif: edificio.rif ?? "",
     direccion: edificio.direccion ?? "",
     prefijo: edificio.prefijo_recibo,
-    mora: String(edificio.interes_mora),
-    tolerancia: String(edificio.tolerancia_alicuota),
-    redondeo: String(edificio.tolerancia_redondeo ?? 0.5),
+    mora: paraCampo(edificio.interes_mora, 0),
+    tolerancia: paraCampo(edificio.tolerancia_alicuota, 0),
+    redondeo: paraCampo(edificio.tolerancia_redondeo ?? 0.5, 0),
   });
   const [nuevaCat, setNuevaCat] = useState("");
   const [pegado, setPegado] = useState("");
@@ -473,7 +473,7 @@ function FilaPartida({
 }) {
   const [concepto, setConcepto] = useState(p.concepto);
   const [referencia, setReferencia] = useState(p.referencia ?? "");
-  const [monto, setMonto] = useState(String(p.monto));
+  const [monto, setMonto] = useState(paraCampo(p.monto));
 
   return (
     <div
@@ -507,7 +507,10 @@ function FilaPartida({
         placeholder="0,00"
         onChange={(x) => setMonto(x.target.value)}
         onBlur={() => {
-          const v = num(monto) ?? 0;
+          // Un monto que no se entiende vuelve a lo guardado en vez de
+          // guardarse como 0 (ronda 4, mismo criterio que el caso 49).
+          const v = monto.trim() === "" ? 0 : num(monto);
+          if (v === null) return setMonto(paraCampo(p.monto));
           if (v !== Number(p.monto)) onEditar(p.id, { monto: v });
         }}
         style={{ padding: "7px 9px", fontSize: 13, textAlign: "right" }}

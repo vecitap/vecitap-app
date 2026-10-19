@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Confirmar, EstadoGuardado, Input, Select } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
-import { fechaCorta, hoyLocalISO, num0, numeroMalEscrito } from "@/lib/formato";
+import { fechaCorta, hoyLocalISO, num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
 import { correoValido, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -67,9 +67,11 @@ export function DatosUnidad({
   const router = useRouter();
   const [u, setU] = useState({
     codigo: unidad.codigo,
-    alicuota: String(unidad.alicuota),
-    saldo: String(unidad.saldo_inicial),
-    saldoHon: String(unidad.saldo_inicial_hon),
+    // Escritos como en Venezuela y sin recortar decimales (ronda 4, caso
+    // 50): la alícuota conserva los suyos y guardar sin tocar no cambia nada.
+    alicuota: paraCampo(unidad.alicuota, 0),
+    saldo: paraCampo(unidad.saldo_inicial),
+    saldoHon: paraCampo(unidad.saldo_inicial_hon),
     activa: unidad.activa,
   });
   const [paga, setPaga] = useState<Paga>(pagaDe(unidad.paga));

@@ -16,6 +16,170 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 4 del tramo 2 (18-oct) — bloques 1, 2 y 4 construidos; el importador va en la ronda 5
+
+Todo en `dev`, **sin commit**. `npx tsc --noEmit`, `npm run lint` y
+`npm run build` en verde. Desvíos frente a `main`: casos 50 a 55 de
+`docs/casos-de-uso-mejorados.md`.
+
+Gustavo probó las rondas 2 y 3: 24 OK, 4 OK con observaciones, 1 falla menor.
+Esta ronda corrige lo que salió de ahí. **El bloque 3 (importador «Cargar
+datos») es la ronda 5**, por decisión de Nicolás: se empieza después de
+entregar esta.
+
+**No toca autenticación ni funciones de seguridad.** Sí agrega dos rutas que
+autorizan por su cuenta (no pasan por los layouts), conviene mirarlas en la
+revisión cruzada: `app/(residente)/mi/[unidadId]/recibo/papel/route.ts` y
+`app/(admin)/admin/[orgId]/[edificioId]/cortes/papel/route.ts`.
+
+### Qué se hizo
+
+- **1.1 Montos en los campos (caso 50).** `paraCampo()` en `lib/formato.ts`:
+  escribe el valor guardado como «1.234,56» **sin recortar decimales** (la
+  alícuota 1,48768 queda entera), así que guardar sin tocar devuelve el mismo
+  número. Ida y vuelta comprobada con 13 casos (montos, alícuotas, tasa,
+  negativos, millones). Aplicado en Cobros, ficha de la unidad, Ajustes,
+  Cierre del mes y la suscripción de Operador. En Cobros, el aviso se borra al
+  corregir y un cobro no puede quedar sin nombre. Las cifras de solo lectura
+  ya pasaban por `nf()`: se revisaron todas.
+- **1.2 Saldo a favor (caso 51).** `favorQueQueda()` en `lib/recibo-papel.ts`:
+  con `total = 0`, lo que sobra del a favor. Recibo en pantalla, recibo en
+  papel y previa de Cierre del mes (columna «A favor» nueva).
+- **1.3 Tasa del mes (caso 52).** Al leer la base se vio que `cerrar_periodo()`
+  ya toma la del último día del mes si la tasa es 0: **cerrar con 0 no deja los
+  bolívares en cero**. Nicolás eligió «mostrar, no fijar»: el campo queda vacío
+  con la explicación y la última tasa publicada con su fecha (`tasa_atrasada()`,
+  que cubre fines de semana y feriados). Además: vacío ya no guarda tasa 1 en la
+  corrección, «abc» avisa, y la migración M1 (abajo).
+- **1.4 Recibo impreso (caso 53).** Rutas propias, en la misma pestaña, con
+  barra «Volver / Imprimir o guardar PDF» que no se imprime y hoja carta
+  centrada en computadora (`paraPantalla()` en `lib/recibo-papel.ts`). La carga
+  del recibo del residente pasó a `lib/residente/recibo.ts` (la usan la página y
+  la ruta). El papel de Admin pasó a `lib/admin/papel-recibos.ts` (la usan la
+  vista previa de Cortes y la ruta). La ruta de Admin vuelve a comprobar
+  `tiene_rol` con `ROLES_ADMIN` y que el edificio sea de la organización.
+  **Verificado contra `next start`:** sin sesión, las dos rutas mandan a
+  Entrar (307) como el resto de /mi y /admin. Con sesión no se pudo probar en
+  local (no hay claves de las cuentas de prueba en la máquina): va en la lista
+  de Gustavo. El listado de cortes y el informe de asamblea siguen en ventana
+  aparte, ahora con «← Cerrar».
+- **1.5 Cuotas: verificado, sin cambios.** Simulado en pruebas en
+  transacciones deshechas (noviembre cerrado sobre octubre, saldos fijados con
+  ajustes): **1,3 cuotas → «Debe 2 cuotas»**, 1,0 → «Debe 1 cuota», 2,3 con dos
+  meses cerrados → «Debe más de 2 cuotas», a favor → «Al día». La mora no se
+  pudo ejercitar: `cerrar_periodo()` solo la cobra sobre lo vencido, y los
+  recibos de octubre vencen en noviembre. Como `mis_cuotas()` cuenta cada
+  recibo con su mora incluida, el criterio no cambia cuando la haya.
+- **2 Monto exacto en Bs (caso 54).** `lib/residente/monto-exacto.ts`: deuda ×
+  tasa **de la fecha del pago**, redondeado hacia arriba al céntimo. Contra el
+  disparador `pago_convierte` (`round(monto / tasa, 4)`): 0 fallas en 200.000
+  casos al azar. La deuda es la de la unidad (`mis_unidades().saldo`), nunca
+  la suma. No aparece con paga = inquilino para el propietario (la página
+  sigue redirigiendo, caso 35), ni al día, ni en dólares. Papel y «Mi recibo»
+  usan el mismo redondeo.
+- **4 Varias administradoras (caso 55).** `resumenUnidades()` agrega
+  `porEdificio` solo si hay más de una organización; con una, la pantalla no
+  cambia. Sin migración: es pantalla.
+
+### Migración nueva — aplicada en vecitap-pruebas el 18-oct
+
+| Migración | Verificación en pruebas |
+|---|---|
+| `20261018120000_periodo_cerrado_exige_tasa.sql` (M1) | Restricción `periodos_cerrado_con_tasa` validada. Poner tasa 0 a un mes cerrado → error 23514. Abrir noviembre con tasa 0 y cerrarlo (transacción deshecha) → quedó en 880,1159: el cierre sigue funcionando. Antes de aplicarla: 0 meses cerrados sin tasa en pruebas; producción no tiene ningún período (leído) |
+
+Con su rollback en `supabase/rollbacks/`. **Producción no se tocó.**
+Producción necesita, en orden: las 4 del tramo 1 (20260930120000,
+20260930130000, 20260930140000, 20261005120000), las 2 de la ronda 2
+(20261008120000, 20261008130000), las 2 de la ronda 3 (20261008140000,
+20261008150000) y esta (20261018120000).
+
+### Datos de prueba — «Administradora Sintética B» (vecitap-pruebas, 18-oct)
+
+Para probar el caso 55. Todo sintético; lo único real es la dirección de
+correo de prueba de Gustavo (`+propietario`), que es suya.
+
+| Qué | id |
+|---|---|
+| Organización «Administradora Sintética B» (RIF J-00000000-0) | `78a5cd03-3063-4389-b37d-cc78a4a91fd9` |
+| Edificio «Residencias Sintéticas» (prefijo SINB, mora 0 %) | `771c81a2-aff4-41f4-a3ab-50c29af53846` |
+| Unidad A-1 (alícuota 50, saldo inicial 0) → debe $ 50,00 | `2e0f6672-3b7b-415c-adcf-85a916f785b2` |
+| Unidad A-2 (alícuota 50, saldo inicial 20) → debe $ 70,00 | `7b64c093-c75f-4126-957c-700acf31690e` |
+| Período Octubre 2026, cerrado (gasto común $ 100, tasa 880,1159) | `7aa33a77-4286-4577-a2ef-13e823d6ac84` |
+| Persona «Propietario Sintético» (propietario de A-1 y A-2) | `1b8416e8-1e66-4c28-acbe-0645938c1395` |
+| Membresía `propietario_cuenta` de la cuenta **Admin de Gustavo** | `87b924f3-d410-4a1b-9622-2c600b0d0d03` |
+| Membresías `residente` (propietario) de la cuenta **Propietario de Gustavo** en A-1 y A-2 | `c8e5b4c1-f6b3-472f-a7f7-b457f96f116b`, `83575e0a-97e0-451e-8ea4-245a894d15da` |
+
+- **La cuenta Admin de Gustavo administra también B.** La base exige que
+  toda organización tenga un administrador (`membresia_ultimo_admin`) y cerrar
+  el mes exige `puede_operar`. Efecto visible: en /admin ve dos
+  administradoras. Sirve además para registrar un pago en B y ver bajar ese
+  total solo.
+- **Cómo borrarla** (en vecitap-pruebas, nunca en producción; se ensayó en una
+  transacción deshecha y no queda nada: edificios, unidades, recibos,
+  membresías y personas caen en cascada):
+
+  ```sql
+  delete from public.organizaciones
+   where id = '78a5cd03-3063-4389-b37d-cc78a4a91fd9'
+     and nombre = 'Administradora Sintética B';
+  -- Esperado: DELETE 1. Comprobar:
+  select count(*) from public.membresias where org_id = '78a5cd03-3063-4389-b37d-cc78a4a91fd9';  -- 0
+  ```
+
+### Para la ronda 5 (importador «Cargar datos»), ya decidido
+
+- «Cargar datos» **reemplaza** a «Importar unidades». «Cargar saldos» queda
+  como está.
+- **Decisión provisional, para confirmar con Gustavo:** una fila sin alícuota
+  (el Estacionamiento) se muestra marcada, por omisión **no** se carga, siempre
+  con aviso, y se puede elegir cargarla como estacionamiento con alícuota 0.
+- Propietario repetido: se junta solo si coincide correo o teléfono. Si solo
+  coincide el nombre, la previa lo marca como dudoso y decide la
+  administradora. Igual con una persona que ya existe en la organización.
+- Unidad que ya existe: la previa lo dice fila por fila («se actualiza» o «se
+  omite»). **Proponer la regla antes de implementarla.**
+- El saldo inicial va en el mismo archivo y respeta el aviso de meses cerrados.
+- La copia anonimizada de la planilla no entra al repo: confirmar que esté
+  fuera de la carpeta o en `.gitignore`.
+- M2 (`unidades.tipo`) y M3 (`importar_unidades`): M3 se aplica en pruebas,
+  pero **antes de usarla desde la app se le pasa el archivo a Nicolás** para la
+  revisión cruzada.
+
+### Lista de pruebas — ronda 4 (Preview de `dev`)
+
+Perfiles de Chrome: **Admin** (`+admin`), **Propietario** (`+propietario`),
+**Inquilino** (`+inquilino`). (📱) = probar también en tema oscuro y a ancho de
+teléfono, y con la app instalada. Los montos esperados son los de pruebas al
+18-oct; si alguien cargó pagos o cerró meses después, cambian.
+
+| # | Perfil | Qué hacer | Qué tiene que pasar |
+|---|---|---|---|
+| C1 | Admin | Cobros → mirar los montos de las filas | Con coma decimal («0,00», no «0.00») |
+| C2 | Admin | Cobros → «Agregar un cobro» con monto **«abc»** → Agregar; después corregir el monto escribiendo | Aviso «El monto «abc» no se entiende…»; **se borra apenas se empieza a escribir** |
+| C3 | Admin | Cobros → «Agregar un cobro» sin nombre → Agregar. Después, en una fila, borrar el nombre y salir del campo | «Falta el nombre.» y no se crea. En la fila: «El cobro necesita un nombre…» y vuelve el nombre que tenía |
+| C4 | Admin | Ficha de **02B** → mirar alícuota y saldo inicial → «Guardar cambios» sin tocar nada → recargar | Alícuota con **todos** sus decimales (1,58434, no 1,58), saldo con coma. Después de guardar y recargar, los mismos valores |
+| C5 | Admin | Ajustes → partidas fijas, mora y tolerancias | Con coma decimal |
+| C6 📱 | Propietario | /mi → **02D** → Mi recibo | Termina en **«Saldo a favor $ 35,12 · Este mes no tiene que pagar»**, en verde. No dice «Si paga hoy» ni «Vence» |
+| C7 📱 | Propietario | 02D → «Descargar o imprimir mi recibo» → cancelar la impresión → «← Volver» | Se abre en la **misma** pestaña, con la barra arriba y el cuadro de imprimir. El papel dice «Saldo a favor $ 35,12». «Volver» regresa a Mi recibo. **Con la app instalada en el teléfono:** no queda atrapado |
+| C8 | Propietario | 02D → imprimir → «Guardar como PDF» → abrir el PDF | El PDF **no** tiene la barra ni el fondo gris |
+| C9 | Propietario | En computadora, 02A → imprimir | Hoja centrada, del ancho de una carta, sobre fondo gris. Dice «Total a pagar» y los bolívares |
+| C10 | Admin | Cortes → Octubre 2026 → «Imprimir los 53 recibos» → «← Volver» | Misma pestaña, un recibo por hoja; la 02D con saldo a favor. «Volver» lleva a Cortes **en Octubre** |
+| C11 | Admin | Cortes → ver el recibo de una unidad → «Imprimir o guardar PDF» | Solo el de esa unidad, misma pestaña, con «Volver» |
+| C12 | Admin | Cortes → «Listado en PDF» | Ventana aparte, como antes, con «← Cerrar» arriba que la cierra |
+| C13 | Admin | Cierre del mes → mirar el campo «Tasa BCV del mes» (sin abrir) | Vacío, «Automática», y debajo: «En blanco, al cerrar se toma la del BCV del último día del mes. La última publicada es … (del …)» |
+| C14 | Admin | Cierre del mes → abrir **Noviembre 2026** con tasa **«abc»** → Abrir; después con la tasa vacía → Abrir | Con «abc»: «La tasa «abc» no se entiende…» y no abre. Vacía: abre |
+| C15 | Admin | Mes abierto → agregar un **gasto común de 1.000,00** → mirar «Cómo se reparte» | Columna «A favor». La **02D**: «− $ 35,12» en A favor y total **«A favor $ 20,25 · no paga este mes»**, no $ 0,00 |
+| C16 | Admin | Mes abierto → tasa vacía → Guardar; después «abc» → Guardar | Vacía: sigue vacía al recargar (antes guardaba 1). «abc»: avisa y no guarda |
+| C17 | Admin | **«Descartar este mes»** (noviembre) | Vuelve a como estaba. **No cerrar noviembre** |
+| C18 📱 | Propietario | **02A** → Reportar un pago | Arriba del monto: «Para pagar su deuda de $ 98,66 transfiera **Bs …**», la tasa y su fecha, y el recordatorio en ámbar |
+| C19 | Propietario | 02A → «Pagar deuda total» | El monto se llena con la misma cifra; abajo, «su pago equivale a $ 98,66» |
+| C20 | Propietario | 02A → «Copiar el monto» → pegarlo en una nota | Dice «Copiado ✓». Lo pegado es la cifra **sin puntos de miles** (por ejemplo «86832,40») |
+| C21 | Propietario | 02A → cambiar la fecha del pago a un día anterior | La cifra en Bs cambia con la tasa de ese día (si el BCV publicó otra) |
+| C22 | Propietario | 02A → Moneda «Dólares». Después 02D → Reportar un pago | En dólares no aparece el bloque. En 02D (a favor) tampoco. **No reportar nada** |
+| C23 📱 | Propietario | /mi → resumen de arriba | **Dos bloques**: «Edificio Gustavo · Administra Administradora Prueba Gustavo» con 02A, 02B, 02C (total **$ 311,59**), 02D «A favor» y 08D en «Lo paga su inquilino»; y «Residencias Sintéticas · Administra Administradora Sintética B» con A-1 y A-2 (total **$ 120,00**). **Ningún total general.** Abajo: «Cada edificio se paga aparte…» |
+| C24 | Inquilino | /mi | Igual que antes: un solo resumen (una sola administradora) |
+| C25 | Admin | /admin | Ahora aparecen **dos** administradoras: la suya y «Administradora Sintética B». Opcional: en B, registrar un pago de A-1 por $ 50 y ver en C23 que el total de Residencias Sintéticas baja a $ 70,00 y el otro no cambia |
+
 ## Ronda 3 (08-oct) — bloques 1, 2, 3, 5 y 6 construidos; A pendiente
 
 Todo en `dev`, **sin commit**. `npx tsc --noEmit`, `npm run lint` y

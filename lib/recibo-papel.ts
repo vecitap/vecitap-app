@@ -1,4 +1,5 @@
 import { nf, usd } from "@/lib/formato";
+import { bolivaresExactos } from "@/lib/residente/monto-exacto";
 import type { CategoriaRecibo, ConceptoRecibo } from "@/lib/residente/tipos";
 
 /**
@@ -64,6 +65,24 @@ export type DatosPapelRecibo = {
   recibo: ReciboPapel;
 };
 
+/**
+ * El saldo a favor que **le queda** a la unidad después de este recibo
+ * (ronda 4, caso 51). La base emite `total = máximo(0, cargos − a_favor)`
+ * y no guarda el sobrante: con a favor 50 y cargos 14,88 el recibo dice
+ * total 0 y los 35,12 no aparecían en ningún lado. Se calcula con las mismas
+ * líneas que muestra el recibo (conceptos, cargos de la unidad, saldo
+ * anterior y mora), así que el papel cuadra a la vista. 0 si el recibo
+ * tiene algo que pagar.
+ */
+export function favorQueQueda(r: Pick<ReciboPapel, "total" | "directos" | "anterior" | "a_favor" | "mora" | "conceptos">): number {
+  if (Number(r.total) > 0.005) return 0;
+  const con: ConceptoRecibo[] = Array.isArray(r.conceptos) ? (r.conceptos as ConceptoRecibo[]) : [];
+  const cargos =
+    con.reduce((s, l) => s + Number(l.monto || 0), 0) + Number(r.directos || 0) + Number(r.anterior || 0) + Number(r.mora || 0);
+  const queda = Math.round((Number(r.a_favor || 0) - cargos) * 100) / 100;
+  return queda > 0 ? queda : 0;
+}
+
 const esc = (t: unknown) =>
   String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
@@ -72,6 +91,7 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
   const r = d.recibo;
   const det: CategoriaRecibo[] = Array.isArray(r.detalle) ? (r.detalle as CategoriaRecibo[]) : [];
   const con: ConceptoRecibo[] = Array.isArray(r.conceptos) ? (r.conceptos as ConceptoRecibo[]) : [];
+  const favor = favorQueQueda(r);
 
   const linea = (t: string, v: number, cls?: string) =>
     `<tr class="${cls || ""}"><td>${esc(t)}</td><td class="d">${m(v)}</td></tr>`;
@@ -82,7 +102,10 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
     Number(r.anterior) > 0 ? linea("Saldo del mes anterior", Number(r.anterior)) : "",
     Number(r.a_favor) > 0 ? linea("A su favor", -Number(r.a_favor)) : "",
     Number(r.mora) > 0 ? linea("Intereses de mora", Number(r.mora)) : "",
-    linea("Total", Number(r.total), "tot"),
+    favor > 0
+      ? linea("Saldo a favor", favor, "tot") +
+        `<tr class="nota-fav"><td colspan="2">Este mes no tiene que pagar</td></tr>`
+      : linea("Total", Number(r.total), "tot"),
   ].join("");
 
   const renglones = det.reduce((n, c) => n + 1 + (c.lineas || []).length, 0);
@@ -131,13 +154,14 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
     </div>`;
 
   const bloqueTasa = (() => {
+    if (favor > 0) return `<div><span class="et">Este mes</span><div class="cifra-s">No tiene que pagar</div></div>`;
     const viva = Number(d.tasaHoy?.valor) > 0;
     const t = viva ? Number(d.tasaHoy!.valor) : Number(r.tasa_bcv);
     if (!(t > 0)) return "";
     const cuando = viva && d.tasaHoy?.fecha ? " del " + String(d.tasaHoy.fecha).split("-").reverse().join("/") : "";
     return `<div>
       <span class="et">Referencial en bolívares</span>
-      <div class="cifra-s">Bs ${nf(2).format(Number(r.total) * t)}</div>
+      <div class="cifra-s">Bs ${nf(2).format(bolivaresExactos(Number(r.total), t))}</div>
       <div class="nota-t">tasa ${nf(2).format(t)}${cuando}${viva ? "" : " · del recibo"}</div>
     </div>`;
   })();
@@ -196,6 +220,7 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
                   font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
   table.res tr.tot td{ font-weight:700; font-size:11pt; border-bottom:0;
                        border-top:1.5px solid #0A1128; padding-top:7px }
+  table.res tr.nota-fav td{ border-bottom:0; padding-top:0; color:#0E7C6B; font-weight:600 }
 
   /* ── Desglose a dos columnas ── */
   h2{ font-size:8.5pt; text-transform:uppercase; letter-spacing:.1em;
@@ -237,12 +262,12 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
 
   <div class="plata">
     <div class="fuerte">
-      <span class="et">Total a pagar</span>
-      <div class="cifra">${m(r.total)}</div>
+      <span class="et">${favor > 0 ? "Saldo a favor" : "Total a pagar"}</span>
+      <div class="cifra">${m(favor > 0 ? favor : r.total)}</div>
     </div>
     ${bloqueTasa}
     ${
-      d.vence
+      d.vence && favor === 0
         ? `<div>
       <span class="et">Vence</span>
       <div class="cifra-s vence">${esc(d.vence)}</div>
@@ -280,11 +305,64 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
 </body></html>`;
 }
 
-/** Abre el documento en una ventana aparte y manda a imprimir. admin.html:5098-5106. */
+/**
+ * Lo que el documento necesita para verse en una pantalla, sin cambiar lo
+ * que sale impreso (ronda 4, caso 53). Antes se abría en una ventana en
+ * blanco (about:blank) sin forma de volver; con la app instalada en el
+ * teléfono, la persona quedaba atrapada ahí.
+ *
+ *  · Una barra arriba con «Volver» y «Imprimir o guardar PDF», que no sale
+ *    en el papel (`@media print`).
+ *  · En computadora, la hoja a ancho carta, centrada sobre un fondo gris;
+ *    en el teléfono, a todo el ancho.
+ *
+ * `volver`: la dirección a la que lleva «Volver». `null` = el documento se
+ * abrió en una ventana aparte (los listados de Admin), y el botón la cierra.
+ * Sirve para cualquier documento de este archivo y de `lib/admin/papel-*`:
+ * todos traen `</head>` y `<body>`.
+ */
+export function paraPantalla(html: string, volver: string | null, imprimirAlAbrir = true): string {
+  const estilo = `<style>
+  .barra-pantalla{ display:flex; gap:8px; justify-content:space-between; align-items:center;
+    position:sticky; top:0; z-index:5; padding:10px 16px; background:#0A1128;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif }
+  .barra-pantalla a, .barra-pantalla button{ font:600 14px/1 inherit; font-family:inherit;
+    padding:10px 14px; border-radius:8px; border:1px solid #A3B4D4; background:transparent;
+    color:#F8FAFC; cursor:pointer; text-decoration:none }
+  .barra-pantalla .primario{ background:#F98513; border-color:#F98513; color:#0A1128 }
+  @media screen{
+    html{ background:#E2E8F0 }
+    body{ max-width:8.5in; margin:0 auto 24px; background:#fff; min-height:100vh }
+    .hoja-pantalla{ padding:12mm 13mm 10mm }
+  }
+  @media screen and (min-width:9in){
+    body{ box-shadow:0 2px 14px rgba(10,17,40,.18); min-height:11in }
+  }
+  @media screen and (max-width:640px){ .hoja-pantalla{ padding:16px } }
+  @media print{ .barra-pantalla{ display:none !important } }
+</style>`;
+  const boton = volver
+    ? `<a href="${esc(volver)}">← Volver</a>`
+    : `<button type="button" onclick="window.close()">← Cerrar</button>`;
+  const barra = `<div class="barra-pantalla">${boton}<button type="button" class="primario" onclick="window.print()">Imprimir o guardar PDF</button></div>`;
+  // Se espera a que carguen las imágenes (el logo): si no, imprime sin él.
+  const auto = imprimirAlAbrir ? `<script>addEventListener("load",function(){setTimeout(function(){window.print()},300)})</script>` : "";
+  return html
+    .replace("</head>", estilo + "</head>")
+    .replace(/<body([^>]*)>/, `<body$1>${barra}<div class="hoja-pantalla">`)
+    .replace("</body>", `</div>${auto}</body>`);
+}
+
+/**
+ * Abre el documento en una ventana aparte y manda a imprimir.
+ * admin.html:5098-5106. Lo usan los listados de Admin (cortes, informe de
+ * asamblea); los recibos ya no: tienen su propia ruta en la misma pestaña
+ * (`/mi/[unidad]/recibo/papel` y `/admin/…/cortes/papel`).
+ */
 export function imprimirDocumento(html: string, onBloqueado: () => void, esperaMs = 700) {
   const w = window.open("", "_blank");
   if (!w) return onBloqueado();
-  w.document.write(html);
+  w.document.write(paraPantalla(html, null, false));
   w.document.close();
   // Se espera a que las fuentes y el diseño estén listos: si no, imprime en blanco.
   w.onload = () => {

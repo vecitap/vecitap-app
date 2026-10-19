@@ -6,12 +6,26 @@ type UnidadPortal = Database["public"]["Functions"]["mis_unidades"]["Returns"][n
 
 export type LineaResumen = {
   unidadId: string;
+  edificioId: string;
   edificio: string;
+  orgId: string;
+  organizacion: string;
   codigo: string;
   /** Tal como lo devuelve `mis_unidades()`. `null` = la base no lo muestra ("ver recibo"). */
   saldo: number | null;
   /** De `mis_cuotas()`; solo se usa en las que paga el inquilino. `undefined` = sin dato. */
   cuotas?: CuotasUnidad;
+};
+
+/** Las unidades de un edificio, con su propio total. */
+export type GrupoEdificio = {
+  edificioId: string;
+  edificio: string;
+  organizacion: string;
+  pagaUsted: LineaResumen[];
+  /** Suma de las deudas de `pagaUsted` de ESTE edificio. */
+  totalDeuda: number;
+  pagaInquilino: LineaResumen[];
 };
 
 export type ResumenPortal = {
@@ -21,6 +35,13 @@ export type ResumenPortal = {
   totalDeuda: number;
   /** Propietario con paga = inquilino: solo el estado, nunca el monto. */
   pagaInquilino: LineaResumen[];
+  /**
+   * Ronda 4 (caso 55): si las unidades son de **más de una administradora**,
+   * el resumen va por edificio, cada uno con su total, y no hay total general
+   * —son cuentas distintas, que se pagan a cuentas bancarias distintas—.
+   * `null` con una sola administradora: la pantalla queda como antes.
+   */
+  porEdificio: GrupoEdificio[] | null;
 };
 
 /**
@@ -41,7 +62,36 @@ function linea(u: UnidadPortal, cuotas: Map<string, CuotasUnidad>): LineaResumen
   // El tipo generado dice `number`, pero saldo_visible() puede devolver
   // NULL (ver el comentario de TarjetaSaldo.tsx).
   const saldo = u.saldo === null || u.saldo === undefined ? null : Number(u.saldo);
-  return { unidadId: u.unidad_id, edificio: u.edificio, codigo: u.codigo, saldo, cuotas: cuotas.get(u.unidad_id) };
+  return {
+    unidadId: u.unidad_id,
+    edificioId: u.edificio_id,
+    edificio: u.edificio,
+    orgId: u.org_id,
+    organizacion: u.organizacion,
+    codigo: u.codigo,
+    saldo,
+    cuotas: cuotas.get(u.unidad_id),
+  };
+}
+
+function sumaDeudas(lineas: LineaResumen[]): number {
+  return lineas.reduce((s, l) => (l.saldo !== null && debeSegunPortal(l.saldo) ? s + l.saldo : s), 0);
+}
+
+/** Agrupa por edificio, en el orden en que llegan (mis_unidades() ordena por administradora y edificio). */
+function porEdificio(pagaUsted: LineaResumen[], pagaInquilino: LineaResumen[]): GrupoEdificio[] {
+  const grupos = new Map<string, GrupoEdificio>();
+  const grupo = (l: LineaResumen) => {
+    let g = grupos.get(l.edificioId);
+    if (!g) {
+      g = { edificioId: l.edificioId, edificio: l.edificio, organizacion: l.organizacion, pagaUsted: [], totalDeuda: 0, pagaInquilino: [] };
+      grupos.set(l.edificioId, g);
+    }
+    return g;
+  };
+  pagaUsted.forEach((l) => grupo(l).pagaUsted.push(l));
+  pagaInquilino.forEach((l) => grupo(l).pagaInquilino.push(l));
+  return [...grupos.values()].map((g) => ({ ...g, totalDeuda: sumaDeudas(g.pagaUsted) }));
 }
 
 /**
@@ -62,6 +112,8 @@ function linea(u: UnidadPortal, cuotas: Map<string, CuotasUnidad>): LineaResumen
  *    favor no se descuenta de las otras; esa unidad dice "A favor $ X" en su
  *    propia línea (ronda 2: antes salía dos veces, ver caso 31).
  *  - `saldo` null no entra a la suma; la línea dice "ver recibo".
+ *  - Con unidades de varias administradoras, además `porEdificio` (ronda 4,
+ *    caso 55): un total por edificio y ninguno general.
  */
 export function resumenUnidades(unidades: UnidadPortal[], cuotas: Map<string, CuotasUnidad> = new Map()): ResumenPortal | null {
   if (unidades.length < 2) return null;
@@ -73,7 +125,13 @@ export function resumenUnidades(unidades: UnidadPortal[], cuotas: Map<string, Cu
   const pagaInquilino = unidades.filter((u) => esPropia(u) && pagaDe(u.paga) === "inquilino").map((u) => linea(u, cuotas));
   if (pagaUsted.length === 0 && pagaInquilino.length === 0) return null;
 
-  const totalDeuda = pagaUsted.reduce((s, l) => (l.saldo !== null && debeSegunPortal(l.saldo) ? s + l.saldo : s), 0);
+  const totalDeuda = sumaDeudas(pagaUsted);
+  const administradoras = new Set([...pagaUsted, ...pagaInquilino].map((l) => l.orgId));
 
-  return { pagaUsted, totalDeuda, pagaInquilino };
+  return {
+    pagaUsted,
+    totalDeuda,
+    pagaInquilino,
+    porEdificio: administradoras.size > 1 ? porEdificio(pagaUsted, pagaInquilino) : null,
+  };
 }

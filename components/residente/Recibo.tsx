@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Card } from "@/components/ui";
-import { bs, fechaCorta, fechaLarga, nf, usd } from "@/lib/formato";
-import { imprimirDocumento, reciboEnPapel } from "@/lib/recibo-papel";
+import { Card } from "@/components/ui";
+import { bs, fechaLarga, nf, usd } from "@/lib/formato";
+import { favorQueQueda } from "@/lib/recibo-papel";
+import { bolivaresExactos } from "@/lib/residente/monto-exacto";
 import type { RegistroRecibo } from "@/lib/residente/tipos";
 import type { Database } from "@/types/supabase";
 
@@ -63,6 +64,9 @@ export function Recibo({
   const tasaViva = Number(recibo.tasaHoy?.valor) > 0;
   const tasaCandidata = tasaViva ? Number(recibo.tasaHoy!.valor) : Number(recibo.tasa_bcv);
   const tasaMostrada = tasaCandidata > 0 ? tasaCandidata : null;
+  // Ronda 4 (caso 51): un recibo en 0 porque el saldo a favor cubrió todo
+  // termina en lo que le queda a favor, no en "Total $ 0,00".
+  const favor = favorQueQueda(recibo);
 
   const fila = (etiqueta: string, valor: number, fuerte = false) => (
     <div
@@ -94,11 +98,12 @@ export function Recibo({
         </div>
         {/* Se usa la tasa viva. Solo si la base no la dio se cae a la del
             recibo, y entonces se dice de cuándo es (index.html:1368-1384). */}
-        {tasaMostrada !== null && (
+        {tasaMostrada !== null && favor === 0 && (
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 12, color: "var(--tenue)" }}>Si paga hoy</div>
             <div className="mono" style={{ fontSize: 15, fontWeight: 600 }}>
-              {bs(Number(recibo.total) * tasaMostrada)}
+              {/* Mismo redondeo que "Reportar un pago" (hacia arriba al céntimo). */}
+              {bs(bolivaresExactos(Number(recibo.total), tasaMostrada))}
             </div>
             <div style={{ fontSize: 11, color: "var(--tenue)" }}>
               tasa {nf(2).format(tasaMostrada)}
@@ -113,9 +118,21 @@ export function Recibo({
       {Number(recibo.anterior) > 0 && fila("Saldo del mes anterior", recibo.anterior)}
       {Number(recibo.a_favor) > 0 && fila("A su favor", -recibo.a_favor)}
       {Number(recibo.mora) > 0 && fila("Intereses de mora", recibo.mora)}
-      {fila("Total", recibo.total, true)}
+      {favor > 0 ? (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0 2px", fontWeight: 700, color: "var(--verde)" }}>
+            <span>Saldo a favor</span>
+            <span className="mono">{usd(favor)}</span>
+          </div>
+          <div style={{ fontSize: 13.5, color: "var(--verde)", fontWeight: 600, paddingBottom: 9, borderBottom: "1px solid var(--linea)" }}>
+            Este mes no tiene que pagar
+          </div>
+        </>
+      ) : (
+        fila("Total", recibo.total, true)
+      )}
 
-      {recibo.vence_el && (
+      {recibo.vence_el && favor === 0 && (
         <div
           style={{ marginTop: 12, padding: "10px 12px", borderRadius: 9, background: "var(--ambar-bg)", color: "var(--ambar)", fontSize: 13, fontWeight: 600 }}
         >
@@ -171,30 +188,16 @@ export function Recibo({
       )}
 
       <div style={{ marginTop: 16 }}>
-        <Button
-          type="button"
-          variante="secundario"
-          style={{ width: "100%" }}
-          onClick={() =>
-            imprimirDocumento(
-              reciboEnPapel({
-                edificio: recibo.edificio || unidad.edificio,
-                organizacion: unidad.organizacion,
-                unidad: unidad.codigo,
-                vence: fechaCorta(recibo.vence_el),
-                // La tasa viva viaja al papel: el PDF se genera ahora, no el
-                // día en que se emitió el recibo (index.html:1453-1455).
-                tasaHoy: recibo.tasaHoy,
-                recibo,
-              }),
-              () => {}
-            )
-          }
-        >
+        {/* Ronda 4 (caso 53): una dirección propia en la misma pestaña, con
+            «Volver». Antes, una ventana en blanco sin salida. Es un enlace
+            común y no <Link>: la ruta devuelve un documento entero, no una
+            página del portal. */}
+        <a href={`/mi/${unidad.unidad_id}/recibo/papel`} className="btn btn-secundario" style={{ width: "100%", textDecoration: "none" }}>
           Descargar o imprimir mi recibo
-        </Button>
+        </a>
         <div style={{ fontSize: 12, color: "var(--tenue)", marginTop: 6, lineHeight: 1.5 }}>
-          Se abre listo para imprimir. En el mismo cuadro puede elegir «Guardar como PDF».
+          Se abre listo para imprimir. En el mismo cuadro puede elegir «Guardar como PDF», y con «Volver»
+          regresa aquí.
         </div>
       </div>
 

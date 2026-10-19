@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 type Props = {
   etiqueta: string;
   obligatorio?: boolean;
-  ayuda?: string;
+  ayuda?: ReactNode;
   error?: string;
   children: ReactNode;
 };

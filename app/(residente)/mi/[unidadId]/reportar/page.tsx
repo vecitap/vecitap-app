@@ -40,6 +40,9 @@ export default async function PaginaReportar({
       unidadId={unidad.unidad_id}
       usuarioId={user.id}
       bancos={bancos ?? []}
+      // La deuda de ESTA unidad, nunca la suma de las del propietario
+      // (ronda 4, caso 54). null = la base no muestra el saldo.
+      deudaUsd={unidad.saldo === null ? null : Number(unidad.saldo)}
     />
   );
 }

@@ -45,6 +45,7 @@ export default async function PaginaCierreMes({
       periodos={periodosFilas}
       categorias={categoriasFilas}
       tasaValor={tasa?.tasa ? Number(tasa.tasa) : 0}
+      tasaFecha={tasa?.fecha ?? null}
     />
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, Campo, Card, EstadoGuardado, Input, Select, Table, Textarea } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
-import { hoyLocalISO, nf, num0, usd, usd0 } from "@/lib/formato";
+import { hoyLocalISO, nf, num0, paraCampo, usd, usd0 } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularCuotaPrevista, PLANES, DESCUENTO } from "@/lib/operador/planes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -47,8 +47,8 @@ export function FichaCliente({
   const [s, setS] = useState<EstadoFicha>({
     plan: c.plan || "mensual",
     modoPrecio: c.modo_precio || "fijo",
-    precio: String(c.precio ?? 0),
-    descuentoPct: String(c.descuento_pct ?? 0),
+    precio: paraCampo(c.precio ?? 0),
+    descuentoPct: paraCampo(c.descuento_pct ?? 0, 0),
     estado: c.estado === "sin suscripción" ? "prueba" : c.estado,
     inicio: c.inicio || hoyLocalISO(),
     proximoCobro: c.proximo_cobro || "",
@@ -89,7 +89,7 @@ export function FichaCliente({
       .maybeSingle()
       .then(({ data }) => {
         setServicio(data);
-        setMontoServicio(String(data?.monto ?? 0));
+        setMontoServicio(paraCampo(data?.monto ?? 0));
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c.org_id]);

@@ -11,10 +11,53 @@ import { aFavorSegunPortal, debeSegunPortal, type LineaResumen, type ResumenPort
  * muestran.
  */
 export function ResumenUnidades({ resumen }: { resumen: ResumenPortal }) {
-  const { pagaUsted, totalDeuda, pagaInquilino } = resumen;
+  // Ronda 4 (caso 55): unidades de varias administradoras → un bloque por
+  // edificio, cada uno con su total, sin total general. Con una sola
+  // administradora, igual que antes.
+  if (resumen.porEdificio) {
+    return (
+      <Card style={{ marginBottom: 16 }}>
+        {resumen.porEdificio.map((g, i) => (
+          <section
+            key={g.edificioId}
+            style={i > 0 ? { marginTop: 18, paddingTop: 16, borderTop: "2px solid var(--linea)" } : undefined}
+          >
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{g.edificio}</div>
+              <div style={{ fontSize: 12, color: "var(--tenue)" }}>Administra {g.organizacion}</div>
+            </div>
+            <Bloque pagaUsted={g.pagaUsted} totalDeuda={g.totalDeuda} pagaInquilino={g.pagaInquilino} sinEdificio />
+          </section>
+        ))}
+        <p style={{ margin: "14px 0 0", fontSize: 12, color: "var(--tenue)", lineHeight: 1.5 }}>
+          Cada edificio se paga aparte, a su propia administración.
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <Card style={{ marginBottom: 16 }}>
+      <Bloque pagaUsted={resumen.pagaUsted} totalDeuda={resumen.totalDeuda} pagaInquilino={resumen.pagaInquilino} />
+    </Card>
+  );
+}
+
+/** "Lo que usted paga" con su total, y "Lo paga su inquilino". */
+function Bloque({
+  pagaUsted,
+  totalDeuda,
+  pagaInquilino,
+  sinEdificio = false,
+}: {
+  pagaUsted: LineaResumen[];
+  totalDeuda: number;
+  pagaInquilino: LineaResumen[];
+  /** Dentro de un grupo por edificio, el nombre ya está arriba. */
+  sinEdificio?: boolean;
+}) {
+  return (
+    <>
       {pagaUsted.length > 0 && (
         <section>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
@@ -30,7 +73,7 @@ export function ResumenUnidades({ resumen }: { resumen: ResumenPortal }) {
           </div>
           <ul style={{ listStyle: "none", margin: "10px 0 0", padding: 0 }}>
             {pagaUsted.map((l) => (
-              <Fila key={l.unidadId} linea={l} conMonto />
+              <Fila key={l.unidadId} linea={l} conMonto sinEdificio={sinEdificio} />
             ))}
           </ul>
         </section>
@@ -41,12 +84,12 @@ export function ResumenUnidades({ resumen }: { resumen: ResumenPortal }) {
           <h2 style={{ margin: 0, fontSize: 14 }}>Lo paga su inquilino</h2>
           <ul style={{ listStyle: "none", margin: "10px 0 0", padding: 0 }}>
             {pagaInquilino.map((l) => (
-              <Fila key={l.unidadId} linea={l} />
+              <Fila key={l.unidadId} linea={l} sinEdificio={sinEdificio} />
             ))}
           </ul>
         </section>
       )}
-    </Card>
+    </>
   );
 }
 
@@ -59,7 +102,7 @@ export function ResumenUnidades({ resumen }: { resumen: ResumenPortal }) {
  *  - Sin monto (lo paga el inquilino): "Al día" o "Debe N cuotas", de
  *    `mis_cuotas()` — ver lib/residente/cuotas.ts.
  */
-function Fila({ linea, conMonto = false }: { linea: LineaResumen; conMonto?: boolean }) {
+function Fila({ linea, conMonto = false, sinEdificio = false }: { linea: LineaResumen; conMonto?: boolean; sinEdificio?: boolean }) {
   const { saldo } = linea;
 
   let texto: string;
@@ -88,7 +131,8 @@ function Fila({ linea, conMonto = false }: { linea: LineaResumen; conMonto?: boo
   return (
     <li style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", fontSize: 13.5 }}>
       <Link href={`/mi/${linea.unidadId}/recibo`} style={{ color: "inherit" }}>
-        {linea.edificio} · <span className="mono">{linea.codigo}</span>
+        {!sinEdificio && <>{linea.edificio} · </>}
+        <span className="mono">{linea.codigo}</span>
       </Link>
       <span className={mono ? "mono" : undefined} style={{ color }}>
         {texto}

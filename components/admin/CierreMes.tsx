@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ReceiptText, RotateCcw, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Flechas, Input, Select } from "@/components/ui";
-import { nf, num, num0, usd, numeroMalEscrito } from "@/lib/formato";
+import { fechaLarga, nf, num, paraCampo, usd, numeroMalEscrito } from "@/lib/formato";
 import { MESES } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { CategoriaAdmin, ConceptoCobro, GastoAdmin, PeriodoAdmin, SimulacionCierre } from "@/lib/admin/tipos";
@@ -38,6 +38,7 @@ export function CierreMes({
   periodos,
   categorias,
   tasaValor,
+  tasaFecha,
 }: {
   orgId: string;
   edificioId: string;
@@ -45,7 +46,10 @@ export function CierreMes({
   conceptos: ConceptoCobro[];
   periodos: PeriodoAdmin[];
   categorias: CategoriaAdmin[];
+  /** La última tasa publicada en `tasas_bcv` (`tasa_atrasada()`); 0 si no hay ninguna. */
   tasaValor: number;
+  /** Fecha de esa tasa: puede no ser hoy (fin de semana, feriado). */
+  tasaFecha: string | null;
 }) {
   const router = useRouter();
   const periodoAbierto = periodos.find((p) => p.estado === "abierto") ?? null;
@@ -99,8 +103,10 @@ export function CierreMes({
   if ((periodoAbierto?.id ?? null) !== periodoAnteriorRef.current) {
     periodoAnteriorRef.current = periodoAbierto?.id ?? null;
     setCorreccion({
-      presupuesto: periodoAbierto?.presupuesto != null ? String(periodoAbierto.presupuesto) : "",
-      tasa: String(periodoAbierto?.tasa_bcv ?? ""),
+      presupuesto: periodoAbierto?.presupuesto != null ? paraCampo(periodoAbierto.presupuesto) : "",
+      // Tasa 0 = "se toma al cerrar": el campo queda vacío, no muestra un 0
+      // que parece un error (ronda 4, caso 52).
+      tasa: Number(periodoAbierto?.tasa_bcv) > 0 ? paraCampo(periodoAbierto?.tasa_bcv) : "",
     });
   }
 
@@ -139,7 +145,27 @@ export function CierreMes({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodoAbierto?.id, gastos.length, periodoAbierto?.presupuesto]);
 
+  /**
+   * La tasa escrita a mano: vacía = 0, que `cerrar_periodo()` reemplaza por
+   * la del BCV del último día del mes. Devuelve null y avisa si no se
+   * entiende o no es positiva (antes "abc" se mandaba como 0 sin avisar, y en
+   * la corrección un campo vacío guardaba 1: bolívares a 1 por dólar).
+   */
+  function tasaEscrita(texto: string): number | null {
+    if (texto.trim() === "") return 0;
+    const n = num(texto);
+    if (n === null || n <= 0) {
+      notificar(`La tasa «${texto}» no se entiende. Escríbala con coma, por ejemplo 874,73, o déjela en blanco.`, "error");
+      return null;
+    }
+    return n;
+  }
+
   async function abrirMes() {
+    const tasa = tasaEscrita(abrir.tasa);
+    if (tasa === null) return;
+    const mal = numeroMalEscrito([["El presupuesto", abrir.presupuesto]]);
+    if (mal) return notificar(mal, "error");
     setOcupado(true);
     const supabase = crearClienteNavegador();
     const { error } = await supabase.rpc("abrir_periodo", {
@@ -147,7 +173,7 @@ export function CierreMes({
       p_anio: Number(abrir.anio),
       p_mes: Number(abrir.mes),
       p_etiqueta: `${MESES[Number(abrir.mes) - 1]} ${abrir.anio}`,
-      p_tasa: num0(abrir.tasa) || 0,
+      p_tasa: tasa,
       p_presupuesto: num(abrir.presupuesto) ?? undefined,
     });
     setOcupado(false);
@@ -170,10 +196,14 @@ export function CierreMes({
 
   async function corregir() {
     if (!periodoAbierto) return;
+    const tasa = tasaEscrita(correccion.tasa);
+    if (tasa === null) return;
+    const mal = numeroMalEscrito([["El presupuesto", correccion.presupuesto]]);
+    if (mal) return notificar(mal, "error");
     const supabase = crearClienteNavegador();
     const { error } = await supabase
       .from("periodos")
-      .update({ presupuesto: num(correccion.presupuesto), tasa_bcv: num0(correccion.tasa) || 1 })
+      .update({ presupuesto: num(correccion.presupuesto), tasa_bcv: tasa })
       .eq("id", periodoAbierto.id);
     if (error) return fallo(error);
     notificar("Mes actualizado.");
@@ -341,8 +371,8 @@ export function CierreMes({
                 ))}
               </Select>
             </Campo>
-            <Campo etiqueta="Tasa BCV del mes" ayuda="Déjela en blanco y el sistema usa la del BCV del último día del mes.">
-              <Input className="mono" value={abrir.tasa} placeholder={tasaValor ? nf(2).format(tasaValor) : "0,00"} onChange={(e) => setAbrir({ ...abrir, tasa: e.target.value })} />
+            <Campo etiqueta="Tasa BCV del mes" ayuda={<AyudaTasa tasaValor={tasaValor} tasaFecha={tasaFecha} />}>
+              <Input className="mono" value={abrir.tasa} placeholder="Automática" onChange={(e) => setAbrir({ ...abrir, tasa: e.target.value })} />
             </Campo>
             {usaPresupuesto && (
               <Campo etiqueta="Presupuesto del mes USD" ayuda="Este edificio reparte un presupuesto, no el gasto ejecutado.">
@@ -385,8 +415,8 @@ export function CierreMes({
                   <Input className="mono" value={correccion.presupuesto} onChange={(e) => setCorreccion({ ...correccion, presupuesto: e.target.value })} />
                 </Campo>
               )}
-              <Campo etiqueta="Tasa BCV del mes">
-                <Input className="mono" value={correccion.tasa} onChange={(e) => setCorreccion({ ...correccion, tasa: e.target.value })} />
+              <Campo etiqueta="Tasa BCV del mes" ayuda={correccion.tasa.trim() === "" ? <AyudaTasa tasaValor={tasaValor} tasaFecha={tasaFecha} /> : undefined}>
+                <Input className="mono" value={correccion.tasa} placeholder="Automática" onChange={(e) => setCorreccion({ ...correccion, tasa: e.target.value })} />
               </Campo>
               <div>
                 <Button type="button" variante="secundario" onClick={corregir}>
@@ -567,6 +597,7 @@ export function CierreMes({
                       <th>Administración</th>
                       <th>Servicio</th>
                       <th>Anterior</th>
+                      <th>A favor</th>
                       <th>Mora</th>
                       <th style={{ textAlign: "right" }}>Total del recibo</th>
                     </tr>
@@ -580,8 +611,11 @@ export function CierreMes({
                         <td className="mono">{usd(r.administracion)}</td>
                         <td className="mono">{usd(r.servicio)}</td>
                         <td className="mono">{usd(r.anterior)}</td>
+                        <td className="mono" style={{ color: Number(r.a_favor) > 0 ? "var(--verde)" : undefined }}>
+                          {Number(r.a_favor) > 0 ? `− ${usd(r.a_favor)}` : usd(0)}
+                        </td>
                         <td className="mono">{usd(r.mora)}</td>
-                        <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>{usd(r.total)}</td>
+                        <TotalPrevia fila={r} />
                       </tr>
                     ))}
                   </tbody>
@@ -858,7 +892,7 @@ function CampoTexto({ valor, mono, onGuardar }: { valor: string; mono?: boolean;
 
 /** Mismo criterio que CampoTextoInline — remonta por `key`, no por efecto/ref. */
 function CampoMonto({ valor, onGuardar }: { valor: number; onGuardar: (v: number) => void }) {
-  const [v, setV] = useState(String(valor));
+  const [v, setV] = useState(paraCampo(valor));
   return (
     <td>
       <Input
@@ -866,11 +900,59 @@ function CampoMonto({ valor, onGuardar }: { valor: number; onGuardar: (v: number
         value={v}
         onChange={(e) => setV(e.target.value)}
         onBlur={() => {
-          const n = num0(v);
+          // Un monto que no se entiende vuelve a lo guardado en vez de
+          // guardarse como 0 (ronda 4, mismo criterio que el caso 49).
+          const n = v.trim() === "" ? 0 : num(v);
+          if (n === null) return setV(paraCampo(valor));
           if (n !== valor) onGuardar(n);
         }}
         style={{ textAlign: "right" }}
       />
+    </td>
+  );
+}
+
+/**
+ * Qué tasa va a tener el mes si el campo queda vacío (ronda 4, caso 52).
+ * `cerrar_periodo()` toma la del BCV del último día del mes —o la última
+ * publicada antes—; acá se muestra la última que hay hoy, con su fecha,
+ * porque puede ser de un viernes o de antes de un feriado.
+ */
+function AyudaTasa({ tasaValor, tasaFecha }: { tasaValor: number; tasaFecha: string | null }) {
+  return (
+    <>
+      En blanco, al cerrar se toma la del BCV del último día del mes.
+      {tasaValor > 0 ? (
+        <>
+          {" "}La última publicada es <b className="mono">{nf(2).format(tasaValor)}</b>
+          {tasaFecha ? ` (del ${fechaLarga(tasaFecha)})` : ""}.
+        </>
+      ) : (
+        " Todavía no hay ninguna tasa cargada: escríbala a mano."
+      )}
+    </>
+  );
+}
+
+/**
+ * El total de una fila de la previa. Si el saldo a favor cubre todo el mes,
+ * `simular_cierre` da 0 —igual que el recibo que se va a emitir— y la
+ * pantalla decía "$ 0,00" (ronda 4, caso 51). Ahora dice lo que le queda a
+ * favor: el a favor menos todo lo que se le carga este mes.
+ */
+function TotalPrevia({ fila: r }: { fila: SimulacionCierre }) {
+  const cargos = Number(r.condominio) + Number(r.administracion) + Number(r.servicio) + Number(r.anterior) + Number(r.mora);
+  const queda = Number(r.total) > 0.005 ? 0 : Math.round((Number(r.a_favor) - cargos) * 100) / 100;
+  return (
+    <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: queda > 0 ? "var(--verde)" : undefined }}>
+      {queda > 0 ? (
+        <>
+          A favor {usd(queda)}
+          <div style={{ fontSize: 11, fontWeight: 400 }}>no paga este mes</div>
+        </>
+      ) : (
+        usd(r.total)
+      )}
     </td>
   );
 }

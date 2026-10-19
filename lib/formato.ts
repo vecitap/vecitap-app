@@ -124,6 +124,26 @@ export function numeroMalEscrito(campos: [etiqueta: string, valor: string][]): s
   return mal ? `${mal[0]} «${mal[1]}» no se entiende. Use coma para los decimales, por ejemplo 1,25.` : null;
 }
 
+/**
+ * El valor guardado, escrito como lo escribe una persona en Venezuela, para
+ * sembrar un campo editable (ronda 4, caso 50). Antes los campos se llenaban
+ * con `String(valor)` y mostraban "1234.56".
+ *
+ * `minimo` son los decimales que se muestran siempre (2 en montos y tasa,
+ * 0 en la alícuota). **Nunca se recorta**: si la base guarda más decimales
+ * (una alícuota 1,48768, un saldo 24,1144) se muestran todos, para que
+ * guardar el formulario sin tocar el campo devuelva exactamente el mismo
+ * número — `num(paraCampo(x)) === x`.
+ */
+export function paraCampo(valor: number | string | null | undefined, minimo = 2): string {
+  if (valor === null || valor === undefined || valor === "") return "";
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return "";
+  return new Intl.NumberFormat("es-VE", { minimumFractionDigits: minimo, maximumFractionDigits: 10 })
+    .format(n)
+    .replace(/^-0(?:,0+)?$/, (t) => t.slice(1));
+}
+
 export function num0(valor: string | number | null | undefined): number {
   return num(valor) ?? 0;
 }

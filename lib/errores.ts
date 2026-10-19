@@ -61,6 +61,10 @@ export function mensajeDeError(e: unknown): string {
   const nombre = texto(name);
 
   if (cod.startsWith("P0") && msj) return msj;
+  // Restricciones con nombre que tienen una explicación propia.
+  if (cod === "23514" && msj.includes("periodos_cerrado_con_tasa")) {
+    return "Un mes cerrado necesita la tasa del BCV. Escriba una tasa mayor que cero.";
+  }
   if (cod && POR_CODIGO[cod]) return POR_CODIGO[cod];
 
   const st = typeof status === "number" ? status : 0;

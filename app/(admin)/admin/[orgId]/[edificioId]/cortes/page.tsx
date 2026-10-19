@@ -13,10 +13,13 @@ import type { PeriodoAdmin, Unidad } from "@/lib/admin/tipos";
  */
 export default async function PaginaCortes({
   params,
+  searchParams,
 }: {
   params: Promise<{ orgId: string; edificioId: string }>;
+  searchParams: Promise<{ periodo?: string }>;
 }) {
   const { orgId, edificioId } = await params;
+  const { periodo: periodoInicial } = await searchParams;
   const supabase = await crearClienteServidor();
 
   const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: unidades, error: eU }, { data: periodos, error: eP }] =
@@ -55,6 +58,7 @@ export default async function PaginaCortes({
       unidades={unidadesFilas}
       periodos={periodosFilas}
       tasa={tasa}
+      periodoInicial={typeof periodoInicial === "string" ? periodoInicial : undefined}
     />
   );
 }

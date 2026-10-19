@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Campo, Card, Input, Select } from "@/components/ui";
-import { fechaLarga, hoyLocalISO, nf, num, usd } from "@/lib/formato";
+import { bs, fechaLarga, hoyLocalISO, nf, num, paraCampo, usd } from "@/lib/formato";
+import { bolivaresExactos, bolivaresParaCopiar } from "@/lib/residente/monto-exacto";
 import {
   ACEPTA_COMPROBANTE,
   MAX_BYTES_COMPROBANTE,
@@ -80,11 +81,14 @@ export function FormularioReportarPago({
   unidadId,
   usuarioId,
   bancos,
+  deudaUsd,
 }: {
   orgId: string;
   unidadId: string;
   usuarioId: string;
   bancos: Banco[];
+  /** Saldo de esta unidad en dólares (`mis_unidades()`); null si la base no lo muestra. */
+  deudaUsd: number | null;
 }) {
   const router = useRouter();
   const [f, setF] = useState<EstadoFormulario>(VACIO);
@@ -94,7 +98,24 @@ export function FormularioReportarPago({
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [copiado, setCopiado] = useState<"si" | "no" | null>(null);
   const entrada = useRef<HTMLInputElement>(null);
+
+  // Lo exacto a transferir para quedar al día (ronda 4, caso 54): la deuda de
+  // esta unidad por la tasa de la FECHA DEL PAGO, la misma con la que la base
+  // va a convertir. Cambia sola al cambiar la fecha. Solo en bolívares y solo
+  // si hay deuda (con saldo a favor o al día no hay nada que transferir).
+  const exacto =
+    f.moneda === "VES" && tasa && deudaUsd !== null && deudaUsd > 0.009 ? bolivaresExactos(deudaUsd, tasa.tasa) : null;
+
+  async function copiar(valor: number) {
+    try {
+      await navigator.clipboard.writeText(bolivaresParaCopiar(valor));
+      setCopiado("si");
+    } catch {
+      setCopiado("no");
+    }
+  }
 
   const pide = METODOS[f.metodo] ?? {};
 
@@ -288,6 +309,54 @@ export function FormularioReportarPago({
             <option value="USD">Dólares</option>
           </Select>
         </Campo>
+
+        {exacto !== null && tasa && (
+          <div
+            style={{
+              marginBottom: 14,
+              padding: "13px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--linea)",
+              background: "var(--fondo)",
+              fontSize: 13.5,
+              lineHeight: 1.55,
+            }}
+          >
+            <div style={{ color: "var(--tinta-2)" }}>
+              Para pagar su deuda de <b className="mono">{usd(deudaUsd)}</b> transfiera
+            </div>
+            <div className="mono" style={{ fontSize: 22, fontWeight: 700, margin: "2px 0" }}>
+              {bs(exacto)}
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--tenue)" }}>
+              Tasa del Banco Central del {fechaLarga(tasa.fecha)}: <span className="mono">{nf(2).format(tasa.tasa)}</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0 8px" }}>
+              <Button
+                type="button"
+                mini
+                onClick={() => {
+                  setCopiado(null);
+                  setF({ ...f, monto: paraCampo(exacto) });
+                }}
+              >
+                Pagar deuda total
+              </Button>
+              <Button type="button" mini variante="secundario" onClick={() => copiar(exacto)}>
+                {copiado === "si" ? "Copiado ✓" : "Copiar el monto"}
+              </Button>
+            </div>
+            {copiado === "no" && (
+              <div style={{ fontSize: 12.5, color: "var(--rojo)", marginBottom: 6 }}>
+                No se pudo copiar. Escríbalo a mano: {bolivaresParaCopiar(exacto)}
+              </div>
+            )}
+            <div style={{ fontSize: 12.5, color: "var(--ambar)", fontWeight: 600 }}>
+              Transfiera el monto exacto, con los céntimos. Si paga otro día, la tasa cambia y el monto también:
+              ponga arriba la fecha en que transfiere.
+            </div>
+          </div>
+        )}
 
         <Campo
           etiqueta={f.moneda === "VES" ? "Monto en bolívares" : "Monto en dólares"}

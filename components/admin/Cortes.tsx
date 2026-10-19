@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, Download, Eye, Mail, MessageCircle, Printer, Send, Undo2 } from "lucide-react";
 import { Aviso, Button, Campo, Card, Cargando, Confirmar, Input, Select, Textarea, Vacio } from "@/components/ui";
-import { bs, fechaCorta, nf, usd } from "@/lib/formato";
+import { bs, nf, usd } from "@/lib/formato";
 import { PLANTILLA_WHATSAPP } from "@/lib/admin/constantes";
 import { usePreferenciaLocal } from "@/lib/preferencia-local";
 import { nombreDe, normalizarTel, vigente } from "@/lib/admin/personas";
 import { csvDeCortes, descargarCSV, listadoDeCortesEnPapel } from "@/lib/admin/papel-cortes";
-import { imprimirDocumento, reciboEnPapel } from "@/lib/recibo-papel";
+import { imprimirDocumento } from "@/lib/recibo-papel";
+import { reciboAdminEnPapel } from "@/lib/admin/papel-recibos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { PeriodoAdmin, ReciboAdmin, TasaViva, Unidad, Vinculo } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
@@ -49,6 +50,7 @@ export function Cortes({
   unidades,
   periodos,
   tasa,
+  periodoInicial,
 }: {
   orgId: string;
   edificioId: string;
@@ -57,11 +59,16 @@ export function Cortes({
   unidades: Unidad[];
   periodos: PeriodoAdmin[];
   tasa: TasaViva | null;
+  /** `?periodo=` de la dirección: el mes que estaba elegido antes de imprimir. */
+  periodoInicial?: string;
 }) {
   const router = useRouter();
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
 
-  const [periodoId, setPeriodoId] = useState(cerrados[0]?.id ?? "");
+  // Al volver de imprimir, la ruta trae `?periodo=`: se queda en ese mes.
+  const [periodoId, setPeriodoId] = useState(
+    (periodoInicial && cerrados.some((p) => p.id === periodoInicial) ? periodoInicial : cerrados[0]?.id) ?? ""
+  );
   // Los recibos se guardan junto al período al que pertenecen: así
   // "cargando" se deriva (¿lo cargado es del mes que está elegido?) en vez
   // de necesitar un setState sincrónico dentro del efecto, que el lint de
@@ -263,40 +270,13 @@ export function Cortes({
       .replace(/{tasa}/g, periodo?.tasa_bcv ? nf(2).format(periodo.tasa_bcv) : "—");
   }
 
-  function armar(r: ReciboAdmin) {
-    const u = unidades.find((x) => x.id === r.unidad_id);
-    const p = vigente(u?.vinculos, "propietario");
-    const q = vigente(u?.vinculos, "inquilino");
-    return reciboEnPapel({
-      edificio: edificio.nombre,
-      organizacion: organizacion.nombre,
-      rif: edificio.rif,
-      logoOrg: organizacion.logo_url || "",
-      unidad: u?.codigo,
-      propietario: nombreDe(p) || nombreDe(q),
-      vence: fechaCorta(r.vence_el),
-      /* `tasa` es la del BCV de hoy, la misma que se ve arriba en la
-         pantalla. Es la que va al papel, no la congelada del período. */
-      tasaHoy: tasa && tasa.valor > 0 ? { valor: tasa.valor, fecha: tasa.actualizada } : null,
-      recibo: { ...r, etiqueta: periodo?.etiqueta },
-    });
-  }
-
-  /* Todos los recibos en un solo documento, uno por página. Es lo que
-     permite mandarlos a imprimir o guardarlos como un PDF único mientras
-     no exista el servidor de envíos. */
-  function imprimirTodos() {
-    if (!recibos.length) return;
-    const cuerpos = recibos
-      .map((r) => {
-        const html = armar(r);
-        const dentro = html.split("<body>")[1].split("</body>")[0];
-        return `<div style="page-break-after:always">${dentro}</div>`;
-      })
-      .join("");
-    const cabeza = armar(recibos[0]).split("</head>")[0] + "</head>";
-    imprimirDocumento(cabeza + "<body>" + cuerpos + "</body></html>", () => notificar(VENTANA_BLOQUEADA, "error"), 900);
-  }
+  const datosPapel = { edificio, organizacion, unidades, etiqueta: periodo?.etiqueta, tasa };
+  const armar = (r: ReciboAdmin) => reciboAdminEnPapel(r, datosPapel);
+  /* Imprimir va por una dirección propia bajo /admin, en la misma pestaña y
+     con «Volver» (ronda 4, caso 53). Antes, una ventana en blanco. La ruta
+     vuelve a comprobar el rol: no confía en que se llegó desde acá. */
+  const rutaPapel = (unidadId?: string) =>
+    `/admin/${orgId}/${edificioId}/cortes/papel?periodo=${periodoId}${unidadId ? `&unidad=${unidadId}` : ""}`;
 
   async function marcarEnviados(enviado: boolean) {
     const supabase = crearClienteNavegador();
@@ -371,9 +351,11 @@ export function Cortes({
             >
               <Download size={15} /> CSV
             </Button>
-            <Button type="button" variante="secundario" mini onClick={imprimirTodos}>
-              <Printer size={15} /> Imprimir los {recibos.length} recibos
-            </Button>
+            {recibos.length > 0 && (
+              <a href={rutaPapel()} className="btn btn-secundario btn-mini" style={{ textDecoration: "none" }}>
+                <Printer size={15} /> Imprimir los {recibos.length} recibos
+              </a>
+            )}
             <Button
               type="button"
               variante="secundario"
@@ -876,13 +858,9 @@ export function Cortes({
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Button
-                      type="button"
-                      mini
-                      onClick={() => imprimirDocumento(armar(previa), () => notificar(VENTANA_BLOQUEADA, "error"))}
-                    >
+                    <a href={rutaPapel(previa.unidad_id)} className="btn btn-mini" style={{ textDecoration: "none" }}>
                       <Printer size={14} /> Imprimir o guardar PDF
-                    </Button>
+                    </a>
                     <Button type="button" variante="secundario" mini onClick={() => setPrevia(null)}>
                       Cerrar
                     </Button>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Input, Select, type TonoBadge } from "@/components/ui";
-import { num0, numeroMalEscrito } from "@/lib/formato";
+import { num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
 import { BOLSILLOS, MODOS_COBRO } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { ConceptoCobro } from "@/lib/admin/tipos";
@@ -36,9 +36,15 @@ export function Cobros({
   conceptos: ConceptoCobro[];
 }) {
   const router = useRouter();
-  const [nuevo, setNuevo] = useState({ nombre: "", bolsillo: "condominio", modo: "presupuesto_alicuota", monto: "0", iva: "0" });
+  const [nuevo, setNuevoEstado] = useState({ nombre: "", bolsillo: "condominio", modo: "presupuesto_alicuota", monto: "0,00", iva: "0" });
   const [borrar, setBorrar] = useState<ConceptoCobro | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /** Al corregir un campo, el aviso de antes ya no aplica (ronda 4, caso 50). */
+  function setNuevo(v: typeof nuevo) {
+    setError(null);
+    setNuevoEstado(v);
+  }
 
   async function editar(id: string, campos: ActualizarConcepto) {
     const supabase = crearClienteNavegador();
@@ -67,7 +73,7 @@ export function Cobros({
       orden: 5,
     });
     if (e) return setError(mensajeDeError(e));
-    setNuevo({ ...nuevo, nombre: "", monto: "0" });
+    setNuevoEstado({ ...nuevo, nombre: "", monto: "0,00" });
     router.refresh();
   }
 
@@ -136,6 +142,7 @@ export function Cobros({
                   onEditar={editar}
                   onEliminar={() => setBorrar(c)}
                   onError={setError}
+                  onCorrige={() => setError(null)}
                 />
               ))}
             </tbody>
@@ -215,16 +222,19 @@ function FilaConcepto({
   onEditar,
   onEliminar,
   onError,
+  onCorrige,
 }: {
   concepto: ConceptoCobro;
   onEditar: (id: string, campos: ActualizarConcepto) => void;
   onEliminar: () => void;
-  /** Un número que no se entiende: se avisa y el campo vuelve a lo guardado. */
+  /** Un número que no se entiende o un nombre vacío: se avisa y el campo vuelve a lo guardado. */
   onError: (mensaje: string) => void;
+  /** La persona está corrigiendo un campo: el aviso de antes se limpia. */
+  onCorrige: () => void;
 }) {
   const [nombre, setNombre] = useState(c.nombre);
-  const [monto, setMonto] = useState(String(c.monto));
-  const [iva, setIva] = useState(String(c.iva));
+  const [monto, setMonto] = useState(paraCampo(c.monto));
+  const [iva, setIva] = useState(paraCampo(c.iva, 0));
   const deVecitap = c.bolsillo === "servicio";
 
   return (
@@ -233,8 +243,20 @@ function FilaConcepto({
         <Input
           value={nombre}
           disabled={deVecitap}
-          onChange={(e) => setNombre(e.target.value)}
-          onBlur={() => nombre !== c.nombre && onEditar(c.id, { nombre })}
+          onChange={(e) => {
+            onCorrige();
+            setNombre(e.target.value);
+          }}
+          onBlur={() => {
+            // Un cobro sin nombre sale en blanco en el recibo (ronda 4, caso 50).
+            const limpio = nombre.trim();
+            if (!limpio) {
+              onError("El cobro necesita un nombre: es lo que se lee en el recibo.");
+              setNombre(c.nombre);
+              return;
+            }
+            if (limpio !== c.nombre) onEditar(c.id, { nombre: limpio });
+          }}
           style={{ padding: "7px 9px", fontSize: 13 }}
         />
       </td>
@@ -255,12 +277,15 @@ function FilaConcepto({
           className="mono"
           value={monto}
           disabled={deVecitap}
-          onChange={(e) => setMonto(e.target.value)}
+          onChange={(e) => {
+            onCorrige();
+            setMonto(e.target.value);
+          }}
           onBlur={() => {
             const mal = numeroMalEscrito([["El monto", monto]]);
             if (mal) {
               onError(mal);
-              setMonto(String(c.monto));
+              setMonto(paraCampo(c.monto));
               return;
             }
             const v = num0(monto);
@@ -274,12 +299,15 @@ function FilaConcepto({
           className="mono"
           value={iva}
           disabled={deVecitap}
-          onChange={(e) => setIva(e.target.value)}
+          onChange={(e) => {
+            onCorrige();
+            setIva(e.target.value);
+          }}
           onBlur={() => {
             const mal = numeroMalEscrito([["El IVA", iva]]);
             if (mal) {
               onError(mal);
-              setIva(String(c.iva));
+              setIva(paraCampo(c.iva, 0));
               return;
             }
             const v = num0(iva);

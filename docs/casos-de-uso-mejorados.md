@@ -1239,3 +1239,135 @@ Extiende el caso 40 (que lo había resuelto solo en la ficha de la unidad).
   campo vuelve a lo que tenía. En los gastos del mes, "Falta el monto" se dice solo si
   está vacío; si hay algo escrito que no es un número, se dice eso. "Reportar un pago"
   ya avisaba ("El monto no se entiende").
+
+## Ronda 4 del tramo 2 (18-oct)
+
+> Arreglos de lo que Gustavo probó en las rondas 2 y 3 (24 OK, 4 OK con observaciones,
+> 1 falla menor), monto exacto en bolívares y propietarios con varias administradoras.
+> **Estado: construidos, sin validar en el navegador.** Una migración nueva
+> (`20261018120000_periodo_cerrado_exige_tasa.sql`), **aplicada en vecitap-pruebas**
+> el 18-oct; falta producción. El importador «Cargar datos» va en la ronda 5.
+
+### 50. Los montos en los campos se escriben como en Venezuela, y Cobros avisa bien
+
+Prueba 21 de Gustavo (Cobros).
+
+- **`main`:** los campos que se llenan con un valor guardado mostraban el número como
+  lo guarda la computadora: «1234.56», con punto. Pasaba en Cobros (monto e IVA de cada
+  fila), la ficha de la unidad (alícuota y saldos iniciales), Ajustes (partidas fijas,
+  mora, tolerancias), Cierre del mes (presupuesto, tasa, gastos) y la suscripción en
+  Operador.
+- **Ahora:** se escriben «1.234,56». **Ningún decimal se pierde:** la alícuota 1,48768
+  se muestra entera, no «1,49», y un saldo de 24,1144 se muestra con sus cuatro
+  decimales. Guardar sin tocar el campo deja exactamente el mismo número en la base
+  (comprobado con montos, alícuotas, tasas, negativos y millones).
+- **El aviso «No se pudo guardar» se borra al empezar a corregir** cualquier campo de
+  Cobros. Antes quedaba arriba aunque ya estuviera corregido.
+- **Un cobro no puede quedar sin nombre**, ni al crearlo ni al editarlo en la fila: es
+  lo que se lee en el recibo. Si se borra el nombre, avisa y vuelve al que tenía.
+- Lo mismo que el caso 49 en dos lugares que faltaban: el monto de una partida fija
+  (Ajustes) y el de un gasto del mes ya cargado. Un valor que no se entiende vuelve a lo
+  guardado en vez de guardarse como 0.
+- Las cifras que solo se leen (tablas, tarjetas, recibos) ya salían «1.234,56»: se
+  revisaron todas y no cambian.
+
+### 51. Recibo con saldo a favor: termina en lo que queda a favor, no en «Total $ 0,00»
+
+Observación 02D de Gustavo.
+
+- **`main`:** si el saldo a favor cubría todo el mes, el recibo terminaba en «Total
+  $ 0,00» y el sobrante no aparecía en ningún lado. La 02D tenía $ 50 a favor y un mes
+  de $ 14,88: el recibo decía $ 0,00 y la tarjeta «A favor $ 35,12».
+- **Ahora** el recibo (en pantalla y en papel) termina en **«Saldo a favor $ 35,12 ·
+  Este mes no tiene que pagar»**. El recuadro grande del papel dice «Saldo a favor»
+  en vez de «Total a pagar», y no muestra bolívares ni vencimiento: no hay nada que
+  pagar.
+- **La previa de Cierre del mes** suma una columna «A favor» y, en una unidad así, el
+  total dice «A favor $ 35,12 · no paga este mes» en lugar de $ 0,00.
+- No cambia ninguna cuenta: la base ya emitía `total = 0`. El sobrante se calcula con
+  las mismas líneas que muestra el recibo (a favor menos lo cargado en el mes).
+
+### 52. Tasa del BCV del mes: el campo explica cuál se va a usar
+
+Observación de Gustavo: «la tasa del mes viene en 0».
+
+- **Lo que se encontró en la base (18-oct):** cerrar con el campo en 0 **no** deja los
+  bolívares en cero. Si la tasa del mes es 0, `cerrar_periodo()` toma la del BCV del
+  **último día del mes** (o la última publicada antes) y la guarda; si no hay ninguna,
+  no deja cerrar. El 0 que se veía era el campo del mes abierto.
+- **Decisión de Nicolás (18-oct): mostrar, no fijar.** El campo queda vacío
+  («Automática») y debajo dice: «En blanco, al cerrar se toma la del BCV del último día
+  del mes. La última publicada es 880,12 (del 17 de octubre de 2026)». **Un fin de
+  semana o un feriado** se muestra la última disponible con su fecha. Se puede escribir
+  otra a mano. No se fija la tasa del día al abrir: eso habría cambiado la regla de que
+  el recibo usa la tasa de fin de mes.
+- **Dos errores que se corrigieron de paso:**
+  - en la corrección del mes abierto, dejar el campo vacío guardaba la tasa **1** (un
+    bolívar por dólar). Ahora vacío vuelve a «automática al cerrar»;
+  - una tasa mal escrita («abc») se mandaba como 0 sin avisar. Ahora avisa y no guarda.
+- **Nueva regla de la base:** un mes cerrado tiene que tener tasa mayor que cero
+  (restricción `periodos_cerrado_con_tasa`). Por la pantalla ya no se podía llegar a
+  eso; la restricción cubre cualquier otro camino.
+- **Cómo se revierte:** `CierreMes.tsx` y
+  `supabase/rollbacks/20261018120000_periodo_cerrado_exige_tasa_rollback.sql`.
+
+### 53. Imprimir un recibo: se abre en la misma pestaña, con «Volver»
+
+- **`main`:** «Descargar o imprimir mi recibo» abría una ventana en blanco
+  (`about:blank`) con el recibo. Con la app instalada en el teléfono, esa ventana no
+  tenía forma de volver y la persona quedaba atrapada. Lo mismo en Admin, desde Cortes.
+- **Ahora:** el recibo tiene **su propia dirección** y se abre en la misma pestaña, ya
+  listo para imprimir o guardar como PDF:
+  - arriba, una barra con **«← Volver»** y **«Imprimir o guardar PDF»**, que **no sale
+    en el papel**;
+  - en computadora, la hoja a **ancho carta, centrada** sobre fondo gris; en el
+    teléfono, a todo el ancho.
+- **Residente:** `/mi/[unidad]/recibo/papel`. «Volver» lleva a «Mi recibo».
+- **Admin:** `/admin/[administradora]/[edificio]/cortes/papel`, un recibo o todos los
+  del mes. «Volver» lleva a Cortes, en el mismo mes que estaba elegido. **Es otra
+  dirección, con su propio control:** comprueba que la cuenta administre esa
+  organización y que el edificio sea de ella. Comparten la plantilla del papel, no la
+  ruta.
+- El listado en PDF y el informe de asamblea siguen abriéndose en una ventana aparte
+  (son de computadora), pero ahora traen la misma barra, con «← Cerrar».
+- Los bolívares del papel y de «Mi recibo» usan el mismo redondeo que «Reportar un
+  pago» (caso 54), así las tres pantallas dicen la misma cifra.
+
+### 54. Reportar un pago: cuánto transferir, exacto, en bolívares
+
+- **`main`:** la persona tenía que hacer la cuenta: deuda en dólares por la tasa del
+  día, y adivinar el redondeo. Si transfería de menos, quedaba debiendo céntimos que
+  nadie entiende.
+- **Ahora**, arriba del monto: **«Para pagar su deuda de $ 98,63 transfiera
+  Bs 86.803,02»**, con la tasa del BCV y su fecha, y dos botones:
+  - **«Pagar deuda total»**: llena el monto con esa cifra;
+  - **«Copiar el monto»**: la copia lista para pegar en la app del banco
+    (`86803,02`, sin puntos de miles);
+  - y el recordatorio: «Transfiera el monto exacto, con los céntimos. Si paga otro día,
+    la tasa cambia y el monto también».
+- **La cifra cambia al cambiar la fecha del pago**, con la tasa de esa fecha: es la
+  misma con la que la base convierte el pago.
+- **Redondeo:** hacia arriba al céntimo, para que el pago nunca quede corto. Se
+  comprobó con 200.000 combinaciones de deuda y tasa contra la conversión de la base.
+  Lo más que se paga de más es menos de un céntimo de bolívar, dentro de lo que acepta
+  la conciliación.
+- **Por unidad, nunca la suma:** quien tiene varias unidades ve la deuda de la unidad
+  que está reportando.
+- **No aparece** si la unidad está al día o con saldo a favor, si la base no muestra el
+  saldo, si se paga en dólares, ni para el propietario de una unidad que paga su
+  inquilino (esa pantalla sigue cerrada para él, caso 35).
+
+### 55. Propietario con unidades en dos administradoras: un total por edificio
+
+Ajusta el caso 31.
+
+- **Antes:** el resumen de /mi sumaba **todas** las unidades en un solo total, aunque
+  fueran de administradoras distintas, que se pagan a cuentas distintas. Confirmado en
+  la base el 18-oct: `mis_unidades()` trae las unidades de todas las administradoras de
+  la cuenta.
+- **Ahora**, si las unidades son de **más de una administradora**, el resumen va **por
+  edificio**: el nombre del edificio, «Administra …», sus unidades y **su propio
+  total**. **No hay total general.** Abajo: «Cada edificio se paga aparte, a su propia
+  administración».
+- **Con una sola administradora, /mi se ve exactamente igual que antes**, aunque tenga
+  unidades en varios edificios de esa administradora.
