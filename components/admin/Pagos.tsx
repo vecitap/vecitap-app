@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Aviso, Badge, Button, Campo, Card, Input, Select, type TonoBadge } from "@/components/ui";
-import { bs, hoyLocalISO, nf, num, usd } from "@/lib/formato";
+import { Aviso, Badge, Button, Campo, Card, Input, InputFecha, Select, type TonoBadge } from "@/components/ui";
+import { bs, hoyLocalISO, montoAlSalir, nf, num, usd } from "@/lib/formato";
 import { BOLSILLOS, DESTINOS_PAGO, METODOS, PIDE } from "@/lib/admin/constantes";
 import {
   detectarColumnas,
@@ -153,6 +153,8 @@ export function Pagos({
     if (!f.unidad) return notificar("Elija la unidad.", "error");
     const monto = num(f.monto);
     if (monto === null || monto <= 0) return notificar("El monto no se entiende.", "error");
+    // Ronda 5: escrita a mano, el navegador acepta una fecha futura aunque el calendario no la ofrezca.
+    if (!f.fecha || f.fecha > hoyLocalISO()) return notificar("La fecha del pago no puede ser futura.", "error");
     if (f.moneda === "VES" && !tf) return notificar("No hay tasa del BCV para esa fecha. Cárguela abajo.", "error");
     setOcupado(true);
     const pide = PIDE[f.metodo] ?? {};
@@ -348,7 +350,7 @@ export function Pagos({
               </Select>
             </Campo>
             <Campo etiqueta="Fecha del pago">
-              <Input type="date" value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
+              <InputFecha sinFuturo value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
             </Campo>
             <Campo etiqueta="Moneda">
               <Select value={f.moneda} onChange={(e) => setF({ ...f, moneda: e.target.value })}>
@@ -357,7 +359,7 @@ export function Pagos({
               </Select>
             </Campo>
             <Campo etiqueta={f.moneda === "VES" ? "Monto en Bs" : "Monto en USD"}>
-              <Input className="mono" value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} />
+              <Input className="mono" value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} onBlur={() => setF({ ...f, monto: montoAlSalir(f.monto) })} />
             </Campo>
             {f.moneda === "VES" && (
               <Campo
@@ -484,6 +486,7 @@ export function Pagos({
                     value={huecoTasa}
                     placeholder="Bs por dólar"
                     onChange={(e) => setHuecoTasa(e.target.value)}
+                    onBlur={() => setHuecoTasa(montoAlSalir(huecoTasa))}
                   />
                 </div>
                 <Button type="button" variante="secundario" mini cargando={guardandoTasa} onClick={guardarHueco}>
@@ -522,7 +525,7 @@ export function Pagos({
               </Select>
             </Campo>
             <Campo etiqueta="Monto USD" ayuda="Positivo baja la deuda. Negativo la sube.">
-              <Input className="mono" value={ex.monto} onChange={(e) => setEx({ ...ex, monto: e.target.value })} />
+              <Input className="mono" value={ex.monto} onChange={(e) => setEx({ ...ex, monto: e.target.value })} onBlur={() => setEx({ ...ex, monto: montoAlSalir(ex.monto) })} />
             </Campo>
             <Campo etiqueta="Aplica a">
               <Select value={ex.destino} onChange={(e) => setEx({ ...ex, destino: e.target.value })}>
@@ -639,7 +642,7 @@ export function Pagos({
                     </p>
                   </div>
                   <div className="tabla-scroll" style={{ maxHeight: 300 }}>
-                    <table className="tabla">
+                    <table className="tabla tabla-fija">
                       <thead>
                         <tr>
                           <th>Referencia</th>
@@ -684,7 +687,7 @@ export function Pagos({
                     </p>
                   </div>
                   <div className="tabla-scroll" style={{ maxHeight: 300 }}>
-                    <table className="tabla">
+                    <table className="tabla tabla-fija">
                       <thead>
                         <tr>
                           <th>Fecha</th>

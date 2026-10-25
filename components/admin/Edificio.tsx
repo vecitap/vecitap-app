@@ -8,6 +8,8 @@ const TONO_COLOR: Record<string, { bg: string; borde: string; texto: string }> =
   verde: { bg: "var(--verde-bg)", borde: "var(--verde)", texto: "var(--verde)" },
   rojo: { bg: "var(--rojo-bg)", borde: "var(--rojo)", texto: "var(--rojo)" },
   azul: { bg: "var(--azul-bg)", borde: "var(--azul)", texto: "var(--azul)" },
+  // Saldo a favor: su propio color (ronda 5), antes --azul.
+  favor: { bg: "var(--a-favor-bg)", borde: "var(--a-favor)", texto: "var(--a-favor)" },
 };
 
 /** Un punto de color en vez de un borde grueso — mismo criterio que Punto() en components/operador/ConsolaOperador.tsx. */
@@ -91,7 +93,7 @@ export function Edificio({
         </span>
         {cuenta.a_favor > 0 && (
           <span>
-            <Punto color="var(--azul)" />
+            <Punto color="var(--a-favor)" />
             {cuenta.a_favor} con saldo a favor
           </span>
         )}

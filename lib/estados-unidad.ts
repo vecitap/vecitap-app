@@ -12,7 +12,7 @@ export type EstadoUnidad = "al_dia" | "debe" | "a_favor";
 const TONOS: Record<EstadoUnidad, TonoBadge> = {
   al_dia: "verde",
   debe: "rojo",
-  a_favor: "azul",
+  a_favor: "favor",
 };
 
 function esEstadoConocido(valor: string): valor is EstadoUnidad {

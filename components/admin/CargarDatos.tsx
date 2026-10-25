@@ -473,7 +473,7 @@ export function CargarDatos({
               </p>
             </div>
             <div className="tabla-scroll" style={{ maxHeight: 520 }}>
-              <table className="tabla">
+              <table className="tabla tabla-fija">
                 <thead>
                   <tr>
                     <th>Fila</th>

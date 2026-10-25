@@ -100,7 +100,7 @@ export default async function PaginaInicio({
               Saldos a favor
             </div>
           </div>
-          <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>{usd(Math.abs(aFavor))}</div>
+          <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: aFavor < -0.009 ? "var(--a-favor)" : undefined }}>{usd(Math.abs(aFavor))}</div>
           <div style={{ fontSize: 11.5, color: "var(--tenue)", marginTop: 4 }}>Anticipos que ya pagaron</div>
         </Card>
         <Card>

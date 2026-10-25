@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 
-export type TonoAviso = "verde" | "ambar" | "rojo" | "azul";
+export type TonoAviso = "verde" | "ambar" | "rojo" | "azul" | "favor";
 
 const FONDO: Record<TonoAviso, string> = {
   verde: "var(--verde-bg)",
   ambar: "var(--ambar-bg)",
   rojo: "var(--rojo-bg)",
   azul: "var(--azul-bg)",
+  favor: "var(--a-favor-bg)",
 };
 
 const TEXTO: Record<TonoAviso, string> = {
@@ -14,6 +15,7 @@ const TEXTO: Record<TonoAviso, string> = {
   ambar: "var(--ambar)",
   rojo: "var(--rojo)",
   azul: "var(--azul)",
+  favor: "var(--a-favor)",
 };
 
 /** Portado de Aviso() en app.html:556-571 — banner de alerta con título y texto. */

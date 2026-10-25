@@ -3,6 +3,7 @@ export { Badge, type TonoBadge } from "./Badge";
 export { Campo } from "./Campo";
 export { CampoClave } from "./CampoClave";
 export { Input } from "./Input";
+export { InputFecha } from "./InputFecha";
 export { Select } from "./Select";
 export { Textarea } from "./Textarea";
 export { Card } from "./Card";

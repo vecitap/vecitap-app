@@ -120,11 +120,11 @@ export function Recibo({
       {Number(recibo.mora) > 0 && fila("Intereses de mora", recibo.mora)}
       {favor > 0 ? (
         <>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0 2px", fontWeight: 700, color: "var(--verde)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0 2px", fontWeight: 700, color: "var(--a-favor)" }}>
             <span>Saldo a favor</span>
             <span className="mono">{usd(favor)}</span>
           </div>
-          <div style={{ fontSize: 13.5, color: "var(--verde)", fontWeight: 600, paddingBottom: 9, borderBottom: "1px solid var(--linea)" }}>
+          <div style={{ fontSize: 13.5, color: "var(--a-favor)", fontWeight: 600, paddingBottom: 9, borderBottom: "1px solid var(--linea)" }}>
             Este mes no tiene que pagar
           </div>
         </>

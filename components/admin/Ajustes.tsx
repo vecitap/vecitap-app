@@ -511,6 +511,7 @@ function FilaPartida({
           // guardarse como 0 (ronda 4, mismo criterio que el caso 49).
           const v = monto.trim() === "" ? 0 : num(monto);
           if (v === null) return setMonto(paraCampo(p.monto));
+          setMonto(paraCampo(v));
           if (v !== Number(p.monto)) onEditar(p.id, { monto: v });
         }}
         style={{ padding: "7px 9px", fontSize: 13, textAlign: "right" }}

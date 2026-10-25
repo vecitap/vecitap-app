@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Input, Select, type TonoBadge } from "@/components/ui";
-import { num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
+import { montoAlSalir, num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
 import { BOLSILLOS, MODOS_COBRO } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { ConceptoCobro } from "@/lib/admin/tipos";
@@ -14,6 +14,15 @@ import { mensajeDeError } from "@/lib/errores";
 type ActualizarConcepto = Database["public"]["Tables"]["conceptos_cobro"]["Update"];
 
 const TONO_BOLSILLO: Record<string, TonoBadge> = { condominio: "neutro", administracion: "azul", servicio: "marca" };
+
+/**
+ * Qué es el número del cobro según «Cómo se calcula» (ronda 5, pedido de
+ * Gustavo). En `main` la columna decía «Monto o %» para todos.
+ */
+const esPorcentaje = (modo: string) => modo === "porcentaje_condominio";
+const etiquetaMonto = (modo: string) => (esPorcentaje(modo) ? "Porcentaje %" : "Monto $");
+/** En estos modos el monto no se usa: sale del presupuesto o del gasto del mes. */
+const montoSinUso = (modo: string) => modo.startsWith("presupuesto") || modo.startsWith("gasto");
 
 /**
  * Portado de Cobros() en app.html:2271-2427. A diferencia del original
@@ -88,6 +97,12 @@ export function Cobros({
 
   const usaPresupuesto = conceptos.some((c) => c.activo && c.modo.startsWith("presupuesto"));
   const usaGasto = conceptos.some((c) => c.activo && c.modo.startsWith("gasto"));
+  // El título de la columna: uno solo si todos los cobros son del mismo tipo;
+  // si se mezclan, cada celda lleva su unidad al lado.
+  const hayPct = conceptos.some((c) => esPorcentaje(c.modo));
+  const hayMonto = conceptos.some((c) => !esPorcentaje(c.modo));
+  const mezcla = hayPct && hayMonto;
+  const tituloMonto = mezcla ? "Monto $ o porcentaje %" : hayPct ? "Porcentaje %" : "Monto $";
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -128,7 +143,7 @@ export function Cobros({
                 <th>Nombre en el recibo</th>
                 <th>Bolsillo</th>
                 <th>Cómo se calcula</th>
-                <th style={{ textAlign: "right" }}>Monto o %</th>
+                <th style={{ textAlign: "right" }}>{tituloMonto}</th>
                 <th style={{ textAlign: "right" }}>IVA %</th>
                 <th></th>
                 <th></th>
@@ -139,6 +154,7 @@ export function Cobros({
                 <FilaConcepto
                   key={`${c.id}:${c.nombre}:${c.monto}:${c.iva}`}
                   concepto={c}
+                  conUnidad={mezcla}
                   onEditar={editar}
                   onEliminar={() => setBorrar(c)}
                   onError={setError}
@@ -184,8 +200,13 @@ export function Cobros({
               ))}
             </Select>
           </Campo>
-          <Campo etiqueta="Monto o %">
-            <Input className="mono" value={nuevo.monto} onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} />
+          <Campo etiqueta={etiquetaMonto(nuevo.modo)} ayuda={montoSinUso(nuevo.modo) ? "No se usa: sale del mes." : undefined}>
+            <Input
+              className="mono"
+              value={nuevo.monto}
+              onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })}
+              onBlur={() => setNuevo({ ...nuevo, monto: montoAlSalir(nuevo.monto, esPorcentaje(nuevo.modo) ? 0 : 2) })}
+            />
           </Campo>
           <Campo etiqueta="IVA %">
             <Input className="mono" value={nuevo.iva} onChange={(e) => setNuevo({ ...nuevo, iva: e.target.value })} />
@@ -219,12 +240,15 @@ export function Cobros({
  */
 function FilaConcepto({
   concepto: c,
+  conUnidad,
   onEditar,
   onEliminar,
   onError,
   onCorrige,
 }: {
   concepto: ConceptoCobro;
+  /** Los cobros mezclan montos y porcentajes: la celda dice cuál es. */
+  conUnidad: boolean;
   onEditar: (id: string, campos: ActualizarConcepto) => void;
   onEliminar: () => void;
   /** Un número que no se entiende o un nombre vacío: se avisa y el campo vuelve a lo guardado. */
@@ -289,10 +313,13 @@ function FilaConcepto({
               return;
             }
             const v = num0(monto);
+            setMonto(paraCampo(v, esPorcentaje(c.modo) ? 0 : 2));
             if (v !== Number(c.monto)) onEditar(c.id, { monto: v });
           }}
+          title={montoSinUso(c.modo) ? "No se usa: sale del presupuesto o del gasto del mes" : undefined}
           style={{ padding: "7px 9px", fontSize: 13, textAlign: "right" }}
         />
+        {conUnidad && <div style={{ fontSize: 11, color: "var(--tenue)", textAlign: "right", marginTop: 2 }}>{esPorcentaje(c.modo) ? "%" : "$"}</div>}
       </td>
       <td style={{ width: 84 }}>
         <Input

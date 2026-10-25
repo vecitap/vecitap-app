@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, Campo, Card, EstadoGuardado, Input, Select, Table, Textarea } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
-import { hoyLocalISO, nf, num0, paraCampo, usd, usd0 } from "@/lib/formato";
+import { hoyLocalISO, montoAlSalir, nf, num0, paraCampo, usd, usd0 } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularCuotaPrevista, PLANES, DESCUENTO } from "@/lib/operador/planes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -276,7 +276,7 @@ export function FichaCliente({
                 </Select>
               </Campo>
               <Campo etiqueta={s.modoPrecio === "por_unidad" ? "Precio por unidad" : "Precio mensual"}>
-                <Input className="mono" value={s.precio} onChange={(e) => setS({ ...s, precio: e.target.value })} />
+                <Input className="mono" value={s.precio} onChange={(e) => setS({ ...s, precio: e.target.value })} onBlur={() => setS({ ...s, precio: montoAlSalir(s.precio) })} />
               </Campo>
               <Campo etiqueta="Descuento %" ayuda="10 en trimestral, 20 en anual">
                 <Input className="mono" value={s.descuentoPct} onChange={(e) => setS({ ...s, descuentoPct: e.target.value })} />
@@ -446,7 +446,10 @@ export function FichaCliente({
                     className="mono"
                     value={montoServicio}
                     onChange={(e) => setMontoServicio(e.target.value)}
-                    onBlur={(e) => guardarServicio(num0(e.target.value))}
+                    onBlur={(e) => {
+                      setMontoServicio(montoAlSalir(e.target.value));
+                      guardarServicio(num0(e.target.value));
+                    }}
                   />
                 </Campo>
               </div>

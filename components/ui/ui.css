@@ -152,6 +152,23 @@
 .tabla td { padding: 11px 12px; border-bottom: 1px solid var(--linea); }
 .tabla tbody tr:hover { background: var(--lienzo-alt); }
 
+/* Encabezado fijo en una tabla con alto máximo (ronda 5, «Cómo se reparte»).
+   Va en el MISMO elemento que scrollea: `.tabla-scroll` con `max-height`.
+   Ese contenedor tiene `overflow-x: auto`, y con un eje en auto el otro
+   también deja de ser `visible`, así que es él (no la página) el que se
+   desplaza cuando la tabla es más alta que el máximo; `sticky` se pega a
+   ese contenedor. Antes los `th` no tenían `sticky` y se iban con las filas.
+   El fondo tapa las filas que pasan por debajo, y el borde va como sombra
+   porque con `border-collapse: collapse` el borde del `th` no viaja con él. */
+.tabla-fija thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--lienzo);
+  border-bottom: 0;
+  box-shadow: inset 0 -1px 0 var(--linea);
+}
+
 .dialogo {
   border: 1px solid var(--linea);
   border-radius: var(--radio);

@@ -220,7 +220,7 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
                   font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
   table.res tr.tot td{ font-weight:700; font-size:11pt; border-bottom:0;
                        border-top:1.5px solid #0A1128; padding-top:7px }
-  table.res tr.nota-fav td{ border-bottom:0; padding-top:0; color:#0E7C6B; font-weight:600 }
+  table.res tr.nota-fav td{ border-bottom:0; padding-top:0; color:#4D7C0F; font-weight:600 }
 
   /* ── Desglose a dos columnas ── */
   h2{ font-size:8.5pt; text-transform:uppercase; letter-spacing:.1em;
@@ -322,25 +322,38 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
  * todos traen `</head>` y `<body>`.
  */
 export function paraPantalla(html: string, volver: string | null, imprimirAlAbrir = true): string {
+  // Ronda 5 (pedido de Gustavo): sin `viewport`, el teléfono dibujaba la
+  // página a ~980 px y la achicaba entera para que entrara, y con ella la
+  // barra: «Volver» e «Imprimir» quedaban diminutos. Ahora la página va al
+  // ancho del teléfono (la barra a tamaño normal, con 44 px de alto para el
+  // dedo) y solo la HOJA, que sigue a ancho carta, se achica para entrar
+  // (`zoom`, calculado abajo). En el papel no cambia nada.
+  const viewport = `<meta name="viewport" content="width=device-width, initial-scale=1">`;
   const estilo = `<style>
-  .barra-pantalla{ display:flex; gap:8px; justify-content:space-between; align-items:center;
-    position:sticky; top:0; z-index:5; padding:10px 16px; background:#0A1128;
+  .barra-pantalla{ display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; align-items:center;
+    position:sticky; top:0; z-index:5; padding:8px 12px; background:#0A1128;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif }
-  .barra-pantalla a, .barra-pantalla button{ font:600 14px/1 inherit; font-family:inherit;
-    padding:10px 14px; border-radius:8px; border:1px solid #A3B4D4; background:transparent;
-    color:#F8FAFC; cursor:pointer; text-decoration:none }
+  .barra-pantalla a, .barra-pantalla button{ font-weight:600; font-size:15px; line-height:1.2; font-family:inherit;
+    display:inline-flex; align-items:center; justify-content:center; min-height:44px; min-width:44px;
+    padding:0 16px; border-radius:8px; border:1px solid #A3B4D4; background:transparent;
+    color:#F8FAFC; cursor:pointer; text-decoration:none; box-sizing:border-box }
   .barra-pantalla .primario{ background:#F98513; border-color:#F98513; color:#0A1128 }
   @media screen{
     html{ background:#E2E8F0 }
-    body{ max-width:8.5in; margin:0 auto 24px; background:#fff; min-height:100vh }
-    .hoja-pantalla{ padding:12mm 13mm 10mm }
+    body{ margin:0 0 24px; background:#E2E8F0; min-height:100vh }
+    .hoja-pantalla{ width:8.5in; box-sizing:border-box; margin:0 auto; background:#fff;
+      padding:12mm 13mm 10mm; transform-origin:top left }
   }
   @media screen and (min-width:9in){
-    body{ box-shadow:0 2px 14px rgba(10,17,40,.18); min-height:11in }
+    .hoja-pantalla{ box-shadow:0 2px 14px rgba(10,17,40,.18); min-height:11in }
   }
-  @media screen and (max-width:640px){ .hoja-pantalla{ padding:16px } }
-  @media print{ .barra-pantalla{ display:none !important } }
+  @media print{
+    .barra-pantalla{ display:none !important }
+    .hoja-pantalla{ zoom:1 !important; width:auto }
+  }
 </style>`;
+  // Más angosta que la hoja: se achica la hoja, no la página.
+  const ajustar = `<script>(function(){function a(){var h=document.querySelector(".hoja-pantalla");if(!h)return;var w=document.documentElement.clientWidth,c=8.5*96;h.style.zoom=w<c?String(w/c):""}a();addEventListener("resize",a)})()</script>`;
   const boton = volver
     ? `<a href="${esc(volver)}">← Volver</a>`
     : `<button type="button" onclick="window.close()">← Cerrar</button>`;
@@ -348,9 +361,9 @@ export function paraPantalla(html: string, volver: string | null, imprimirAlAbri
   // Se espera a que carguen las imágenes (el logo): si no, imprime sin él.
   const auto = imprimirAlAbrir ? `<script>addEventListener("load",function(){setTimeout(function(){window.print()},300)})</script>` : "";
   return html
-    .replace("</head>", estilo + "</head>")
+    .replace("</head>", (/name=["']viewport["']/.test(html) ? "" : viewport) + estilo + "</head>")
     .replace(/<body([^>]*)>/, `<body$1>${barra}<div class="hoja-pantalla">`)
-    .replace("</body>", `</div>${auto}</body>`);
+    .replace("</body>", `</div>${ajustar}${auto}</body>`);
 }
 
 /**

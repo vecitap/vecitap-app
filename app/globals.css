@@ -28,6 +28,11 @@
    docs/casos-de-uso-mejorados.md).
    ══════════════════════════════════════════════════════════════ */
 :root {
+  /* Los controles nativos del navegador (el calendario de una fecha, su
+     iconito, las barras de desplazamiento) siguen al tema. Sin esto, en el
+     oscuro el iconito del calendario quedaba negro sobre fondo oscuro
+     (ronda 5). */
+  color-scheme: light;
   --fondo: #F8FAFC;
   --lienzo: #FFFFFF;
   /* Sin equivalente en main (main no tiene este token): superficie
@@ -48,11 +53,12 @@
   --ambar: #92400E;     --ambar-bg: #FDF0E0;
   --rojo:  #9B2C1F;     --rojo-bg:  #FBEBE8;
   --azul:  #0A1128;     --azul-bg:  #EEF2F7;
-  /* Saldo a favor (ronda 2, 08-oct): un verde sobrio, distinto del menta
-     de --verde en el tema oscuro. En el claro coincide con --verde, que ya
-     es sobrio. Antes Admin lo pintaba con --azul, que en claro es la tinta
-     y se leía como "negro". Ver docs/casos-de-uso-mejorados.md. */
-  --a-favor: #0E7C6B;   --a-favor-bg: #E3F4F0;
+  /* Saldo a favor: un color propio, verde oliva, que no se confunde con el
+     verde de «al día» (ronda 5, pedido de Gustavo; desde la ronda 2 y hasta
+     acá coincidía con --verde en el claro). Contraste: 4,99:1 sobre
+     --lienzo, 4,77:1 sobre --fondo, 4,57:1 sobre --a-favor-bg (AA ≥ 4,5).
+     Ver docs/casos-de-uso-mejorados.md. */
+  --a-favor: #4D7C0F;   --a-favor-bg: #F1F7E7;
 
   /* Columna lateral: oscura también en el tema claro (decisión del
      socio, ver comentario arriba). */
@@ -100,6 +106,7 @@
 }
 
 :root[data-theme="oscuro"] {
+  color-scheme: dark;
   --fondo: #070C1C;
   --lienzo: #0E1730;
   --lienzo-alt: #152140;
@@ -116,7 +123,8 @@
   --ambar: #F9A94F;     --ambar-bg: rgba(249,169,79,.14);
   --rojo:  #F08A78;     --rojo-bg:  rgba(240,138,120,.14);
   --azul:  #A3B4D4;     --azul-bg:  rgba(163,180,212,.14);
-  --a-favor: #7DBFA7;   --a-favor-bg: rgba(125,191,167,.14);
+  /* 8,98:1 sobre --lienzo, 9,86:1 sobre --fondo, 7,01:1 sobre --a-favor-bg. */
+  --a-favor: #84CC16;   --a-favor-bg: rgba(132,204,22,.14);
 
   --lat-fondo: #0E1730;
   --lat-linea: rgba(255,255,255,.09);

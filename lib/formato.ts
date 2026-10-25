@@ -144,6 +144,18 @@ export function paraCampo(valor: number | string | null | undefined, minimo = 2)
     .replace(/^-0(?:,0+)?$/, (t) => t.slice(1));
 }
 
+/**
+ * Al salir de un campo de monto, el texto queda escrito como en el resto de
+ * la app: «1234.56» → «1.234,56» (ronda 5, pedido de Gustavo). Vacío o algo
+ * que no se entiende queda tal cual, para que la validación del formulario
+ * lo marque en vez de borrarlo.
+ */
+export function montoAlSalir(texto: string, minimo = 2): string {
+  if (!texto.trim()) return texto;
+  const n = num(texto);
+  return n === null ? texto : paraCampo(n, minimo);
+}
+
 export function num0(valor: string | number | null | undefined): number {
   return num(valor) ?? 0;
 }

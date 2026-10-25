@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ReceiptText, RotateCcw, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Flechas, Input, Select } from "@/components/ui";
-import { fechaLarga, nf, num, paraCampo, usd, numeroMalEscrito } from "@/lib/formato";
+import { fechaLarga, montoAlSalir, nf, num, paraCampo, usd, numeroMalEscrito } from "@/lib/formato";
 import { MESES } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { CategoriaAdmin, ConceptoCobro, GastoAdmin, PeriodoAdmin, SimulacionCierre } from "@/lib/admin/tipos";
@@ -372,11 +372,11 @@ export function CierreMes({
               </Select>
             </Campo>
             <Campo etiqueta="Tasa BCV del mes" ayuda={<AyudaTasa tasaValor={tasaValor} tasaFecha={tasaFecha} />}>
-              <Input className="mono" value={abrir.tasa} placeholder="Automática" onChange={(e) => setAbrir({ ...abrir, tasa: e.target.value })} />
+              <Input className="mono" value={abrir.tasa} placeholder="Automática" onChange={(e) => setAbrir({ ...abrir, tasa: e.target.value })} onBlur={() => setAbrir({ ...abrir, tasa: montoAlSalir(abrir.tasa) })} />
             </Campo>
             {usaPresupuesto && (
               <Campo etiqueta="Presupuesto del mes USD" ayuda="Este edificio reparte un presupuesto, no el gasto ejecutado.">
-                <Input className="mono" value={abrir.presupuesto} placeholder="5.630,15" onChange={(e) => setAbrir({ ...abrir, presupuesto: e.target.value })} />
+                <Input className="mono" value={abrir.presupuesto} placeholder="5.630,15" onChange={(e) => setAbrir({ ...abrir, presupuesto: e.target.value })} onBlur={() => setAbrir({ ...abrir, presupuesto: montoAlSalir(abrir.presupuesto) })} />
               </Campo>
             )}
           </div>
@@ -412,11 +412,11 @@ export function CierreMes({
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", alignItems: "end", marginTop: 14 }}>
               {usaPresupuesto && (
                 <Campo etiqueta="Presupuesto del mes USD">
-                  <Input className="mono" value={correccion.presupuesto} onChange={(e) => setCorreccion({ ...correccion, presupuesto: e.target.value })} />
+                  <Input className="mono" value={correccion.presupuesto} onChange={(e) => setCorreccion({ ...correccion, presupuesto: e.target.value })} onBlur={() => setCorreccion({ ...correccion, presupuesto: montoAlSalir(correccion.presupuesto) })} />
                 </Campo>
               )}
               <Campo etiqueta="Tasa BCV del mes" ayuda={correccion.tasa.trim() === "" ? <AyudaTasa tasaValor={tasaValor} tasaFecha={tasaFecha} /> : undefined}>
-                <Input className="mono" value={correccion.tasa} placeholder="Automática" onChange={(e) => setCorreccion({ ...correccion, tasa: e.target.value })} />
+                <Input className="mono" value={correccion.tasa} placeholder="Automática" onChange={(e) => setCorreccion({ ...correccion, tasa: e.target.value })} onBlur={() => setCorreccion({ ...correccion, tasa: montoAlSalir(correccion.tasa) })} />
               </Campo>
               <div>
                 <Button type="button" variante="secundario" onClick={corregir}>
@@ -507,7 +507,7 @@ export function CierreMes({
                   </Select>
                 </Campo>
                 <Campo etiqueta="Monto USD">
-                  <Input className="mono" value={nuevo.monto} onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} />
+                  <Input className="mono" value={nuevo.monto} onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} onBlur={() => setNuevo({ ...nuevo, monto: montoAlSalir(nuevo.monto) })} />
                 </Campo>
                 <Button type="button" onClick={agregarGasto}>
                   <Plus size={15} />
@@ -588,7 +588,7 @@ export function CierreMes({
                 </p>
               </div>
               <div className="tabla-scroll" style={{ maxHeight: 420 }}>
-                <table className="tabla">
+                <table className="tabla tabla-fija">
                   <thead>
                     <tr>
                       <th>Unidad</th>
@@ -611,7 +611,7 @@ export function CierreMes({
                         <td className="mono">{usd(r.administracion)}</td>
                         <td className="mono">{usd(r.servicio)}</td>
                         <td className="mono">{usd(r.anterior)}</td>
-                        <td className="mono" style={{ color: Number(r.a_favor) > 0 ? "var(--verde)" : undefined }}>
+                        <td className="mono" style={{ color: Number(r.a_favor) > 0 ? "var(--a-favor)" : undefined }}>
                           {Number(r.a_favor) > 0 ? `− ${usd(r.a_favor)}` : usd(0)}
                         </td>
                         <td className="mono">{usd(r.mora)}</td>
@@ -904,6 +904,7 @@ function CampoMonto({ valor, onGuardar }: { valor: number; onGuardar: (v: number
           // guardarse como 0 (ronda 4, mismo criterio que el caso 49).
           const n = v.trim() === "" ? 0 : num(v);
           if (n === null) return setV(paraCampo(valor));
+          setV(paraCampo(n));
           if (n !== valor) onGuardar(n);
         }}
         style={{ textAlign: "right" }}
@@ -944,7 +945,7 @@ function TotalPrevia({ fila: r }: { fila: SimulacionCierre }) {
   const cargos = Number(r.condominio) + Number(r.administracion) + Number(r.servicio) + Number(r.anterior) + Number(r.mora);
   const queda = Number(r.total) > 0.005 ? 0 : Math.round((Number(r.a_favor) - cargos) * 100) / 100;
   return (
-    <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: queda > 0 ? "var(--verde)" : undefined }}>
+    <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: queda > 0 ? "var(--a-favor)" : undefined }}>
       {queda > 0 ? (
         <>
           A favor {usd(queda)}

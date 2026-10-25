@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { FormularioReportarPago } from "@/components/residente/FormularioReportarPago";
 import { misUnidadesSesion } from "@/lib/residente/datos";
 import { soloEstado } from "@/lib/residente/cuotas";
+import { ultimoReciboDe } from "@/lib/residente/recibo";
+import { favorQueQueda } from "@/lib/recibo-papel";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { usuarioActual } from "@/lib/supabase/cache";
 
@@ -28,11 +30,13 @@ export default async function PaginaReportar({
   // inquilino): el bloqueo es solo de pantalla, decisión del 08-oct.
   if (soloEstado(unidad)) redirect(`/mi/${unidadId}/recibo`);
 
-  const { data: bancos } = await supabase
-    .from("bancos")
-    .select("codigo,nombre,corto")
-    .eq("activo", true)
-    .order("orden");
+  const [{ data: bancos }, ultimo] = await Promise.all([
+    supabase.from("bancos").select("codigo,nombre,corto").eq("activo", true).order("orden"),
+    // El último recibo cerrado, el mismo de «Mi recibo»: si ese recibo dice
+    // «Este mes no tiene que pagar», esta pantalla lo avisa (ronda 5).
+    ultimoReciboDe(unidadId),
+  ]);
+  const recibo = ultimo.unidad ? ultimo.recibo : null;
 
   return (
     <FormularioReportarPago
@@ -43,6 +47,7 @@ export default async function PaginaReportar({
       // La deuda de ESTA unidad, nunca la suma de las del propietario
       // (ronda 4, caso 54). null = la base no muestra el saldo.
       deudaUsd={unidad.saldo === null ? null : Number(unidad.saldo)}
+      favorDelRecibo={recibo ? favorQueQueda(recibo) : 0}
     />
   );
 }

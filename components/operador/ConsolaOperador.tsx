@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Campo, Card, Input, Table } from "@/components/ui";
-import { hoyLocalISO, nf, num, usd, usd0 } from "@/lib/formato";
+import { hoyLocalISO, montoAlSalir, nf, num, usd, usd0 } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularMetricasCartera } from "@/lib/operador/metricas-cartera";
 import { csvCartera } from "@/lib/operador/exportar-cartera";
@@ -235,7 +235,7 @@ export function ConsolaOperador({
           <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
             <div style={{ width: 150 }}>
               <Campo etiqueta="Cargarla a mano">
-                <Input className="mono" value={tasaManual} placeholder="Bs por dólar" onChange={(e) => setTasaManual(e.target.value)} />
+                <Input className="mono" value={tasaManual} placeholder="Bs por dólar" onChange={(e) => setTasaManual(e.target.value)} onBlur={() => setTasaManual(montoAlSalir(tasaManual))} />
               </Campo>
             </div>
             <Button type="button" variante="secundario" mini onClick={cargarTasaAMano}>

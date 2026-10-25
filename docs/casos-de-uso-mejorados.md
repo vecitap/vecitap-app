@@ -1491,3 +1491,122 @@ empresa o una junta registrada sin tratamiento, y le corrige el teléfono.
 - **Por qué ahora:** hacía falta para que valga la regla de empresas y juntas del
   importador (caso 56). Sin esto, la primera vez que se guardaba la ficha se perdía.
 - **Cómo se revierte:** `components/admin/DatosUnidad.tsx`, función `aForm`.
+
+## Ronda 5 — ajustes después de la ronda 4 (25-oct)
+
+> Pedidos de Gustavo al cerrar la ronda 4 (0 fallas graves). **Estado: construidos, sin
+> validar en el navegador.** Sin migraciones: todo es de pantalla.
+
+### 59. Los montos se ven «1.234,56» al salir del campo
+
+**Caso de uso:** la administradora escribe un saldo inicial en «Nueva unidad» como
+«1234.56» o «1234,56».
+
+- **`main` (y la app hasta hoy):** el campo quedaba como se escribió. Solo los campos que
+  se vuelven a cargar desde la base después de guardar (la ficha, las partidas) se veían
+  con el formato de Venezuela, y solo después de recargar.
+- **Ahora:** al salir del campo, el monto se reescribe «1.234,56». El número no cambia
+  (solo cómo se ve), y lo que no se entiende («12,3,4», «abc») queda tal cual para que el
+  formulario lo marque al guardar, como siempre.
+- **Dónde:** «Nueva unidad» y la ficha (saldos iniciales); Cierre del mes (presupuesto,
+  tasa, gasto nuevo y los montos de cada gasto); Cobros (monto del cobro nuevo y de cada
+  fila, el porcentaje sin decimales); Ajustes (montos de las partidas fijas); Pagos (monto,
+  exoneración, tasa que falta); «Reportar un pago» del residente; y en Operador, el precio,
+  el monto del servicio y la tasa manual. No se tocan alícuotas, mora ni tolerancias: no
+  son montos.
+- **Cómo se revierte:** `montoAlSalir` en `lib/formato.ts` y los `onBlur` que la llaman.
+
+### 60. «Reportar un pago» avisa cuando el mes no tiene que pagarse
+
+**Caso de uso:** un residente con saldo a favor entra a «Reportar un pago».
+
+- **`main`:** el formulario no decía nada; el residente podía reportar un pago que no
+  debía.
+- **Ahora:** arriba del formulario, en el color de «a favor»: «Este mes no tiene que
+  pagar: tiene $ 35,12 a favor». **Solo avisa; no bloquea** (puede querer adelantar).
+- **La condición es la misma del recibo:** se lee el último recibo cerrado (el mismo de
+  «Mi recibo») y se usa `favorQueQueda()`, la cuenta con la que el recibo dice «Este mes
+  no tiene que pagar» (caso 51). El monto es el que dice el recibo como «Saldo a favor».
+- **Cómo se revierte:** `app/(residente)/mi/[unidadId]/reportar/page.tsx` y el aviso al
+  principio de `FormularioReportarPago.tsx`.
+
+### 61. Imprimir en el teléfono: «Volver» e «Imprimir» a tamaño de dedo
+
+**Caso de uso:** con la app instalada en el teléfono, el residente abre su recibo para
+imprimir (o la administradora, un listado).
+
+- **Ronda 4 (caso 53):** la barra con «← Volver» e «Imprimir o guardar PDF» ya existía,
+  pero la página no decía su ancho (faltaba `<meta name="viewport">`), así que el teléfono
+  la dibujaba a ancho de computadora y la achicaba entera: los botones quedaban diminutos.
+- **Ahora:** la página va al ancho del teléfono y los botones tienen 44 px de alto como
+  mínimo (el tamaño recomendado para el dedo) y letra de 15 px; si no entran en una línea,
+  bajan a una segunda. **La hoja** sigue a ancho carta y es la única que se achica para
+  entrar, sin desplazamiento horizontal. En el papel no cambia nada.
+- **De paso:** la letra de los botones no se aplicaba (una regla de CSS mal escrita desde
+  la ronda 4); ahora sí.
+- **Cómo se revierte:** `paraPantalla()` en `lib/recibo-papel.ts`.
+
+### 62. La fecha del pago se elige con calendario
+
+**Caso de uso:** la administradora registra un pago, o el residente lo reporta.
+
+- **`main`:** las dos usaban el campo de fecha del navegador. En computadora, el calendario
+  solo se abría desde un iconito; un clic en el texto editaba día, mes y año a mano. En el
+  tema oscuro, el iconito no se veía (negro sobre fondo oscuro). En Admin se podía elegir
+  una fecha futura.
+- **Ahora:** tocar o hacer clic en cualquier parte del campo abre el calendario del
+  navegador. El calendario y su iconito siguen al tema (claro u oscuro). **No hay fechas
+  futuras** en ninguno de los dos: el calendario no las ofrece, y si se escribe una a
+  mano, el formulario no la deja guardar (Admin: «La fecha del pago no puede ser futura.»;
+  el residente ya tenía esa regla).
+- **Cómo se revierte:** `components/ui/InputFecha.tsx`, su uso en `Pagos.tsx` y
+  `FormularioReportarPago.tsx`, y `color-scheme` en `app/globals.css`.
+
+### 63. «Cómo se reparte»: el encabezado queda fijo al bajar
+
+**Caso de uso:** en Cierre del mes, la administradora baja por las 54 unidades de la
+previa y quiere saber qué columna es cuál.
+
+- **`main` (y la app hasta hoy):** el encabezado se iba con las filas. Gustavo lo pidió en
+  la ronda anterior y no se había hecho: la tabla está dentro de una caja con alto máximo
+  que se desplaza sola, y el encabezado no tenía `position: sticky`.
+- **Ahora:** el encabezado queda arriba de la caja mientras las filas pasan por debajo.
+  Comprobado en Chrome con las 54 unidades de la planilla del piloto: con la caja bajada
+  900 px, el encabezado sigue en su lugar (sin el cambio, quedaba 900 px más arriba, fuera
+  de la vista).
+- **Lo mismo en** las otras tablas con caja propia: la previa de «Cargar datos», la de
+  «Cargar saldos» y las dos de Pagos (conciliación).
+- **Cómo se revierte:** la clase `.tabla-fija` en `components/ui/ui.css` y en esas tablas.
+
+### 64. «A favor» con su propio color
+
+**Caso de uso:** la administradora y el residente distinguen de un vistazo una unidad al
+día de una con saldo a favor.
+
+- **`main`:** el saldo a favor iba en marino (el color del texto). Desde la ronda 2 iba en
+  `--a-favor`, que en el tema claro era el mismo verde de «al día»; y en algunos lugares
+  seguía en verde o en azul (la columna «A favor» de «Cómo se reparte», el recibo del
+  residente, el mapa del edificio).
+- **Ahora:** `--a-favor` es un verde oliva propio: **#4D7C0F** en el claro y **#84CC16**
+  en el oscuro. Contraste (WCAG, mínimo 4,5:1 para texto): claro 4,99:1 sobre blanco,
+  4,77:1 sobre el fondo de la página, 4,57:1 sobre su fondo de etiqueta; oscuro 8,98:1
+  sobre las tarjetas, 9,86:1 sobre el fondo, 7,01:1 sobre su fondo de etiqueta. Única
+  salvedad: en el claro, sobre una fila con el mouse encima, baja a 4,28:1.
+- **Dónde:** Propietarios, la ficha, Inicio («Saldos a favor»), el mapa del edificio,
+  Cierre del mes («A favor» y «no paga este mes»), el portal del residente (tarjeta,
+  resumen, recibo, el aviso del caso 60) y el recibo impreso («Este mes no tiene que
+  pagar»).
+- **Cómo se revierte:** `--a-favor` y `--a-favor-bg` en `app/globals.css`.
+
+### 65. Cobros: «Monto $» o «Porcentaje %» según cómo se calcula
+
+**Caso de uso:** la administradora agrega un cobro y no sabe si el número es en dólares o
+un porcentaje.
+
+- **`main`:** el título decía «Monto o %» siempre.
+- **Ahora:** al agregar, el título sigue a «Cómo se calcula»: «Porcentaje %» para «% de lo
+  que paga de condominio», «Monto $» para los demás. En los modos que no usan el número
+  (presupuesto o gasto del mes) lo dice: «No se usa: sale del mes». En la tabla, el título
+  es «Monto $» o «Porcentaje %» si todos los cobros son del mismo tipo; si se mezclan,
+  dice «Monto $ o porcentaje %» y cada celda lleva su unidad debajo.
+- **Cómo se revierte:** `components/admin/Cobros.tsx`.

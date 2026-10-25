@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Confirmar, EstadoGuardado, Input, Select } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
-import { fechaCorta, hoyLocalISO, num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
+import { fechaCorta, hoyLocalISO, montoAlSalir, num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
 import { correoValido, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -404,10 +404,10 @@ export function DatosUnidad({
           </Campo>
           <div />
           <Campo etiqueta="Saldo inicial de condominio" ayuda="Solo cuenta mientras el edificio no tenga ningún mes cerrado.">
-            <Input className="mono" value={u.saldo} onChange={(e) => setU({ ...u, saldo: e.target.value })} />
+            <Input className="mono" value={u.saldo} onChange={(e) => setU({ ...u, saldo: e.target.value })} onBlur={() => setU({ ...u, saldo: montoAlSalir(u.saldo) })} />
           </Campo>
           <Campo etiqueta="Saldo inicial de administración">
-            <Input className="mono" value={u.saldoHon} onChange={(e) => setU({ ...u, saldoHon: e.target.value })} />
+            <Input className="mono" value={u.saldoHon} onChange={(e) => setU({ ...u, saldoHon: e.target.value })} onBlur={() => setU({ ...u, saldoHon: montoAlSalir(u.saldoHon) })} />
           </Campo>
           <div style={{ gridColumn: "1 / -1" }}>
             <Campo

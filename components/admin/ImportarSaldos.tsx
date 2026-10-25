@@ -228,7 +228,7 @@ export function ImportarSaldos({
             </p>
           </div>
           <div className="tabla-scroll" style={{ maxHeight: 380 }}>
-            <table className="tabla">
+            <table className="tabla tabla-fija">
               <thead>
                 <tr>
                   <th>Código del archivo</th>

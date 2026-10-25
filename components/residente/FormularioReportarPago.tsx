@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Campo, Card, Input, Select } from "@/components/ui";
-import { bs, fechaLarga, hoyLocalISO, nf, num, paraCampo, usd } from "@/lib/formato";
+import { Aviso, Button, Campo, Card, Input, InputFecha, Select } from "@/components/ui";
+import { bs, fechaLarga, hoyLocalISO, montoAlSalir, nf, num, paraCampo, usd } from "@/lib/formato";
 import { bolivaresExactos, bolivaresParaCopiar } from "@/lib/residente/monto-exacto";
 import {
   ACEPTA_COMPROBANTE,
@@ -82,6 +82,7 @@ export function FormularioReportarPago({
   usuarioId,
   bancos,
   deudaUsd,
+  favorDelRecibo,
 }: {
   orgId: string;
   unidadId: string;
@@ -89,6 +90,12 @@ export function FormularioReportarPago({
   bancos: Banco[];
   /** Saldo de esta unidad en dólares (`mis_unidades()`); null si la base no lo muestra. */
   deudaUsd: number | null;
+  /**
+   * Lo que le queda a favor según su último recibo (`favorQueQueda`, la
+   * misma cuenta con la que el recibo dice «Este mes no tiene que pagar»);
+   * 0 si el recibo tiene algo que pagar.
+   */
+  favorDelRecibo: number;
 }) {
   const router = useRouter();
   const [f, setF] = useState<EstadoFormulario>(VACIO);
@@ -292,15 +299,19 @@ export function FormularioReportarPago({
         </div>
       )}
 
+      {/* Ronda 5 (pedido de Gustavo): solo avisa, no bloquea. Puede querer
+          adelantar el mes que viene. */}
+      {favorDelRecibo > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <Aviso tono="favor" titulo={`Este mes no tiene que pagar: tiene ${usd(favorDelRecibo)} a favor`}>
+            Su último recibo quedó cubierto con su saldo a favor. Si igual quiere adelantar un pago, puede reportarlo aquí.
+          </Aviso>
+        </div>
+      )}
+
       <form onSubmit={enviar} noValidate>
         <Campo etiqueta="Fecha del pago" ayuda="La del día en que hizo la transferencia, no la de hoy." error={errores.fecha}>
-          <Input
-            type="date"
-            className="mono"
-            value={f.fecha}
-            max={hoyLocalISO()}
-            onChange={(e) => setF({ ...f, fecha: e.target.value })}
-          />
+          <InputFecha className="mono" sinFuturo value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
         </Campo>
 
         <Campo etiqueta="Moneda">
@@ -363,7 +374,7 @@ export function FormularioReportarPago({
           ayuda="Puede escribirlo con coma: 3.450,75"
           error={errores.monto}
         >
-          <Input className="mono" inputMode="decimal" value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} />
+          <Input className="mono" inputMode="decimal" value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} onBlur={() => setF({ ...f, monto: montoAlSalir(f.monto) })} />
         </Campo>
 
         {f.moneda === "VES" && (

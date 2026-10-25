@@ -359,6 +359,41 @@ repo (ninguna entra al repo):
   siguen recibiendo «Sr.». La regla acepta «CA»/«SA» sin puntos si están
   sueltos: un nombre con «Sa» o «Ca» como palabra quedaría sin tratamiento (no
   hay ninguno en la planilla).
+- **Cambiar de administradora sin entrar a /admin** (anotado el 25-oct). Hoy,
+  quien administra más de una administradora vuelve a /admin para elegir otra.
+  Un selector en la cabecera de Admin lo resolvería. **Solo si un cliente lo
+  pide**; no está en ningún plan.
+- **Plan de arranque del piloto** (anotado el 25-oct; nada de esto está hecho,
+  y en producción lo ejecuta Nicolás, con respaldo antes):
+  1. **Borrar «Edificio Arauca»** después de confirmar con Gustavo que no tiene
+     datos reales. En producción (lectura del 25-oct) es la administradora
+     «Edificio arauca», con un edificio, «Edificio Arauca II», de 2 unidades,
+     sin accesos de residentes, sin pagos y sin meses cerrados.
+  2. **Vaciar GRUPO ING3 y recargarlo con el importador**, con respaldo antes,
+     **solo si** ningún propietario real entró y no hay pagos. Lectura del
+     25-oct: un edificio («Edifico Adminitradora Uniòn», así escrito), 53
+     unidades, 0 accesos de residentes, 0 invitaciones pendientes, 0 pagos,
+     0 meses cerrados. Hay que volver a mirarlo el día que se haga.
+  3. **Mora en 0 durante el mes en paralelo** (el mes en que el piloto corre
+     junto al sistema anterior). Hoy los dos edificios tienen
+     `interes_mora = 0`; hay que mantenerlo así hasta que termine ese mes.
+
+### Ajustes después de la ronda 4 (25-oct)
+
+Gustavo cerró la ronda 4 con 0 fallas graves y pidió siete ajustes, todos de
+pantalla, sin migraciones. `npx tsc --noEmit`, `npm run lint` y
+`npm run build` en verde. Desvíos frente a `main`: casos 59 a 65 de
+`docs/casos-de-uso-mejorados.md`. Pruebas: D24 a D30, abajo.
+
+| # | Ajuste | Qué se hizo |
+|---|---|---|
+| 1 | Saldo inicial «1.234,56» al salir del campo | `montoAlSalir()` (`lib/formato.ts`) en todos los campos de monto de Admin, Residente y Operador (lista en el caso 59). Antes solo se veían así los que se recargaban de la base |
+| 2 | «Reportar un pago» con saldo a favor | Aviso «Este mes no tiene que pagar: tiene $ X a favor», con la misma condición del recibo (`favorQueQueda()` sobre el último recibo cerrado). No bloquea |
+| 3 | Imprimir en el teléfono | La página no tenía `<meta name="viewport">` y el teléfono la achicaba entera. Ahora la barra va a tamaño de teléfono (botones de 44 px, letra de 15 px) y solo la hoja se achica. Comprobado en Chrome en un marco de 375 px: botones de 94×44 y 195×44 en una línea, hoja al 44 %, sin desplazamiento lateral |
+| 4 | Fecha del pago con calendario | `InputFecha` (`components/ui`): el calendario del navegador se abre al tocar el campo, y no hay fechas futuras (también validado al guardar en Admin). `color-scheme` en el tema: en el oscuro, el iconito del calendario no se veía |
+| 5 | «Cómo se reparte» con encabezado fijo | **Por qué fallaba:** la tabla está en una caja con `max-height` que se desplaza sola (`overflow-x: auto` hace que el otro eje también sea `auto`), y los `th` no tenían `sticky`: nunca se había hecho. Clase `.tabla-fija`. **Comprobado** en Chrome con las 54 unidades de la planilla y la caja bajada 900 px: el encabezado queda a 0 px del borde de la caja; sin el cambio, a −900 px. Aplicado también a las otras cuatro tablas con caja propia |
+| 6 | Color propio para «a favor» | `--a-favor`: claro #4D7C0F, oscuro #84CC16. Contraste: claro 4,99:1 sobre blanco y 4,57:1 sobre su fondo; oscuro 8,98:1 y 7,01:1 (mínimo AA, 4,5:1). En el claro, sobre una fila con el mouse encima, 4,28:1. Pasado a `--a-favor` lo que seguía en verde o azul |
+| 7 | Cobros: «Monto $» o «Porcentaje %» | El título del campo sigue a «Cómo se calcula»; el de la tabla, a los cobros que hay (y si se mezclan, cada celda dice su unidad) |
 
 ### Lista de pruebas — ronda 5 (Preview de `dev`)
 
@@ -397,6 +432,13 @@ Gustavo.
 | D21 | Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-cuenta-de-prueba.txt` → «Leer lo pegado». Después: «Cargar 1 unidad» → «Sí, cargar» → perfil **Propietario** (`+propietario`) → /mi | 77X en ámbar: «el archivo dice «Otro Nombre Prueba», pero la ficha que coincide por correo o teléfono es la de Sr. Boso. Tumegotef… (…): …revise que sea la misma persona», y «hay 6 fichas con el correo o teléfono…». Entre paréntesis sale una de 02A, 02B, 02C, 02D u 08D: son fichas iguales, y cuál sale depende del orden en que llegan. Todas son de unidades de la cuenta Propietario. Se carga con esa ficha. /mi del Propietario: **no aparece 77X ni el Edificio Prueba Carga**; lo mismo que en D11. (Vincular una unidad a una ficha no da acceso: el acceso es por Accesos) |
 | D22 | Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-paga.csv` | Columnas: además de las 7, INQUILINO → Inquilino y QUIEN PAGA → Quién paga. «Unidades que ya existen»: 06B «se registra el inquilino: Inquilino Prueba · **quién paga Propietario → Inquilino**». Marcar «Actualizar» en 06B → «Cargar 1 unidad» → «0 unidades nuevas, 1 actualizadas. 1 personas nuevas». Ficha de 06B: inquilino «Inquilino Prueba», y paga el inquilino |
 | D23 | En Edificio Prueba Carga → Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-mismo-telefono.csv`. Después, Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-mismo-telefono-ficha.txt` → «Leer lo pegado» | **Archivo:** «2 unidades nuevas». En «Personas para revisar», en ámbar y **sin respuesta**: «Fila 3 (88B): «Beto Prueba Telefono» tiene el mismo teléfono que «Ana Prueba Telefono» (fila 2, 88A)… Los correos son distintos: esta fila trae delivered+beto-telefono@resend.dev y «Ana…» trae delivered+ana-telefono@resend.dev. Si contesta «Sí», los recibos y avisos de 88B van a ir a delivered+ana-telefono@resend.dev». 88B en ámbar. Botón gris, «Falta 1 respuesta…». Elegir «No» → se habilita → «Cargar 2 unidades» → «2 personas nuevas». Fichas: 88A con el correo de Ana, 88B con el de Beto. **Pegado:** 88C en ámbar y la pregunta **sin respuesta**: ««Carla Prueba Telefono» (fila 2, 88C) tiene el teléfono de Sr. Ana Prueba Telefono (88A), pero otro correo: el archivo trae delivered+carla-telefono@resend.dev y la ficha delivered+ana-telefono@resend.dev…», con tres opciones: la ficha de Ana, la de Beto (cada una con su correo) y «Es otra persona: ficha nueva». Botón gris hasta elegir. Elegir «ficha nueva» → «Cargar 1 unidad» → «1 personas nuevas»; 88C con el correo de Carla. (Si en el archivo se contesta «Sí», 88B quedaría con la ficha de Ana y el correo de Beto como respaldo: no cargar así) |
+| D24 | **Ajustes del 25-oct.** Propietarios → Nueva unidad → escribir en «Saldo inicial de condominio» `1234.56` y pasar al campo siguiente; lo mismo con `1234,56` y con `12,3,4`. Después: ficha de una unidad → saldo inicial; Cierre del mes → presupuesto y tasa; Cobros → monto de un cobro; Pagos → monto; perfil Propietario → Reportar un pago → monto | Al salir del campo se ve **«1.234,56»** en los dos primeros casos. `12,3,4` queda como está, y al guardar aparece el aviso de siempre («…no se entiende. Use coma para los decimales…»). En todos los demás campos de monto, igual: al salir se ve con punto de miles y coma decimal. Alícuota, mora y tolerancia no cambian (no son montos) |
+| D25 | Perfil **Propietario** (`+propietario`) → unidad **02D** del Edificio Gustavo → «Reportar un pago». Después, la **02A** | 02D: arriba, en verde oliva, **«Este mes no tiene que pagar: tiene $ 35,12 a favor»**, y debajo el formulario completo: se puede reportar igual. 02A (debe): no aparece el aviso. El monto es el mismo que dice «Mi recibo» de 02D como «Saldo a favor» |
+| D26 | Con la app **instalada en el teléfono**: Propietario → Mi recibo → Imprimir. Después, Admin → Cortes → imprimir un recibo | «← Volver» e «Imprimir o guardar PDF» a tamaño normal de teléfono (letra como la de la app, alto de un dedo); la hoja se ve reducida, entera de ancho, sin tener que moverla de lado. «← Volver» vuelve a la app. Imprimir: el papel sale igual que antes |
+| D27 | Admin → Pagos → Registrar un pago → tocar el campo «Fecha del pago» (en cualquier parte, no solo el iconito). Probarlo en el tema claro y en el oscuro, y en el teléfono. Lo mismo en Propietario → Reportar un pago | Se abre el **calendario del navegador**. En el oscuro, el calendario y el iconito se ven oscuros, con el iconito visible. Los días después de hoy no se pueden elegir. Si se escribe a mano una fecha futura y se guarda: Admin dice «La fecha del pago no puede ser futura.»; el residente, lo mismo debajo del campo |
+| D28 | En **Edificio Prueba Carga** (53 unidades; 54 si en D5 se cargó el Estacionamiento) → Cierre del mes → con un gasto o presupuesto cargado, bajar dentro de «Cómo se reparte» | El **encabezado** (UNIDAD, ALÍCUOTA, CONDOMINIO… TOTAL DEL RECIBO) queda fijo arriba de la caja mientras bajan las filas, con fondo, sin que las filas se vean por detrás. Lo mismo en la previa de «Cargar datos» |
+| D29 | Mirar saldos a favor en el tema **claro** y en el **oscuro**: Propietarios (filtro «A favor»), la ficha de 02D, Inicio («Saldos a favor»), el mapa del edificio, Cierre del mes («A favor»); y en el Propietario, la tarjeta y el recibo de 02D | Todo lo que dice «a favor» va en **verde oliva** (claro #4D7C0F, oscuro #84CC16), distinto del verde de «al día». En el mapa del edificio, 02D, 06C y 06D tienen su propio color, y el punto «con saldo a favor» de la leyenda también |
+| D30 | Cobros → Agregar un cobro → cambiar «Cómo se calcula» entre «% de lo que paga de condominio», «Un monto igual a cada unidad» y «Presupuesto del mes × alícuota». Mirar también el título de la columna en la tabla | El título del campo cambia: «Porcentaje %» / «Monto $» / «Monto $» con «No se usa: sale del mes». En la tabla: «Monto $» si ningún cobro es un porcentaje; si hay de los dos tipos, «Monto $ o porcentaje %» y cada celda con su «$» o «%» debajo |
 
 ## Ronda 4 del tramo 2 (18-oct) — bloques 1, 2 y 4 construidos; el importador va en la ronda 5
 

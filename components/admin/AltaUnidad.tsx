@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Campo, Input, Select } from "@/components/ui";
-import { num0, numeroMalEscrito } from "@/lib/formato";
+import { montoAlSalir, num0, numeroMalEscrito } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { TIPOS_UNIDAD } from "@/lib/admin/tipos";
 
@@ -150,10 +150,10 @@ export function AltaUnidad({
           </Campo>
           <div />
           <Campo etiqueta="Saldo inicial de condominio" ayuda="Lo que arrastra del sistema anterior.">
-            <Input className="mono" value={f.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="0,00" />
+            <Input className="mono" value={f.saldo} onChange={(e) => set("saldo", e.target.value)} onBlur={() => set("saldo", montoAlSalir(f.saldo))} placeholder="0,00" />
           </Campo>
           <Campo etiqueta="Saldo inicial de administración">
-            <Input className="mono" value={f.saldoHon} onChange={(e) => set("saldoHon", e.target.value)} placeholder="0,00" />
+            <Input className="mono" value={f.saldoHon} onChange={(e) => set("saldoHon", e.target.value)} onBlur={() => set("saldoHon", montoAlSalir(f.saldoHon))} placeholder="0,00" />
           </Campo>
           <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--linea)", paddingTop: 14 }}>
             <span style={{ fontSize: 12.5, color: "var(--tinta-2)", fontWeight: 600 }}>Propietario (opcional)</span>
