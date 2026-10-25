@@ -16,6 +16,388 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 5 del tramo 2 (18-oct; M3 revisada el 24-oct) — importador «Cargar datos»; M3 aprobada
+
+Todo en `dev`, **sin commit** (Gustavo está probando la ronda 4 en el Preview
+de `dev`). `npx tsc --noEmit`, `npm run lint` y `npm run build` en verde el
+25-oct, después de los ajustes de las dos revisiones (24-oct y 25-oct).
+Desvíos frente a `main`: casos 56 a 58 de `docs/casos-de-uso-mejorados.md`.
+
+**M3 (`importar_unidades`): revisada por Nicolás el 24-oct y aprobada con
+ajustes.** Se corrigió el mismo archivo (no tenía commit ni estaba en
+producción) y se reaplicó en vecitap-pruebas el 25-oct con drop + create. El
+rollback es **solo** `drop function if exists
+public.importar_unidades(uuid, jsonb, jsonb)`: lo cargado con ella queda, como
+cualquier dato cargado a mano.
+
+### Qué se hizo
+
+- **«Cargar datos» reemplaza a «Importar unidades»** (`ImportarUnidades.tsx`
+  se borró). «Cargar saldos» no cambió.
+  - `lib/admin/cargar-datos/columnas.ts`: qué es cada columna. Por el
+    encabezado (sinónimos y hasta 1–2 letras mal: «Telefomo», «COPROPIETARIOS»,
+    «Celular», «Correo 1/2») y, si no hay, por el contenido (@, teléfonos, `$`,
+    números que suman 100, códigos cortos, nombres). Cada campo una sola vez: la
+    segunda columna de correo es el de respaldo, la segunda de nombres es el
+    inquilino.
+  - `lib/admin/cargar-datos/analisis.ts`: la previa y la carga. No escribe nada.
+  - `components/admin/CargarDatos.tsx`: la pantalla. Columnas con selector,
+    resumen, filas que no se cargan con su motivo, unidades que ya existen
+    (omitir/actualizar), personas para revisar, y la previa completa.
+  - `leerCSV`/`leerTabla` (`lib/admin/archivos-tabla.ts`) aceptan
+    `conVacias`: el importador conserva las filas vacías para que el número de
+    fila sea el de Excel. Las demás pantallas siguen igual.
+- **Reglas de Nicolás del 18-oct, aplicadas en la pantalla y exigidas de nuevo
+  en la base:** unidad existente se omite por omisión (con «Actualizar» por
+  fila o todas); el importador no cambia propietario ni inquilino; persona
+  existente: solo se completa lo vacío; personas se juntan por correo, correo
+  de respaldo o teléfono, y solo por nombre es dudoso (por omisión, distintas).
+- **Tipo de unidad y correo de respaldo (M2):** en la ficha, en «Nueva unidad»
+  y en el importador. El correo de respaldo no se usa para enviar nada.
+- **Exoneración negativa: no se bloquea** (decisión de Nicolás del 24-oct). Es
+  una función a propósito de `main` («Positivo baja la deuda. Negativo la
+  sube») y «Cargar saldos» la recomienda para corregir un mes cerrado. Que
+  `saldo_unidad().mora` la cuente como mora queda en los pendientes de la
+  Fase 5.
+- **`mis_cuotas()`** (el 0,3 con un solo mes cerrado): es la pregunta 4 del
+  documento de la ronda 4, que Gustavo está respondiendo. Se aplica cuando
+  llegue su respuesta; no es parte del importador.
+
+### Ajustes de la revisión de M3 (24-oct)
+
+- **a. Propietario o inquilino distinto del vigente.** La base lo sigue
+  rechazando, como red de seguridad. La pantalla **ya no lo mandaba nunca**
+  (verificado: en ese caso no pone el vínculo en la carga); lo que cambió es el
+  aviso: la fila se carga sin el vínculo (si se marca «Actualizar», solo con
+  sus otros cambios) y la previa dice «el archivo trae otro propietario
+  («…»; la ficha tiene «…»): no se cambia desde aquí, cámbielo desde la
+  ficha». Prueba D13.
+- **b. `personas_completadas`** cuenta solo las fichas donde de verdad se
+  llenó un campo vacío. Antes contaba toda ficha existente que llegara con
+  algún dato, aunque ya lo tuviera.
+- **c. La previa no deja llegar a la función** ni un código repetido en el
+  archivo (ahora **no se carga ninguna** de esas filas; antes se cargaba la
+  primera) ni una unidad nueva cuyo código es de una unidad dada de baja
+  («el código es de la unidad X, que está dada de baja: reactívela desde su
+  ficha»). Si dos unidades del edificio se escriben casi igual («12D» activa y
+  «12-D» dada de baja), cuenta la activa. Pruebas D18 y D19.
+- **«Sr.» en empresas** (punto 3 de la revisión). Una persona **nueva** cuyo
+  nombre contiene C.A., S.A. o S.R.L. (como palabra suelta, con o sin puntos,
+  mayúsculas o minúsculas) o empieza con «Junta» se guarda **sin
+  tratamiento**, aunque la pantalla mande uno. La regla vive en
+  `importar_unidades()`. Verificado antes:
+  - `personas.prefijo` acepta null (`text NULL DEFAULT 'Sr.'`). Se guarda
+    **null, no ''**: `destinatarios_de()` arma el nombre con `concat_ws(' ',
+    prefijo, nombre)`, que salta un null pero no un '' (dejaría un espacio
+    adelante).
+  - Pantallas, recibos y PDF (`papel-recibos.ts`, `papel-cortes.ts`, Cortes,
+    Ficha, Propietarios) arman el nombre con `nombreDe()`, que filtra lo
+    vacío: sin espacio de más.
+  - **Corregido de paso:** la ficha (`DatosUnidad.tsx`) mostraba «Sr.» a toda
+    persona sin tratamiento, y al guardar se lo volvía a poner. Ahora muestra
+    «sin tratamiento» y así lo guarda; «Sr.» queda solo como valor inicial de
+    una persona que todavía no existe.
+  - Las fichas que **ya existen** no se tocan: en pruebas, las empresas del
+    Edificio Gustavo siguen con «Sr.».
+- **Respuestas de d (sin cambiar nada):**
+  - **¿Índice único sobre `personas.correo`?** No. En `personas` solo está la
+    clave primaria. Dos fichas pueden tener el mismo correo, y en pruebas las
+    hay (el importador viejo creaba una ficha por unidad).
+  - **¿Accesos o invitaciones vinculan cuentas por `personas.correo`?** No.
+    `aceptar_invitacion` compara el correo de la cuenta con el de la
+    **invitación**, y `crear_invitacion` usa el correo que se escribe en
+    Accesos. `personas.correo` solo aparece en dos lugares: (1) Accesos lo
+    **propone** al elegir la unidad («Tomado de la ficha de la unidad»), y se
+    puede cambiar antes de invitar; (2) `reemplazar_propietario` y
+    `reemplazar_inquilino` dan por vencidas las invitaciones pendientes de esa
+    unidad que fueron a ese correo, al cambiar de persona. El correo de
+    respaldo no se usa en ninguno de los dos.
+  - **¿La previa muestra el cambio de «quién paga» al actualizar?** Sí, en
+    «Unidades que ya existen». Hasta el 25-oct decía solo el valor nuevo
+    («quién paga → inquilino»); ahora dice los dos, como el resto de los
+    cambios (ver abajo). Solo aparece si el archivo trae esa columna. Si dice
+    inquilino y la unidad no tiene inquilino, no se cambia y la fila lo avisa
+    en ámbar.
+
+**Encontrado al correr la planilla anonimizada, y corregido en
+`analisis.ts`.** No estaba en la revisión; Nicolás lo revisó el 25-oct:
+
+- **Ficha equivocada — aprobada (el ajuste pedido no aplica, ver abajo).**
+  Cuando varias fichas de la administradora coinciden por correo o teléfono,
+  la previa elegía la que tenía más unidades, sin mirar el nombre. En pruebas
+  le asignaba a 01A («Bumagi…») la ficha de «Livofesupi Sonopu». Ahora elige
+  primero la que se llama como en el archivo. Si una fila termina usando una
+  ficha con otro nombre (pasa cuando se aceptan los «¿Es la misma persona?»
+  por omisión), lo dice en ámbar: «el archivo dice «…», pero la ficha que
+  coincide por correo o teléfono es la de …: se usa esa ficha, revise que sea
+  la misma persona».
+- **Fichas duplicadas con el mismo nombre — aprobada.** Cuando la unidad ya
+  tiene como propietario a una ficha **con el mismo nombre**, ya no dice «el
+  archivo trae otro propietario». Dice, sin ámbar: «ya tiene como propietario
+  a «…» (otra ficha con el mismo nombre): se deja como está».
+
+**La regla de «ficha con cuenta activa» (25-oct): descartada por Nicolás**,
+porque la premisa no se da. Se había pedido que, si un residente ve sus
+unidades a través de los vínculos de su ficha, una fila con otro nombre y una
+ficha **con cuenta activa** no tuviera respuesta por omisión. Revisado en
+vecitap-pruebas, sin cambiar nada:
+
+- **Una ficha no tiene cuenta.** `personas` no tiene ninguna columna que la
+  una a un usuario (`id, org_id, prefijo, nombre, documento, telefono,
+  correo, creada_en, correo_respaldo`).
+- **Un residente ve sus unidades solo por `membresias.unidad_id`**, una por
+  unidad. `mis_unidades()`, `unidades_visibles()` y `edificios_visibles()`
+  leen `membresias`, nunca `vinculos`. Las únicas funciones que crean una
+  membresía son `aceptar_invitacion` y `crear_organizacion`. Los disparadores
+  de `vinculos` solo **quitan** accesos (cuando sale el último propietario o
+  inquilino); ninguno los da.
+- **Probado en la base**, en una transacción deshecha: se cargó una unidad
+  77X con la ficha de 08D del Edificio Gustavo, que es la unidad de la cuenta
+  `+propietario` de Gustavo. Antes y después, `mis_unidades()` de esa cuenta
+  devuelve las mismas 7 unidades; por RLS no ve ni 77X ni el edificio.
+- **Lo que sí arrastra una ficha equivocada**, sin dar acceso: Accesos
+  **propone** el correo de la ficha al invitar para esa unidad. Si la
+  administradora no lo mira, podría invitar a la otra persona. La invitación
+  igual pasa por Accesos y la tiene que aceptar quien recibe el código.
+- La prueba D21 deja a la vista que vincular no da acceso. El caso que sí
+  importa (el correo) va en el ajuste siguiente.
+
+### Ajuste de la tercera revisión (25-oct): solo por teléfono y con otro correo
+
+**Por qué importa el correo.** Confirmado en vecitap-pruebas, sin cambiar
+nada: `destinatarios_de(p_unidad)` toma `personas.correo` (solo el principal,
+nunca el de respaldo) de las fichas con vínculo vigente en la unidad
+(propietario primero, después inquilino). La usan `correo_recibo()` (el
+recibo va a cada destinatario con `enviar_corte`) y `garita_avisar()` (el
+aviso de visita de la garita). Un «Sí» equivocado manda el recibo **y** los
+avisos de la garita de esa unidad al correo de la otra persona, y Accesos
+propone ese correo al invitar. Probado en la base, en una transacción
+deshecha: con «Sí», el destinatario de 05C era el correo de «Bumagi…»; con
+«No», el suyo.
+
+**El ajuste.** Solo cuando la coincidencia es **únicamente por teléfono** y
+el archivo trae **otro correo**:
+
+- la pregunta sale **sin respuesta por omisión** («Elija una opción»), en
+  ámbar, con los dos correos a la vista y lo que pasa si se contesta «Sí»
+  («…los recibos y avisos de 05C van a ir a …»);
+- la fila sale en ámbar («falta elegir en «Personas para revisar»…»);
+- el botón de cargar queda gris con «Faltan N respuestas en «Personas para
+  revisar»» hasta que se elija;
+- mientras no se elija, la previa la trata como persona distinta (no junta
+  nada).
+
+En todos los demás casos sigue el «Sí» por omisión. Vale igual para los dos
+lugares donde puede pasar: entre dos filas del archivo (la pregunta «¿Es la
+misma persona?») y entre una fila y una ficha que ya está en la
+administradora (antes, ahí se usaba la ficha sin preguntar; ahora la pregunta
+ofrece cada ficha con ese teléfono, con su correo, o «ficha nueva»).
+
+**Con la planilla del piloto: 2 de las 10 preguntas** caen en el caso: **05C
+y 05D** («Livofesupi Sonopu», mismo teléfono que 01A «Bumagi…», correos
+distintos). Ninguna contra fichas existentes, ni en pruebas ni con la
+administradora vacía de producción. Las otras 8 coinciden por correo (o por
+correo y teléfono) y siguen con «Sí» por omisión.
+
+**Arreglos que salieron al probarlo:**
+
+- **«No, son personas distintas» separaba de más.** Cortaba la fila de
+  **todas** sus coincidencias, también de las del mismo nombre: 05D quedaba
+  aparte de 05C (mismo nombre y mismo correo), y aparecía una pregunta falsa
+  («se llaman igual pero no comparten correo ni teléfono»). Ahora separa solo
+  de los de otro nombre. Venía de antes (también con un «No» contestado a
+  mano).
+- **Solo frena si la fila se carga.** Al volver a subir el archivo (D12, D13,
+  D22…), 05C y 05D ya existen y se omiten: la pregunta aparece, pero no frena
+  la carga, porque esa fila no manda a nadie.
+- **Mientras 05C/05D no se contestan**, la previa los ve como distintos de
+  01A, y entonces pregunta si «Livofesupi Sonopu» de 05C es el mismo de
+  06C/06D (se llaman igual). Esas preguntas cambian cuando se contesta la de
+  05C/05D. Conviene contestar primero las marcadas en ámbar.
+
+### Ajustes de la segunda revisión (25-oct)
+
+- **«Quién paga»** en «Unidades que ya existen»: el valor anterior y el
+  nuevo, como los demás cambios: «quién paga Propietario → Inquilino».
+  Prueba D22.
+- **Alícuotas que no suman 100 %.** Antes, la previa mostraba la suma con 4
+  decimales («sumarían 99,9999 %») y solo avisaba si se pasaba de la
+  tolerancia del cierre (0,01): en ámbar, con el título «Las alícuotas no van
+  a sumar 100 %», **sin el número**. Nunca bloqueaba. Ahora:
+  - la suma va con los 5 decimales de una alícuota («99,99993 %»);
+  - si no es 100 exacto, **siempre** hay aviso con la suma real: en ámbar
+    fuera de la tolerancia («Las alícuotas van a sumar 100,08207 %, no 100 %
+    — …el mes no se podrá cerrar hasta que cuadren»), en azul dentro de ella
+    («Las alícuotas van a sumar 99,99993 % — …dentro de la tolerancia del
+    cierre (0,01): el mes se puede cerrar»);
+  - fuera de la tolerancia, la confirmación lo repite;
+  - **sigue sin bloquear** la carga.
+  - La tolerancia de la pantalla es 0,01, la misma de `cerrar_periodo()`
+    (`edificios.tolerancia_alicuota`, 0,01 en todos los edificios hoy). Si un
+    edificio la cambia, el aviso no se entera: anotado en el código.
+- **Las preguntas «¿Es la misma persona?» nombran todas las coincidencias.**
+  Por eso eran «12 filas» y «10 casos»: son 10 preguntas, pero afectan a 12
+  filas. La de **11C** («Nofigecuno, c.a.») decía solo «el mismo correo que
+  «Fiban…» (04D)». Pero 11C también tiene el mismo teléfono que 11A y 11B
+  («Lozaf Cagigorefi»), y contestar «Sí» los junta a los cuatro sin que la
+  pregunta los nombre. Ahora dice: «…tiene el mismo correo que «Fiban Lonesapi
+  Rufib Levev» (fila 19, 04D) y el mismo teléfono que «Lozaf Cagigorefi»
+  (fila 44, 11A)». Las otras nueve preguntas no cambian de fondo; las que
+  coinciden en correo **y** teléfono con la misma fila ahora lo dicen.
+
+### Para Gustavo: los 10 casos «mismo correo o teléfono, otro nombre»
+
+Para que los compare con su planilla real. Si se contesta «Sí, es la misma
+persona», la fila usa la ficha de la última columna, que es la que hoy está
+en la administradora de pruebas. «¿Son la misma persona?» es la pregunta.
+**⚠ = sin respuesta por omisión** (solo por teléfono y con otro correo, ver
+arriba): hay que elegir, y la carga espera. Las demás tienen «Sí» por
+omisión.
+
+| # | Unidad | Nombre en el archivo | Se junta con (fila del archivo) | Por | Ficha que se usa con «Sí» |
+|---|---|---|---|---|---|
+| 1 | 03D | Beganu, s.a. | 03A «Vonepomecen Tolip F, c.a.» | correo y teléfono | Vonepomecen Tolip F c.a. (de 03B) |
+| 2 ⚠ | 05C | Livofesupi Sonopu | 01A «Bumagi Tovavade/Camebogig Zazufuni» | **solo teléfono**; correos: 05C `delivered+risafarag64@resend.dev`, 01A `delivered+nabisipodalena98@resend.dev` | Bumagi Tovavade/Camebogig Zazufuni (de 01A). Con «No»: Livofesupi Sonopu (de 05C) |
+| 3 ⚠ | 05D | Livofesupi Sonopu | 01A «Bumagi Tovavade/Camebogig Zazufuni» | **solo teléfono**; correos: 05D `delivered+risafarag64@resend.dev`, 01A `delivered+nabisipodalena98@resend.dev` | Bumagi Tovavade/Camebogig Zazufuni (de 01A). Con «No»: Livofesupi Sonopu (de 05C) |
+| 4 | 06A | Menu Tugavud Peromu Ligozan | 01C «Vonepomecen Birated, c.a.» | correo y teléfono | Vonepomecen Birated c.a. (de 01D) |
+| 5 | 07B | Bumo Reseduc Tefad | 03C «Macimu Valurel» | correo | Dra. Macimu Valurel (de 03C) |
+| 6 | 09A | Fomicu Tirugozutud RED, c.a. | 08A «Pocebap A. Darofaf» | correo y teléfono | Pocebap A. Darofaf (de 08B) |
+| 7 | 09B | Fomicu Tirugozutud RED, c.a. | 08A «Pocebap A. Darofaf» | correo y teléfono | Pocebap A. Darofaf (de 08B) |
+| 8 | 11C | Nofigecuno, c.a. | 04D «Fiban Lonesapi Rufib Levev» y 11A «Lozaf Cagigorefi» | correo (04D) y teléfono (11A) | Fiban Lonesapi Rufib Levev (de 04D) |
+| — | 11A, 11B | Lozaf Cagigorefi | (por el caso 8: se juntan si se contesta «Sí» en 11C) | teléfono, vía 11C | Fiban Lonesapi Rufib Levev (de 04D) |
+| 9 | 12C | Mucic Nizofet Rerozo Pefor | 10A «Rerozo, Ropopar & Vumulinog» | correo | Rerozo Ropopar & Vumulinog (de 10A) |
+| 10 | 12D | Mucic Nizofet Rerozo Pefor | 10A «Rerozo, Ropopar & Vumulinog» | correo | Rerozo Ropopar & Vumulinog (de 10A) |
+
+Los nombres son los de la copia anonimizada: Gustavo los ubica por la
+**unidad** en su planilla real. Donde la administradora tiene dos fichas
+iguales (mismo nombre y datos, como las de 03A y 03B), la pantalla puede
+mostrar la de la otra unidad: da lo mismo. Si en un caso son personas distintas, en la
+pantalla se elige «No, son personas distintas».
+
+Aparte, dos preguntas «se llaman igual pero no comparten correo ni teléfono»
+(por omisión, **distintas**): 03A/04A «Vonepomecen Tolip F, c.a.» y 06C/06D
+«Livofesupi Sonopu». Y una «se llama igual que una persona que ya está en la
+administradora» (por omisión, **ficha nueva**): 02A «Boso. Tumegotef…».
+
+### Migraciones nuevas — en vecitap-pruebas
+
+| Migración | Verificación en pruebas |
+|---|---|
+| `20261018130000_unidades_tipo_correo_respaldo.sql` (M2), aplicada el 18-oct | `unidades.tipo` text NOT NULL default 'apartamento', con la lista cerrada (un 'bodega' → 23514). `personas.correo_respaldo` text NULL. Las 164 unidades existentes quedaron como apartamento |
+| `20261018140000_importar_unidades.sql` (M3), reaplicada el 25-oct con los ajustes | `prosecdef=false`, `search_path=public`, EXECUTE solo `authenticated`. Las verificaciones del archivo, en una transacción deshecha, como la administradora con `set local role authenticated` (RLS de verdad): sin sesión → «Sin permiso…»; tres unidades con el mismo propietario → **una** persona, 4 vínculos, paga = inquilino donde se pidió; todo o nada (otro propietario → error y la otra unidad no queda); persona existente → `personas_completadas` 1, completa el correo y **no** pisa teléfono ni nombre; **la misma otra vez → `personas_completadas` 0**; **tratamiento**: «Inversiones Uno, C.A.», «Beganu, s.a.», «Comercial SRL», «M. A. Burefo, c.a.» y «Junta de Condominio…» (con 'Sr.' mandado) → NULL; «Rosa Casanova», «Boso. … (ZACA)» y «… s.n.» → 'Sr.'; «Gil» con 'Dra.' → 'Dra.'; saldo con meses cerrados → error; un residente → «No se encontró el edificio» |
+
+Con sus rollbacks en `supabase/rollbacks/`. **Producción no se tocó.**
+Producción necesita, en orden: las del tramo 1 y las rondas 2 a 4 (ver
+«Ronda 4»), y estas dos (20261018130000, 20261018140000).
+
+### Corrida contra la planilla anonimizada (25-oct)
+
+Solo con `piloto-orga-anonimo.csv`. La planilla y sus variantes para las
+pruebas están en **`C:\Users\Nicolas\Downloads\planillas-ronda5\`**, fuera del
+repo (ninguna entra al repo):
+
+| Archivo | Para qué | Pruebas |
+|---|---|---|
+| `piloto-orga-anonimo.csv` | la copia anonimizada, tal cual | D2, D4–D12, D14, D19 |
+| `piloto-orga-anonimo.xlsx` | el mismo CSV pasado a Excel, celdas como texto | D3 |
+| `piloto-orga-anonimo-numeros.xlsx` | ídem, pero alícuota y saldo como **números** y el saldo con formato contable «$», como lo guarda Excel | D3 |
+| `piloto-orga-anonimo-D13.csv` | 03C con alícuota 1,70000; 04B con alícuota 1,60000 y otro propietario | D13 |
+| `piloto-orga-anonimo-repetido.csv` | 03A dos veces (la segunda al final, con alícuota 1,50000) | D18 |
+| `piloto-orga-anonimo-paga.csv` | columnas nuevas INQUILINO y QUIEN PAGA: 06B con «Inquilino Prueba», que paga; las demás, «Propietario» | D22 |
+| `pegado-5-filas.txt` | encabezado + 5 filas, separadas por tabulador (lo que copia Excel) | D17 |
+| `pegado-empresa.txt` | encabezado + una empresa nueva («Inversiones Prueba Carga, C.A.», unidad 99Z) | D20 |
+| `pegado-cuenta-de-prueba.txt` | encabezado + 77X, propietario «Otro Nombre Prueba» con el correo de la cuenta `+propietario` de Gustavo | D21 |
+| `piloto-mismo-telefono.csv` | 88A «Ana Prueba Telefono» y 88B «Beto Prueba Telefono»: el mismo teléfono (0414-5559999), otros nombres y otros correos | D23 |
+| `pegado-mismo-telefono-ficha.txt` | encabezado + 88C «Carla Prueba Telefono», con el teléfono de Ana y Beto y otro correo | D23 |
+
+- **Los tres archivos dan exactamente la misma carga** (comparada campo por
+  campo): 54 filas, 53 se cargan, 1 no (el Estacionamiento, sin alícuota). Las
+  alícuotas suman **99,99993 %** (dentro de la tolerancia del cierre: aviso
+  azul, ver «segunda revisión»).
+- **La administradora de Gustavo ya tiene a estas personas**: el Edificio
+  Gustavo se cargó con esta misma planilla (62 fichas, varias duplicadas:
+  el importador viejo creaba una por unidad). Por eso, en un edificio nuevo de
+  esa administradora casi todas las personas del archivo **ya existían** y solo
+  1 es nueva: 28 de 29 si en 05C y 05D se contesta «No» (lo que pide D10), 27
+  de 28 si se contesta «Sí». Los valores de abajo son con esos datos.
+- **D10, contra la base de verdad:** la carga exacta que arma la pantalla,
+  mandada a `importar_unidades()` en un edificio temporal de la administradora
+  de Gustavo y deshecha al terminar: 53 unidades, 1 persona nueva, **16 fichas
+  completadas**, 53 vínculos. Ninguna unidad sin propietario. PB. L-B y Mz. L-B
+  como Local. El teléfono de 10C quedó completo, y el saldo de 06C en −2.096,66.
+  Eso fue con «Sí» en 05C y 05D. Repetida con «No» (tercera revisión): 53
+  unidades, 1 persona nueva, 16 fichas completadas, 53 vínculos; 05C queda con
+  «Livofesupi Sonopu» y su recibo va a su propio correo. En la base no quedó
+  nada.
+
+### Pendientes y observaciones
+
+- **Edificio de prueba de Gustavo:** las pruebas D2–D23 crean unidades y
+  personas en un edificio nuevo, «Edificio Prueba Carga», dentro de su
+  administradora de pruebas. Al terminar, el asistente lo borra con SQL en
+  pruebas, acotado a ese edificio y a las personas que solo figuran ahí.
+  **Ojo:** D10 también completa datos de **16 fichas que ya existían, que son
+  las del Edificio Gustavo**: el correo de respaldo de las 16, y además el
+  teléfono de 04D y el de 10A. **Eso queda después de borrar el Edificio
+  Prueba Carga.**
+- **Las cuentas de prueba de Gustavo y D10** (revisado el 25-oct): ninguna de
+  las 28 fichas que usa D10 (27 con «Sí» en 05C/05D) es de una unidad de sus cuentas `+propietario`
+  (02A, 02B, 02C, 02D, 08D del Edificio Gustavo, A-1 y A-2 de Residencias
+  Sintéticas) ni `+inquilino` (04D, 06A, 07A). Las de `+propietario` son las
+  «Boso. Tumegotef…», y en D10 esa persona entra como **ficha nueva** (la
+  pregunta de 02A, por omisión «ficha nueva»). **En su pantalla no cambia
+  nada:** /mi muestra lo mismo que antes (C23 de la ronda 4) y no aparece el
+  Edificio Prueba Carga. Si en D8 se elige «Es Sr. Boso…: usar su ficha», las
+  6 unidades quedan con una ficha de las suyas y tampoco ve nada nuevo (ver
+  «La regla de ficha con cuenta activa», arriba); lo prueba D21.
+- **«¿Es la misma persona?» por omisión «Sí»**, salvo cuando coincide solo
+  el teléfono y el correo es otro (tercera revisión). Con esta planilla son 10
+  preguntas que afectan a 12 filas; 2 de ellas (05C y 05D) sin respuesta por
+  omisión (lista arriba, «Para Gustavo»).
+- **Fuera de la regla del tratamiento:** «s.n.» («Lebelavobotun Facotab,
+  s.n.») y los nombres de firma sin sigla («Rerozo, Ropopar & Vumulinog»)
+  siguen recibiendo «Sr.». La regla acepta «CA»/«SA» sin puntos si están
+  sueltos: un nombre con «Sa» o «Ca» como palabra quedaría sin tratamiento (no
+  hay ninguno en la planilla).
+
+### Lista de pruebas — ronda 5 (Preview de `dev`)
+
+Perfil **Admin** (`+admin`), salvo donde se indica. Archivos: en
+`C:\Users\Nicolas\Downloads\planillas-ronda5\` (Nicolás se los pasa a
+Gustavo); cada prueba dice cuál usa. Los valores esperados salen de la
+corrida del 25-oct contra los datos de pruebas de la administradora de
+Gustavo.
+
+**D1–D9 se pueden hacer ya. D10 y las siguientes van después de que Gustavo
+cierre la ronda 4:** D10 escribe en fichas que también usa el Edificio
+Gustavo.
+
+| # | Qué hacer | Qué tiene que pasar |
+|---|---|---|
+| D1 | Propietarios | El botón dice **«Cargar datos»**. Ya no hay «Importar unidades». «Cargar saldos» sigue igual |
+| D2 | Crear un edificio nuevo, **«Edificio Prueba Carga»** → Propietarios → Cargar datos → subir `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.csv` | «Los encabezados están en la fila 1». «1. Qué es cada columna», 7 columnas, cada una «por el encabezado «…»»: CODIGO → Código de la unidad, ALICUOTA → Alícuota %, SALDO INICIAL → Saldo inicial, PROPIETARIO → Propietario, TELEFONO → Teléfono del propietario, CORREO → Correo del propietario, Correo 2 → Correo de respaldo |
+| D3 | Descartar → subir `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.xlsx`; después, lo mismo con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-numeros.xlsx` | Las mismas 7 columnas y **la misma previa** que con el CSV, número por número (en el segundo, los montos vienen como números de Excel) |
+| D4 | (con el CSV de D2) Cambiar una columna a «No usar esta columna» y volver | La previa cambia al momento. Si se quita el código: aviso rojo «Falta la columna del código», y la previa desaparece |
+| D5 | (con el CSV de D2) Mirar «2. Qué va a pasar» y «Filas que no se cargan» | **«53 unidades nuevas» · «1 no se cargan» · «14 con observaciones» · «1 personas nuevas · 28 ya existían»** (con 05C y 05D todavía sin contestar). El botón está **gris** y al lado dice «Faltan 2 respuestas en «Personas para revisar» (las marcadas en ámbar)». «54 filas leídas… sumarían **99,99993 %**», y un aviso **azul** «Las alícuotas van a sumar 99,99993 %… dentro de la tolerancia del cierre (0,01): el mes se puede cerrar». «Fila 55 · Estacionamiento: no tiene alícuota», con la casilla «Cargarla como estacionamiento con alícuota 0»: marcarla → 54 nuevas y 15 con observaciones; desmarcarla |
+| D6 | (CSV de D2) En la previa, filas 10C, 10D, 12C, 12D | Teléfono en ámbar: en 10C y 10D «trae texto además del número: se guarda tal cual, revíselo»; en 12C y 12D «no parece un teléfono de Venezuela: se guarda tal cual». **No desaparece** |
+| D7 | (CSV de D2) Fila 02A; después, PB. L-B o 04B | 02A: «Boso. Tumegotef… figura en 6 filas (02A, 02B, 02C, 02D, 08C, 08D): se registra una sola vez» (es la única persona nueva). PB. L-B / 04B: «el propietario ya está en la administradora: se usa la ficha de Sr. …», y en PB. L-B, además, «correo de respaldo: se completa con …» |
+| D8 | (CSV de D2) «Personas para revisar» | **14 preguntas**, cada una con su razón. **10** «tiene el mismo correo (o teléfono) que…»: **8** con «Sí, es la misma persona» por omisión (la de **11C** nombra a 04D «Fiban…», por correo, **y** a 11A «Lozaf…», por teléfono) y **2 ⚠ sin respuesta por omisión, en ámbar: 05C y 05D** («Elija una opción»; «Esta no tiene respuesta por omisión…»; muestran los dos correos, `delivered+risafarag64@resend.dev` y `delivered+nabisipodalena98@resend.dev`, y dicen que con «Sí» los recibos y avisos van al segundo). **3** «se llama igual que… pero no comparten correo ni teléfono» (03A/04A, 05C/06C y 05C/06D; por omisión «Son personas distintas»; las dos de 05C cambian según lo que se conteste en 05C/05D). **1** «se llama igual que una persona que ya está en la administradora» (02A; por omisión «ficha nueva»). En la previa, **12 filas en ámbar**: 10 con «el archivo dice «…», pero la ficha que coincide por correo o teléfono es la de …: revise que sea la misma persona» (03D, 06A, 07B, 09A, 09B, 11A, 11B, 11C, 12C, 12D), y 05C y 05D con «falta elegir en «Personas para revisar»…». La lista de los 10 casos, para comparar con la planilla real, está arriba («Para Gustavo») |
+| D9 | (CSV de D2) Columna «Tipo» de la previa | PB. L-B y Mz. L-B: **Local** («deducido del código»). Sótano queda Apartamento. Se puede cambiar el tipo de cualquier fila |
+| D10 | **Después de cerrar la ronda 4.** Con el CSV de D2: en 05C y 05D elegir **«No, son personas distintas»** (el botón se habilita); el resto, por omisión → «Cargar 53 unidades» → leer la confirmación → «Sí, cargar» | Confirmación: «Se crean 53 unidades. Se registran 1 personas nuevas y se usan 28 fichas que ya existían. 1 filas no se cargan…». Resultado: **«Datos cargados: 53 unidades nuevas. 1 personas nuevas, 16 fichas existentes completadas.»** En Propietarios están las 53. **Ojo: esto completa el correo de respaldo de 16 fichas del Edificio Gustavo** (y el teléfono de 04D y 10A), **y eso queda después de borrar el Edificio Prueba Carga** |
+| D11 | Fichas de **PB. L-B**, **10C** y **02A**; después, perfil **Propietario** (`+propietario`) → /mi | PB. L-B: tipo **Local**, propietario «Sr. Firumib Fomor Minisasuf c.a.» (ficha que ya existía) con el «Correo de respaldo» completado. 10C: teléfono completo, «04245551666 Filobe ligozan». 02A: «Sr. Boso. Tumegotef…», con correo de respaldo. 05C: propietario «Sr. Livofesupi Sonopu», correo `delivered+risafarag64@resend.dev` (no el de «Bumagi…»). /mi del Propietario: **igual que antes de D10** (C23 de la ronda 4); no aparece el Edificio Prueba Carga |
+| D12 | Cargar datos **otra vez** con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.csv` | «53 ya existen y se omiten» · «1 no se cargan» · «4 con observaciones» (los teléfonos). No aparece «Unidades que ya existen» (no hay nada que cambiar). El botón dice «Cargar 0 unidades» y está gris |
+| D13 | Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-D13.csv` | «Unidades que ya existen»: 03C «alícuota 1,63352 → 1,70000» y 04B «alícuota 1,58434 → 1,60000». En la previa, 04B en ámbar: «el archivo trae otro propietario («Otro Dueño Prueba»; la ficha tiene «Sr. Mefaz Detap Betopod Padul»): no se cambia desde aquí, cámbielo desde la ficha». Marcar «Actualizar» en las dos → aviso **ámbar** «Las alícuotas van a sumar 100,08207 %, no 100 %», y la confirmación lo repite (la carga **no** se bloquea) → «Cargar 2 unidades» → «0 unidades nuevas, 2 actualizadas». Fichas: 03C con 1,70000; 04B con 1,60000 y el propietario **sigue siendo** Mefaz. «Otro Dueño Prueba» no aparece en ningún lado. **Después, devolver** 03C a 1,63352 y 04B a 1,58434 desde sus fichas |
+| D14 | En **Edificio Gustavo** (tiene meses cerrados) → Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.csv` | Aviso «El saldo no se va a cargar». «53 ya existen y se omiten», 1 no se carga. «Unidades que ya existen»: 17, casi todas «propietario: correo de respaldo: se completa con …», y PB. L-B y Mz. L-B «tipo Apartamento → Local». En 25 filas, sin ámbar: «ya tiene como propietario a «Sr. …» (otra ficha con el mismo nombre): se deja como está». **No cargar** |
+| D15 | Ficha de cualquier unidad → cambiar «Tipo de unidad» y «Correo de respaldo» → Guardar → recargar | Quedan guardados |
+| D16 | Nueva unidad | Tiene «Tipo de unidad» |
+| D17 | **En otro edificio nuevo** (o antes de D10, en Edificio Prueba Carga): Cargar datos → «O pegue las filas desde Excel» → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-5-filas.txt` (o copiar de Excel el encabezado y las 5 primeras filas) → «Leer lo pegado» | Las mismas 7 columnas. «5 unidades nuevas», «0 personas nuevas · 4 ya existían», y el aviso **ámbar** «Las alícuotas van a sumar 22,50003 %, no 100 %». «Firumib, Fomor Minisasuf, c.a.» entero: las comas no parten la fila. Descartar |
+| D18 | En Edificio Prueba Carga → Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-repetido.csv` | En «Filas que no se cargan», **las dos**: «Fila 12 · 03A» y «Fila 56 · 03A», con «el código se repite en el archivo (filas 12, 56): no se carga ninguna de esas filas. Corrija el archivo y vuelva a subirlo». «52 ya existen y se omiten · 3 no se cargan». Descartar |
+| D19 | Ficha de **12D** → desmarcar «Unidad activa» → Guardar → Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.csv` | «Fila 51 · 12D: el código es de la unidad 12D, que está dada de baja: reactívela desde su ficha si vuelve a usarse». «52 ya existen y se omiten · 2 no se cargan». Descartar y volver a marcar 12D como activa |
+| D20 | Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-empresa.txt` → «Leer lo pegado» → «Cargar 1 unidad» → «Sí, cargar» | En Propietarios, 99Z: «Inversiones Prueba Carga, C.A.», **sin «Sr.»**. En su ficha, Tratamiento «sin tratamiento». Cambiarle el teléfono → Guardar → recargar: **sigue sin tratamiento** |
+| D21 | Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-cuenta-de-prueba.txt` → «Leer lo pegado». Después: «Cargar 1 unidad» → «Sí, cargar» → perfil **Propietario** (`+propietario`) → /mi | 77X en ámbar: «el archivo dice «Otro Nombre Prueba», pero la ficha que coincide por correo o teléfono es la de Sr. Boso. Tumegotef… (…): …revise que sea la misma persona», y «hay 6 fichas con el correo o teléfono…». Entre paréntesis sale una de 02A, 02B, 02C, 02D u 08D: son fichas iguales, y cuál sale depende del orden en que llegan. Todas son de unidades de la cuenta Propietario. Se carga con esa ficha. /mi del Propietario: **no aparece 77X ni el Edificio Prueba Carga**; lo mismo que en D11. (Vincular una unidad a una ficha no da acceso: el acceso es por Accesos) |
+| D22 | Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-paga.csv` | Columnas: además de las 7, INQUILINO → Inquilino y QUIEN PAGA → Quién paga. «Unidades que ya existen»: 06B «se registra el inquilino: Inquilino Prueba · **quién paga Propietario → Inquilino**». Marcar «Actualizar» en 06B → «Cargar 1 unidad» → «0 unidades nuevas, 1 actualizadas. 1 personas nuevas». Ficha de 06B: inquilino «Inquilino Prueba», y paga el inquilino |
+| D23 | En Edificio Prueba Carga → Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-mismo-telefono.csv`. Después, Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-mismo-telefono-ficha.txt` → «Leer lo pegado» | **Archivo:** «2 unidades nuevas». En «Personas para revisar», en ámbar y **sin respuesta**: «Fila 3 (88B): «Beto Prueba Telefono» tiene el mismo teléfono que «Ana Prueba Telefono» (fila 2, 88A)… Los correos son distintos: esta fila trae delivered+beto-telefono@resend.dev y «Ana…» trae delivered+ana-telefono@resend.dev. Si contesta «Sí», los recibos y avisos de 88B van a ir a delivered+ana-telefono@resend.dev». 88B en ámbar. Botón gris, «Falta 1 respuesta…». Elegir «No» → se habilita → «Cargar 2 unidades» → «2 personas nuevas». Fichas: 88A con el correo de Ana, 88B con el de Beto. **Pegado:** 88C en ámbar y la pregunta **sin respuesta**: ««Carla Prueba Telefono» (fila 2, 88C) tiene el teléfono de Sr. Ana Prueba Telefono (88A), pero otro correo: el archivo trae delivered+carla-telefono@resend.dev y la ficha delivered+ana-telefono@resend.dev…», con tres opciones: la ficha de Ana, la de Beto (cada una con su correo) y «Es otra persona: ficha nueva». Botón gris hasta elegir. Elegir «ficha nueva» → «Cargar 1 unidad» → «1 personas nuevas»; 88C con el correo de Carla. (Si en el archivo se contesta «Sí», 88B quedaría con la ficha de Ana y el correo de Beto como respaldo: no cargar así) |
+
 ## Ronda 4 del tramo 2 (18-oct) — bloques 1, 2 y 4 construidos; el importador va en la ronda 5
 
 Todo en `dev`, **sin commit**. `npx tsc --noEmit`, `npm run lint` y
@@ -66,10 +448,9 @@ revisión cruzada: `app/(residente)/mi/[unidadId]/recibo/papel/route.ts` y
 - **1.5 Cuotas: verificado, sin cambios.** Simulado en pruebas en
   transacciones deshechas (noviembre cerrado sobre octubre, saldos fijados con
   ajustes): **1,3 cuotas → «Debe 2 cuotas»**, 1,0 → «Debe 1 cuota», 2,3 con dos
-  meses cerrados → «Debe más de 2 cuotas», a favor → «Al día». La mora no se
-  pudo ejercitar: `cerrar_periodo()` solo la cobra sobre lo vencido, y los
-  recibos de octubre vencen en noviembre. Como `mis_cuotas()` cuenta cada
-  recibo con su mora incluida, el criterio no cambia cuando la haya.
+  meses cerrados → «Debe más de 2 cuotas», a favor → «Al día». En esa primera
+  simulación la mora salió en 0; la explicación y la simulación con mora están
+  en «Mora con el vencimiento pasado», más abajo.
 - **2 Monto exacto en Bs (caso 54).** `lib/residente/monto-exacto.ts`: deuda ×
   tasa **de la fecha del pago**, redondeado hacia arriba al céntimo. Contra el
   disparador `pago_convierte` (`round(monto / tasa, 4)`): 0 fallas en 200.000
@@ -80,6 +461,61 @@ revisión cruzada: `app/(residente)/mi/[unidadId]/recibo/papel/route.ts` y
 - **4 Varias administradoras (caso 55).** `resumenUnidades()` agrega
   `porEdificio` solo si hay más de una organización; con una, la pantalla no
   cambia. Sin migración: es pantalla.
+
+### Mora con el vencimiento pasado: cuadra (simulación del 18-oct, pedida al aprobar la ronda 4)
+
+**La regla de la base** (`cerrar_periodo()` y `saldo_unidad()`, leídas el
+18-oct):
+
+- Al cerrar cada mes, si el edificio tiene `mora_activa` y `interes_mora > 0`,
+  se cobra mora sobre el **capital** que quedaba del mes anterior (lo anterior
+  menos la mora ya cobrada: nunca mora sobre mora), más lo que se pagó después
+  del vencimiento. Va en el recibo nuevo, junto a la cuota.
+- Cada pago o ajuste se imputa **primero a la mora** y después al capital.
+- En el edificio de Gustavo `mora_activa` está apagada. Por eso la primera
+  simulación dio mora 0, y no por las fechas, como se había anotado.
+
+**Simulación** (en vecitap-pruebas, en una transacción deshecha; se comprobó
+que no quedó nada): el edificio de Gustavo con mora del 2 % activa, noviembre
+y diciembre cerrados sobre octubre (gasto común de $ 1.000 cada mes). Al
+cerrar diciembre, los recibos de octubre (vencido el 15-nov) y de noviembre
+(vencido el 15-dic) ya estaban vencidos, y cada recibo trajo su mora (02A:
+$ 1,97 en noviembre y $ 2,27 en diciembre). Saldos fijados con ajustes,
+y lo que ve la cuenta Propietario en /mi:
+
+| Unidad | Situación | Saldo | /mi dice | ¿Cuadra? |
+|---|---|---|---|---|
+| 02A | **1,3 cuotas**: diciembre entero (17,15 con su mora) + 0,3 de noviembre | $ 22,20 | **Debe 2 cuotas** | Sí |
+| 02B | Exactamente 2 cuotas, con su mora | $ 36,19 | Debe 2 cuotas | Sí |
+| 02C | Pagó todo menos un monto igual a la mora de diciembre | $ 2,49 | Debe 1 cuota | Sí: como el pago se imputa primero a la mora, lo pendiente es capital de diciembre, no mora (`saldo_unidad().mora` = 0) |
+| 08D | Sin pagos: saldo inicial + 3 meses con mora | $ 132,62 (mora pendiente $ 4,24) | Debe más de 3 cuotas | Sí: debe más que todos sus recibos (el saldo inicial) |
+| 02D | A favor | − $ 5,37 | Al día | Sí |
+| A-1 (B, **un solo mes cerrado**) | **1,3 cuotas**: octubre + 0,3 de deuda anterior al sistema | $ 65,00 | **Debe más de 1 cuota** | Ver abajo |
+| A-2 (B, un solo mes cerrado) | Octubre + saldo inicial de 20 | $ 70,00 | Debe más de 1 cuota | Sí |
+
+**Lo único que no sigue la regla al pie de la letra** es 1,3 cuotas con **un
+solo mes cerrado**: dice «Debe más de 1 cuota» y no «Debe 2 cuotas». No es un
+error de la mora. El 0,3 que sobra no es parte de ningún recibo: es deuda de
+antes del sistema (saldo inicial), y su tamaño real en cuotas no se conoce. Con
+dos o más meses cerrados el mismo 1,3 da «Debe 2 cuotas».
+
+**Ajuste propuesto (sin aplicar; decide Nicolás con Gustavo):** cuando lo que
+sobra después de recorrer todos los recibos es **menos que una cuota** (menos
+que el recibo más viejo), contarlo como una cuota más: A-1 diría «Debe 2
+cuotas». «Más de N» quedaría solo para cuando lo que sobra es una cuota o más
+(A-2: 20 de 50, diría «Debe 2 cuotas»; 08D seguiría «Debe más de 3»). Es
+cambiar una comparación en `mis_cuotas()`: una migración chica con su
+rollback. Sin decisión, queda como está.
+
+**Hallazgo aparte, sin tocar:** un ajuste **negativo** (una «exoneración» con
+monto menor que cero, que la pantalla de Pagos deja cargar) se suma como
+**mora** en `saldo_unidad()`, porque esa resta de abonos no distingue el signo.
+Lo vimos al simular: un cargo de $ 15 por ajuste apareció como «mora $ 15» en
+una unidad sin mora. Solo afecta al dato «de eso, mora», no al saldo total ni
+a las cuotas. Revisar en la Fase 5 si la pantalla debería exigir monto
+positivo o si `saldo_unidad()` debería ignorar los ajustes negativos para la
+mora. **24-oct: la pantalla no se toca** (la exoneración negativa queda); va
+a la Fase 5 como pendiente de `saldo_unidad()`.
 
 ### Migración nueva — aplicada en vecitap-pruebas el 18-oct
 
@@ -2716,6 +3152,15 @@ Pendiente puntual:
   (el bug de arriba), no de una respuesta real de DolarAPI — vale la pena
   revisar el texto para que no le eche la culpa a un tercero que no tuvo
   nada que ver.
+- **`saldo_unidad().mora` cuenta una exoneración negativa como mora**
+  (anotado el 18-oct en «Ronda 4»; decisión de Nicolás del 24-oct). Un ajuste
+  con monto menor que cero, que sube la deuda, aparece en «de eso, mora»
+  porque esa resta no distingue el signo. **La exoneración negativa no se
+  bloquea:** es una función a propósito de `main` («Negativo la sube») y
+  «Cargar saldos» la recomienda para corregir un mes cerrado. Lo que queda por
+  revisar es `saldo_unidad()`: que la mora ignore los ajustes negativos (o
+  los trate como cargo, no como mora). Solo afecta al dato de la mora, no al
+  saldo total ni a las cuotas.
 
 ### Migración de esquema de `membresias` — adelantada de Fase 5 a Fase 4 (desvío deliberado)
 

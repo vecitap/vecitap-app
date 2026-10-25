@@ -1371,3 +1371,123 @@ Ajusta el caso 31.
   administración».
 - **Con una sola administradora, /mi se ve exactamente igual que antes**, aunque tenga
   unidades en varios edificios de esa administradora.
+
+## Ronda 5 del tramo 2 (18-oct)
+
+> El importador «Cargar datos» y el tipo de unidad. **Estado: construidos, sin validar en
+> el navegador.** Dos migraciones nuevas (`20261018130000_unidades_tipo_correo_respaldo.sql`,
+> `20261018140000_importar_unidades.sql`), **aplicadas en vecitap-pruebas** el 18-oct;
+> falta producción. La segunda la revisó Nicolás el 24-oct: aprobada con ajustes,
+> reaplicada en pruebas el 25-oct.
+
+### 56. «Cargar datos» reemplaza a «Importar unidades»
+
+**Caso de uso:** la administradora tiene su planilla de Excel con las unidades, sus
+alícuotas, saldos, propietarios, teléfonos, correos e inquilinos, y quiere cargar el
+edificio entero de una vez.
+
+- **`main` (y la app hasta la ronda 4):** «Importar unidades» era un cuadro para pegar
+  texto con las columnas en un orden fijo. Con la planilla real del piloto cargaban **0 de
+  55 filas** (diagnóstico del 04-oct): las comas de los nombres y de las alícuotas partían
+  las columnas, los saldos con `$` se cargaban como 0, el «Correo 2» se leía como «quién
+  paga», el Estacionamiento quedaba fuera sin aviso, y un propietario de seis unidades se
+  registraba seis veces. Además guardaba en varios pasos: si fallaba uno del medio,
+  quedaba la mitad cargada.
+- **Ahora, «Cargar datos»:**
+  - **Un solo botón** que lee el archivo completo (Excel o CSV), o lo pegado desde Excel.
+  - **El sistema propone qué es cada columna** aunque los encabezados estén mal escritos
+    («Telefomo»), tengan otro nombre («COPROPIETARIOS», «Celular», «Correo 1»), estén en
+    otro orden o no estén (entonces lo deduce por el contenido: el @ es un correo, los
+    números que suman 100 son la alícuota, el `$` es el saldo). Dice por qué lo propuso, y
+    la administradora lo corrige con un selector por columna.
+  - **La previa muestra todos los datos de cada fila**, con lo dudoso en **ámbar** y la
+    razón debajo: un teléfono con texto adentro («se guarda tal cual, revíselo»), uno de
+    otro país, un correo que no es válido («no se guarda»), un tipo de unidad deducido del
+    código.
+  - **Cada fila que no se carga, con su motivo**, en una lista aparte: sin código, código
+    repetido, alícuota que no se entiende, la fila de totales, una unidad dada de baja. El
+    número de fila es el mismo que se ve en Excel.
+  - **Código repetido en el archivo** (revisión del 24-oct): no se carga **ninguna** de
+    esas filas, y la lista dice en qué filas está. Cuál es la buena lo decide la
+    administradora en su archivo, no el orden de las filas.
+  - **Unidad dada de baja:** una fila cuyo código es el de una unidad inactiva no se carga
+    ni la crea de nuevo: «está dada de baja: reactívela desde su ficha».
+  - **Ningún dato se pierde sin aviso.** El teléfono de 10C (con el nombre adentro) ahora
+    se guarda tal cual, marcado para revisar.
+  - **Nada se guarda hasta confirmar**, y entonces **todo o nada**: si algo falla, no queda
+    nada a medias.
+- **Personas** (reglas de Nicolás del 18-oct):
+  - Se juntan solas si coinciden el **correo, el correo de respaldo o el teléfono**: un
+    propietario de seis unidades queda como una sola persona.
+  - Si coincide el contacto pero el nombre es otro, la previa pregunta (por omisión: es la
+    misma). Si **solo** coincide el nombre, pregunta (por omisión: son personas distintas).
+    La pregunta nombra **todas** las filas con las que coincide (25-oct): contestar «Sí»
+    las junta a todas.
+  - **Solo el teléfono en común y otro correo** (revisión del 25-oct): la pregunta sale
+    **sin respuesta por omisión**, con los dos correos a la vista, y la carga espera a que
+    la administradora elija. Un «Sí» equivocado mandaría el recibo y los avisos de la
+    garita de esa unidad al correo de la otra persona. Vale también contra una ficha que
+    ya está en la administradora. «No, son personas distintas» separa solo de los de otro
+    nombre.
+  - Juntar a una persona con una ficha **no le da acceso a la app** a nadie: el acceso es
+    por unidad y sale solo de una invitación aceptada (Accesos). Verificado el 25-oct.
+  - Si la persona **ya existe en la administradora** (mismo correo o teléfono), se usa su
+    ficha: solo se **completan** los datos que tenga vacíos; nunca se pisa uno distinto (la
+    previa lo muestra: «la ficha dice X, el archivo Y»).
+  - Si varias fichas coinciden por correo o teléfono, se usa la que **se llama igual** que
+    en el archivo. Si la fila termina con una ficha de otro nombre, la previa lo marca en
+    ámbar para que la administradora lo revise (25-oct, al probar con la planilla del
+    piloto).
+  - **Empresas y juntas sin «Sr.»** (revisión del 24-oct): una persona nueva cuyo nombre
+    tiene C.A., S.A. o S.R.L., o empieza con «Junta», se registra sin tratamiento. Antes
+    quedaba «Sr. Inversiones Uno, C.A.». (La ficha, caso 58.)
+- **Unidades que ya existen:** por omisión **se omiten**. La previa muestra qué cambiaría,
+  campo por campo, con el valor anterior y el nuevo («alícuota 9,00000 → 10,00000»,
+  «quién paga Propietario → Inquilino»), y «Actualizar» por fila o «Actualizar todas».
+- **Alícuotas:** la previa dice cuánto sumarían con esta carga, con los 5 decimales
+  («99,99993 %»). Si no es 100 exacto, avisa siempre con la suma real: en azul si está
+  dentro de la tolerancia del cierre, en ámbar si no («el mes no se podrá cerrar hasta que
+  cuadren»; la confirmación lo repite). **Nunca bloquea la carga.** Antes solo avisaba fuera
+  de la tolerancia, y sin el número.
+- **El importador no cambia de propietario ni de inquilino.** Si el archivo trae otro, la
+  fila se carga sin ese cambio (si se actualiza, solo con lo demás) y la previa dice
+  «cámbielo desde la ficha», que pide confirmación y le quita el acceso al anterior (casos
+  38 y 44). Tampoco da ni quita accesos a la app.
+- **Saldo inicial:** con meses cerrados no se aplica (después del primer cierre no se usa)
+  y se avisa arriba, igual que en «Cargar saldos».
+- **Decisión provisional, para confirmar con Gustavo:** una fila **sin alícuota** (el
+  Estacionamiento del piloto) se muestra marcada y por omisión **no** se carga, siempre con
+  aviso; se puede elegir «Cargarla como estacionamiento con alícuota 0».
+- «Cargar saldos» queda como estaba.
+- **Cómo se revierte:** `components/admin/CargarDatos.tsx`, `lib/admin/cargar-datos/` y
+  `supabase/rollbacks/20261018140000_importar_unidades_rollback.sql`.
+
+### 57. Tipo de unidad y correo de respaldo
+
+- **Tipo de unidad** (pedido de Gustavo del 04-oct): apartamento, casa, local, oficina,
+  estacionamiento, depósito u otro. Se elige en «Nueva unidad» y en la ficha, y «Cargar
+  datos» lo deduce del código («PB. L-B» y «Mz. L-B» son locales; «Estacionamiento») o lo
+  toma de una columna «Tipo». Es solo informativo: el reparto sigue siendo por alícuota.
+  Las unidades que ya existían quedaron como apartamento.
+- **Correo de respaldo** (el «Correo 2» de las planillas): se ve y se edita en la ficha, y
+  sirve para reconocer a la persona al importar. **No se usa para mandar nada:** los
+  recibos y avisos siguen yendo solo al correo principal.
+- **Cómo se revierte:**
+  `supabase/rollbacks/20261018130000_unidades_tipo_correo_respaldo_rollback.sql` (borra los
+  tipos y correos de respaldo cargados; el archivo dice cómo exportarlos antes).
+
+### 58. La ficha ya no le pone «Sr.» a quien no tiene tratamiento
+
+**Caso de uso:** la administradora abre la ficha de una unidad cuyo propietario es una
+empresa o una junta registrada sin tratamiento, y le corrige el teléfono.
+
+- **`main` (`admin.html:2338`, y la app hasta el 24-oct en `DatosUnidad.tsx`):** el
+  formulario llenaba el tratamiento con `prefijo || "Sr."`. A una persona sin tratamiento
+  le mostraba «Sr.» en el selector, y al guardar cualquier cambio de la ficha se lo
+  **volvía a guardar**: «Sr. Inversiones Uno, C.A.» de nuevo, sin que nadie lo eligiera.
+- **Ahora:** la ficha muestra el tratamiento que la persona tiene, y «sin tratamiento» si
+  no tiene ninguno; al guardar queda así. «Sr.» es solo el valor inicial al registrar a
+  una persona que todavía no existe (como en «Nueva unidad»).
+- **Por qué ahora:** hacía falta para que valga la regla de empresas y juntas del
+  importador (caso 56). Sin esto, la primera vez que se guardaba la ficha se perdía.
+- **Cómo se revierte:** `components/admin/DatosUnidad.tsx`, función `aForm`.

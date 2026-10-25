@@ -29,7 +29,7 @@ export default async function PaginaFicha({
     supabase
       .from("unidades")
       .select(
-        "id,codigo,alicuota,saldo_inicial,saldo_inicial_hon,activa,paga,vinculos(id,tipo,desde,hasta,enviar_corte,persona_id,personas(id,prefijo,nombre,documento,telefono,correo))"
+        "id,codigo,alicuota,saldo_inicial,saldo_inicial_hon,activa,paga,tipo,vinculos(id,tipo,desde,hasta,enviar_corte,persona_id,personas(id,prefijo,nombre,documento,telefono,correo,correo_respaldo))"
       )
       .eq("id", unidadId)
       .eq("edificio_id", edificioId)

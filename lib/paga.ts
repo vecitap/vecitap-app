@@ -31,7 +31,7 @@ export function pagaDe(valor: string | null | undefined): Paga {
 }
 
 /**
- * La columna "quién paga" de un pegado (ImportarUnidades). Vacía = el
+ * La columna "quién paga" de un pegado («Cargar datos», lib/admin/cargar-datos). Vacía = el
  * default. Acepta mayúsculas, tildes y espacios de más; cualquier otra
  * palabra devuelve `null` para que el importador marque la fila con error,
  * en vez de adivinar.

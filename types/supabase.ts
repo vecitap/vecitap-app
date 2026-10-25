@@ -1469,6 +1469,7 @@ export type Database = {
       personas: {
         Row: {
           correo: string | null
+          correo_respaldo: string | null
           creada_en: string
           documento: string | null
           id: string
@@ -1479,6 +1480,7 @@ export type Database = {
         }
         Insert: {
           correo?: string | null
+          correo_respaldo?: string | null
           creada_en?: string
           documento?: string | null
           id?: string
@@ -1489,6 +1491,7 @@ export type Database = {
         }
         Update: {
           correo?: string | null
+          correo_respaldo?: string | null
           creada_en?: string
           documento?: string | null
           id?: string
@@ -1767,6 +1770,7 @@ export type Database = {
           paga: string
           saldo_inicial: number
           saldo_inicial_hon: number
+          tipo: string
         }
         Insert: {
           activa?: boolean
@@ -1780,6 +1784,7 @@ export type Database = {
           paga?: string
           saldo_inicial?: number
           saldo_inicial_hon?: number
+          tipo?: string
         }
         Update: {
           activa?: boolean
@@ -1793,6 +1798,7 @@ export type Database = {
           paga?: string
           saldo_inicial?: number
           saldo_inicial_hon?: number
+          tipo?: string
         }
         Relationships: [
           {
@@ -2490,6 +2496,10 @@ export type Database = {
           cargada: boolean
           largo: number
         }[]
+      }
+      importar_unidades: {
+        Args: { p_edificio: string; p_filas: Json; p_personas: Json }
+        Returns: Json
       }
       historial_unidad: {
         Args: { p_unidad: string }

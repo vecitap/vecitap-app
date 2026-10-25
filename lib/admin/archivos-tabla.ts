@@ -145,7 +145,7 @@ export function detectarColumnas(encabezados: unknown[], filas: unknown[][]): Ma
  * punto y coma y se respetan las comillas dobles, que es lo que hace falta
  * para un extracto bancario o una planilla de saldos exportada de Excel.
  */
-export function leerCSV(texto: string): string[][] {
+export function leerCSV(texto: string, conVacias = false): string[][] {
   const filas: string[][] = [];
   let fila: string[] = [];
   let celda = "";
@@ -184,7 +184,9 @@ export function leerCSV(texto: string): string[][] {
   fila.push(celda.trim());
   filas.push(fila);
 
-  return filas.filter((f) => f.some((x) => x !== ""));
+  // «Cargar datos» pide las vacías (`conVacias`) para que el número de cada
+  // fila coincida con el de Excel; las demás pantallas no las necesitan.
+  return conVacias ? filas : filas.filter((f) => f.some((x) => x !== ""));
 }
 
 /**
@@ -195,14 +197,14 @@ export function leerCSV(texto: string): string[][] {
  * como el texto que se ve en Excel (fechas y montos ya formateados), que
  * es justo lo que `parseMonto`/`detectarColumnas` esperan.
  */
-export async function leerTabla(file: File): Promise<string[][]> {
-  if (/\.csv$/i.test(file.name)) return leerCSV(await file.text());
+export async function leerTabla(file: File, conVacias = false): Promise<string[][]> {
+  if (/\.csv$/i.test(file.name)) return leerCSV(await file.text(), conVacias);
 
   const XLSX = await import("xlsx");
   const wb = XLSX.read(await file.arrayBuffer(), { cellDates: false });
   const hoja = wb.Sheets[wb.SheetNames[0]];
   if (!hoja) throw new Error("El archivo no tiene ninguna hoja con datos.");
-  return XLSX.utils.sheet_to_json<string[]>(hoja, { header: 1, raw: false, defval: "" });
+  return XLSX.utils.sheet_to_json<string[]>(hoja, { header: 1, raw: false, defval: "", blankrows: conVacias });
 }
 
 export type MovimientoBanco = {

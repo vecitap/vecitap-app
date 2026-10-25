@@ -1,0 +1,596 @@
+"use client";
+
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { Aviso, Button, Card, Confirmar, Select, Textarea } from "@/components/ui";
+import { leerTabla } from "@/lib/admin/archivos-tabla";
+import {
+  CAMPOS,
+  filaDeEncabezados,
+  leerTextoPegado,
+  proponerColumnas,
+  type Campo,
+  type Propuesta,
+} from "@/lib/admin/cargar-datos/columnas";
+import {
+  analizar,
+  SIN_DECISIONES,
+  type Decisiones,
+  type FilaPrevia,
+  type Nota,
+  type PersonaOrg,
+} from "@/lib/admin/cargar-datos/analisis";
+import { TIPOS_UNIDAD, type TipoUnidad, type UnidadConPaga } from "@/lib/admin/tipos";
+import { mensajeDeError } from "@/lib/errores";
+import { nf } from "@/lib/formato";
+import { crearClienteNavegador } from "@/lib/supabase/client";
+import type { Json } from "@/types/supabase";
+
+/** Columnas de la previa, en este orden; solo se muestran las que el archivo trae. */
+const COLUMNAS_PREVIA: Exclude<Campo, "ignorar" | "codigo">[] = [
+  "alicuota",
+  "saldo",
+  "propietario",
+  "telefono",
+  "correo",
+  "correo_respaldo",
+  "inquilino",
+  "inq_telefono",
+  "inq_correo",
+  "paga",
+];
+
+const ESTADO: Record<FilaPrevia["estado"], { texto: string; color: string }> = {
+  nueva: { texto: "Se carga", color: "var(--verde)" },
+  actualizar: { texto: "Se actualiza", color: "var(--azul)" },
+  omitir: { texto: "Se omite", color: "var(--tenue)" },
+  no: { texto: "No se carga", color: "var(--rojo)" },
+};
+
+/**
+ * La de `cerrar_periodo()` (`edificios.tolerancia_alicuota`, 0,01 en todos los
+ * edificios al 25-oct). Si un edificio la cambia, este aviso no lo sabe.
+ */
+const TOLERANCIA_ALICUOTAS = 0.01;
+
+type Lectura = { nombre: string; crudas: string[][]; encabezados: number; propuestas: Propuesta[] };
+type Hecho = { unidades_creadas: number; unidades_actualizadas: number; personas_nuevas: number; personas_completadas: number; vinculos_nuevos: number };
+
+/**
+ * «Cargar datos» (ronda 5, casos 56 y 57). Reemplaza a «Importar unidades».
+ *
+ * La administradora sube su Excel o CSV tal cual (o lo pega), y en un minuto
+ * ve si quedó bien:
+ *  1. el sistema propone qué es cada columna y ella la corrige
+ *     (lib/admin/cargar-datos/columnas.ts);
+ *  2. la previa muestra todos los datos de cada fila, lo dudoso en ámbar con
+ *     la razón al lado, y la lista de filas que NO se cargan con su motivo
+ *     (lib/admin/cargar-datos/analisis.ts);
+ *  3. **nada se guarda** hasta que confirma; entonces todo va en una sola
+ *     llamada, `importar_unidades()`
+ *     (supabase/migrations/20261018140000_importar_unidades.sql), que guarda
+ *     todo o nada.
+ */
+export function CargarDatos({
+  orgId,
+  edificioId,
+  unidades,
+  onVolver,
+}: {
+  orgId: string;
+  edificioId: string;
+  unidades: UnidadConPaga[];
+  onVolver: () => void;
+}) {
+  const router = useRouter();
+  const [lectura, setLectura] = useState<Lectura | null>(null);
+  const [columnas, setColumnas] = useState<Campo[]>([]);
+  const [dec, setDec] = useState<Decisiones>(SIN_DECISIONES);
+  const [pegado, setPegado] = useState("");
+  const [verPegar, setVerPegar] = useState(false);
+  const [leyendo, setLeyendo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [personas, setPersonas] = useState<PersonaOrg[] | null>(null);
+  const [hayCierres, setHayCierres] = useState<boolean | null>(null);
+  const [confirmar, setConfirmar] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [hecho, setHecho] = useState<Hecho | null>(null);
+
+  // Lo que ya existe en la administradora: personas (para no duplicarlas) y
+  // si el edificio tiene meses cerrados (el saldo inicial ya no se usa).
+  useEffect(() => {
+    let vivo = true;
+    const supabase = crearClienteNavegador();
+    Promise.all([
+      supabase
+        .from("personas")
+        .select("id,prefijo,nombre,telefono,correo,correo_respaldo,vinculos(hasta,unidades(codigo))")
+        .eq("org_id", orgId),
+      supabase.from("periodos").select("id", { count: "exact", head: true }).eq("edificio_id", edificioId).eq("estado", "cerrado"),
+    ]).then(([p, c]) => {
+      if (!vivo) return;
+      if (p.error || c.error) return setError(mensajeDeError(p.error || c.error));
+      setPersonas(
+        (p.data ?? []).map((x) => ({
+          id: x.id,
+          prefijo: x.prefijo,
+          nombre: x.nombre,
+          telefono: x.telefono,
+          correo: x.correo,
+          correo_respaldo: x.correo_respaldo,
+          unidades: (x.vinculos ?? []).filter((v) => !v.hasta && v.unidades).map((v) => v.unidades!.codigo),
+        }))
+      );
+      setHayCierres((c.count ?? 0) > 0);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [orgId, edificioId]);
+
+  function abrir(nombre: string, crudas: string[][]) {
+    if (!crudas.some((f) => f.some((c) => String(c ?? "").trim()))) {
+      setError("El archivo no tiene datos.");
+      return;
+    }
+    const encabezados = filaDeEncabezados(crudas);
+    const propuestas = proponerColumnas(crudas, encabezados);
+    setLectura({ nombre, crudas, encabezados, propuestas });
+    setColumnas(propuestas.map((p) => p.campo));
+    setDec(SIN_DECISIONES);
+    setHecho(null);
+  }
+
+  async function leerArchivo(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    setLeyendo(true);
+    try {
+      abrir(file.name, (await leerTabla(file, true)).map((f) => f.map((c) => String(c ?? "").trim())));
+    } catch (e) {
+      setError(mensajeDeError(e));
+    }
+    setLeyendo(false);
+  }
+
+  const resultado = useMemo(() => {
+    if (!lectura || !personas || hayCierres === null) return null;
+    return analizar(lectura.crudas, lectura.encabezados, columnas, { unidades, personas, hayCierres }, dec);
+  }, [lectura, columnas, personas, hayCierres, unidades, dec]);
+
+  const sinCodigo = lectura && !columnas.includes("codigo");
+  const aCargar = resultado ? resultado.carga.filas.length : 0;
+  const porElegir = resultado ? resultado.resumen.porElegir : 0;
+  // Con los 5 decimales de una alícuota: «99,99993 %», no un «99,9999 %» redondeado.
+  const sumaTexto = resultado ? `${nf(5).format(resultado.resumen.sumaAlicuotas)} %` : "";
+  const fueraDeTolerancia = !!resultado && Math.abs(resultado.resumen.sumaAlicuotas - 100) > TOLERANCIA_ALICUOTAS;
+
+  function elegirColumna(i: number, campo: Campo) {
+    setColumnas((cs) => cs.map((c, j) => (j === i ? campo : c === campo && campo !== "ignorar" ? "ignorar" : c)));
+  }
+
+  async function cargar() {
+    if (!resultado) return;
+    setConfirmar(false);
+    setGuardando(true);
+    setError(null);
+    const supabase = crearClienteNavegador();
+    const { data, error: e } = await supabase.rpc("importar_unidades", {
+      p_edificio: edificioId,
+      p_personas: resultado.carga.personas as unknown as Json,
+      p_filas: resultado.carga.filas as unknown as Json,
+    });
+    setGuardando(false);
+    if (e) return setError(mensajeDeError(e));
+    setHecho(data as unknown as Hecho);
+    router.refresh();
+  }
+
+  /* ───────────── pantalla ───────────── */
+
+  if (hecho) {
+    return (
+      <Card>
+        <Aviso tono="verde" titulo="Datos cargados">
+          {hecho.unidades_creadas} unidades nuevas
+          {hecho.unidades_actualizadas ? `, ${hecho.unidades_actualizadas} actualizadas` : ""}. {hecho.personas_nuevas} personas
+          nuevas
+          {hecho.personas_completadas ? `, ${hecho.personas_completadas} fichas existentes completadas` : ""}.
+        </Aviso>
+        <div style={{ marginTop: 14 }}>
+          <Button type="button" onClick={onVolver}>
+            Volver a Propietarios
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div>
+            <h2 style={{ margin: 0, fontFamily: "var(--font-titulos)", fontSize: 16 }}>Cargar datos</h2>
+            <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--tenue)", maxWidth: 620, lineHeight: 1.5 }}>
+              Suba su planilla tal como la tiene (Excel o CSV): unidad, alícuota, saldo, propietario, teléfono,
+              correos e inquilino, en cualquier orden. Antes de guardar va a ver qué entendió el sistema de cada
+              fila. <b>Nada se guarda hasta que usted confirme.</b>
+            </p>
+          </div>
+          <Button type="button" variante="secundario" mini onClick={onVolver}>
+            Volver
+          </Button>
+        </div>
+        <input
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          disabled={leyendo}
+          onChange={(e) => leerArchivo(e.target.files?.[0])}
+          className="control"
+          style={{ padding: 10, marginTop: 14 }}
+        />
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            onClick={() => setVerPegar(!verPegar)}
+            style={{ background: "none", border: "none", padding: 0, color: "var(--tenue)", fontSize: 12.5, textDecoration: "underline", cursor: "pointer" }}
+          >
+            {verPegar ? "Ocultar" : "O pegue las filas desde Excel"}
+          </button>
+          {verPegar && (
+            <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+              <Textarea value={pegado} onChange={(e) => setPegado(e.target.value)} rows={6} className="mono" style={{ fontSize: 12.5 }} />
+              <div>
+                <Button type="button" variante="secundario" mini disabled={!pegado.trim()} onClick={() => abrir("lo pegado", leerTextoPegado(pegado))}>
+                  Leer lo pegado
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+        {error && (
+          <div style={{ marginTop: 12 }}>
+            <Aviso tono="rojo" titulo="No se pudo completar">
+              {error}
+            </Aviso>
+          </div>
+        )}
+      </Card>
+
+      {lectura && (
+        <Card>
+          <h3 style={{ margin: 0, fontSize: 14 }}>1. Qué es cada columna</h3>
+          <p style={{ margin: "3px 0 12px", fontSize: 12.5, color: "var(--tenue)" }}>
+            {lectura.encabezados >= 0
+              ? `Los encabezados están en la fila ${lectura.encabezados + 1} de ${lectura.nombre}.`
+              : `${lectura.nombre} no tiene encabezados: las columnas se reconocieron por su contenido.`}{" "}
+            El sistema propuso cada una; si alguna está mal, cámbiela y la previa se actualiza sola.
+          </p>
+          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))" }}>
+            {columnas.map((campo, i) => {
+              const ejemplos = lectura.crudas
+                .slice(lectura.encabezados + 1)
+                .map((f) => f[i])
+                .filter(Boolean)
+                .slice(0, 2);
+              return (
+                <div key={i} style={{ border: "1px solid var(--linea)", borderRadius: "var(--radio-chico)", padding: 10, background: campo === "ignorar" ? "var(--fondo)" : undefined }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, overflowWrap: "anywhere" }}>
+                    {lectura.encabezados >= 0 && lectura.crudas[lectura.encabezados][i] ? `«${lectura.crudas[lectura.encabezados][i]}»` : `Columna ${i + 1}`}
+                  </div>
+                  <div className="mono" style={{ fontSize: 11.5, color: "var(--tenue)", margin: "2px 0 6px", overflowWrap: "anywhere" }}>
+                    {ejemplos.join(" · ") || "vacía"}
+                  </div>
+                  <Select value={campo} onChange={(e) => elegirColumna(i, e.target.value as Campo)} style={{ padding: "6px 8px", fontSize: 13 }}>
+                    {(Object.keys(CAMPOS) as Campo[]).map((k) => (
+                      <option key={k} value={k}>
+                        {CAMPOS[k]}
+                      </option>
+                    ))}
+                  </Select>
+                  <div style={{ fontSize: 11, color: "var(--tenue)", marginTop: 4 }}>
+                    {campo === lectura.propuestas[i].campo ? lectura.propuestas[i].razon : "elegido a mano"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {sinCodigo && (
+            <div style={{ marginTop: 12 }}>
+              <Aviso tono="rojo" titulo="Falta la columna del código">
+                Elija cuál columna tiene el código de la unidad (01A, PB-1…). Sin ella no se puede cargar nada.
+              </Aviso>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {lectura && !resultado && !error && <p style={{ fontSize: 13, color: "var(--tenue)" }}>Revisando lo que ya existe en la administradora…</p>}
+
+      {resultado && !sinCodigo && (
+        <>
+          <Card>
+            <h3 style={{ margin: 0, fontSize: 14 }}>2. Qué va a pasar</h3>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "10px 0 4px" }}>
+              <Chip color="var(--verde)">{resultado.resumen.nuevas} unidades nuevas</Chip>
+              {resultado.resumen.actualizar > 0 && <Chip color="var(--azul)">{resultado.resumen.actualizar} se actualizan</Chip>}
+              {resultado.resumen.omitir > 0 && <Chip color="var(--tenue)">{resultado.resumen.omitir} ya existen y se omiten</Chip>}
+              {resultado.resumen.noSeCargan > 0 && <Chip color="var(--rojo)">{resultado.resumen.noSeCargan} no se cargan</Chip>}
+              {resultado.resumen.conObservaciones > 0 && <Chip color="var(--ambar)">{resultado.resumen.conObservaciones} con observaciones</Chip>}
+              <Chip color="var(--tinta-2)">
+                {resultado.resumen.personasNuevas} personas nuevas
+                {resultado.resumen.personasExistentes ? ` · ${resultado.resumen.personasExistentes} ya existían` : ""}
+              </Chip>
+            </div>
+            <p style={{ fontSize: 12.5, color: "var(--tenue)", margin: "6px 0 0" }}>
+              {resultado.resumen.leidas} filas leídas. Con esta carga las alícuotas del edificio sumarían{" "}
+              <b>{sumaTexto}</b>.
+            </p>
+            {/* Avisa siempre que no dé 100 exacto, con la suma real; nunca bloquea la carga. */}
+            {Math.abs(resultado.resumen.sumaAlicuotas - 100) > 0.000005 && (
+              <div style={{ marginTop: 10 }}>
+                {Math.abs(resultado.resumen.sumaAlicuotas - 100) > TOLERANCIA_ALICUOTAS ? (
+                  <Aviso tono="ambar" titulo={`Las alícuotas van a sumar ${sumaTexto}, no 100 %`}>
+                    Puede cargar igual y corregir después, pero el mes no se podrá cerrar hasta que cuadren.
+                  </Aviso>
+                ) : (
+                  <Aviso tono="azul" titulo={`Las alícuotas van a sumar ${sumaTexto}`}>
+                    No es 100 exacto, pero está dentro de la tolerancia del cierre ({TOLERANCIA_ALICUOTAS.toLocaleString("es-VE")}): el mes se puede cerrar.
+                  </Aviso>
+                )}
+              </div>
+            )}
+            {resultado.resumen.saldoIgnorado && (
+              <div style={{ marginTop: 10 }}>
+                <Aviso tono="ambar" titulo="El saldo no se va a cargar">
+                  Este edificio ya tiene meses cerrados: el saldo inicial solo se usa antes del primer cierre. Para
+                  corregir una deuda use una exoneración o un cargo puntual.
+                </Aviso>
+              </div>
+            )}
+          </Card>
+
+          {resultado.filas.some((f) => f.estado === "no") && (
+            <Card>
+              <h3 style={{ margin: 0, fontSize: 14, color: "var(--rojo)" }}>Filas que no se cargan</h3>
+              <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6 }}>
+                {resultado.filas
+                  .filter((f) => f.estado === "no" || dec.estacionamiento[f.fila])
+                  .map((f) => (
+                    <li key={f.fila}>
+                      Fila {f.fila} · <span className="mono">{f.codigo || "—"}</span>: {f.motivo ?? "se carga con alícuota 0"}
+                      {(f.sinAlicuota || dec.estacionamiento[f.fila]) && (
+                        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--tinta-2)" }}>
+                          <input
+                            type="checkbox"
+                            checked={!!dec.estacionamiento[f.fila]}
+                            onChange={(e) => setDec({ ...dec, estacionamiento: { ...dec.estacionamiento, [f.fila]: e.target.checked } })}
+                          />
+                          Cargarla como estacionamiento con alícuota 0
+                        </label>
+                      )}
+                    </li>
+                  ))}
+              </ul>
+            </Card>
+          )}
+
+          {resultado.filas.some((f) => f.existente?.cambios.length) && (
+            <Card>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline" }}>
+                <h3 style={{ margin: 0, fontSize: 14 }}>Unidades que ya existen</h3>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button
+                    type="button"
+                    mini
+                    variante="secundario"
+                    onClick={() =>
+                      setDec({
+                        ...dec,
+                        actualizar: Object.fromEntries(resultado.filas.filter((f) => f.existente?.cambios.length).map((f) => [f.clave, true])),
+                      })
+                    }
+                  >
+                    Actualizar todas
+                  </Button>
+                  <Button type="button" mini variante="secundario" onClick={() => setDec({ ...dec, actualizar: {} })}>
+                    Omitir todas
+                  </Button>
+                </div>
+              </div>
+              <p style={{ margin: "3px 0 10px", fontSize: 12.5, color: "var(--tenue)" }}>
+                Por omisión no se tocan. Marque «Actualizar» para aplicar los cambios de abajo. El propietario o el
+                inquilino nunca se cambian desde aquí; los datos de una persona solo se completan si estaban vacíos.
+              </p>
+              {resultado.filas
+                .filter((f) => f.existente?.cambios.length)
+                .map((f) => (
+                  <label key={f.fila} style={{ display: "flex", gap: 10, padding: "8px 0", borderTop: "1px solid var(--linea)", fontSize: 13.5, alignItems: "flex-start" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!dec.actualizar[f.clave]}
+                      onChange={(e) => setDec({ ...dec, actualizar: { ...dec.actualizar, [f.clave]: e.target.checked } })}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      <b className="mono">{f.codigo}</b> (fila {f.fila}) · Actualizar
+                      <span style={{ display: "block", color: "var(--tinta-2)", fontSize: 12.5 }}>{f.existente!.cambios.join(" · ")}</span>
+                    </span>
+                  </label>
+                ))}
+            </Card>
+          )}
+
+          {resultado.dudosos.length > 0 && (
+            <Card>
+              <h3 style={{ margin: 0, fontSize: 14, color: "var(--ambar)" }}>Personas para revisar</h3>
+              <p style={{ margin: "3px 0 10px", fontSize: 12.5, color: "var(--tenue)" }}>
+                Se juntan solas cuando coinciden el correo o el teléfono. Estas no son seguras: elija.
+              </p>
+              {resultado.dudosos.map((d) => (
+                <div
+                  key={d.clave}
+                  style={{
+                    padding: "8px 0",
+                    borderTop: "1px solid var(--linea)",
+                    fontSize: 13.5,
+                    ...(d.pendiente ? { background: "var(--ambar-bg)", paddingLeft: 8, paddingRight: 8 } : {}),
+                  }}
+                >
+                  <div style={{ marginBottom: 6 }}>{d.texto}</div>
+                  {d.pendiente && (
+                    <div style={{ marginBottom: 6, fontSize: 12.5, fontWeight: 600, color: "var(--ambar)" }}>
+                      Esta no tiene respuesta por omisión: elija una para poder cargar.
+                    </div>
+                  )}
+                  <Select
+                    value={d.valor}
+                    onChange={(e) => setDec({ ...dec, personas: { ...dec.personas, [d.clave]: e.target.value } })}
+                    style={{ padding: "6px 8px", fontSize: 13, maxWidth: 520 }}
+                  >
+                    {!d.valor && (
+                      <option value="" disabled>
+                        Elija una opción
+                      </option>
+                    )}
+                    {d.opciones.map((o) => (
+                      <option key={o.valor} value={o.valor}>
+                        {o.etiqueta}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ))}
+            </Card>
+          )}
+
+          <Card style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "16px 18px 6px" }}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>3. La previa, fila por fila</h3>
+              <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--tenue)" }}>
+                En ámbar, lo dudoso, con la razón debajo. El tipo de unidad se puede cambiar aquí.
+              </p>
+            </div>
+            <div className="tabla-scroll" style={{ maxHeight: 520 }}>
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Fila</th>
+                    <th>Código</th>
+                    <th>Tipo</th>
+                    {COLUMNAS_PREVIA.filter((c) => columnas.includes(c)).map((c) => (
+                      <th key={c}>{CAMPOS[c]}</th>
+                    ))}
+                    <th>Qué pasa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultado.filas.map((f) => (
+                    <tr key={f.fila} style={{ background: f.estado === "no" ? "var(--rojo-bg)" : undefined, opacity: f.estado === "omitir" ? 0.7 : 1 }}>
+                      <td className="mono" style={{ color: "var(--tenue)" }}>
+                        {f.fila}
+                      </td>
+                      <td className="mono" style={{ fontWeight: 600 }}>
+                        {f.codigo || "—"}
+                      </td>
+                      <td>
+                        {f.estado === "no" ? (
+                          <span style={{ fontSize: 12.5 }}>{TIPOS_UNIDAD[f.tipo]}</span>
+                        ) : (
+                          <>
+                            <Select
+                              value={f.tipo}
+                              onChange={(e) => setDec({ ...dec, tipo: { ...dec.tipo, [f.fila]: e.target.value as TipoUnidad } })}
+                              style={{ padding: "4px 6px", fontSize: 12.5, minWidth: 120 }}
+                            >
+                              {Object.entries(TIPOS_UNIDAD).map(([k, t]) => (
+                                <option key={k} value={k}>
+                                  {t}
+                                </option>
+                              ))}
+                            </Select>
+                            <NotaCelda nota={f.campos.tipo?.nota} />
+                          </>
+                        )}
+                      </td>
+                      {COLUMNAS_PREVIA.filter((c) => columnas.includes(c)).map((c) => {
+                        const v = f.campos[c];
+                        return (
+                          <td key={c} style={{ background: v?.nota?.nivel === "ambar" ? "var(--ambar-bg)" : undefined, fontSize: 13 }}>
+                            <span className={c === "alicuota" || c === "saldo" || c.includes("telefono") ? "mono" : undefined}>{v?.valor || <span style={{ color: "var(--tenue)" }}>—</span>}</span>
+                            <NotaCelda nota={v?.nota} />
+                          </td>
+                        );
+                      })}
+                      <td style={{ fontSize: 12.5, minWidth: 220 }}>
+                        <b style={{ color: ESTADO[f.estado].color }}>{ESTADO[f.estado].texto}</b>
+                        {f.motivo && <div style={{ color: "var(--tinta-2)" }}>{f.motivo}</div>}
+                        {f.notas.map((n, k) => (
+                          <NotaCelda key={k} nota={n} />
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: 18, borderTop: "1px solid var(--linea)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Button type="button" cargando={guardando} disabled={!aCargar || porElegir > 0} onClick={() => setConfirmar(true)}>
+                Cargar {aCargar} {aCargar === 1 ? "unidad" : "unidades"}
+              </Button>
+              <Button
+                type="button"
+                variante="secundario"
+                onClick={() => {
+                  setLectura(null);
+                  setPegado("");
+                }}
+              >
+                Descartar
+              </Button>
+              {porElegir > 0 ? (
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ambar)" }}>
+                  {porElegir === 1 ? "Falta 1 respuesta" : `Faltan ${porElegir} respuestas`} en «Personas para revisar» (las marcadas en ámbar).
+                </span>
+              ) : (
+                <span style={{ fontSize: 12.5, color: "var(--tenue)" }}>Todo se guarda junto: si algo falla, no se guarda nada.</span>
+              )}
+            </div>
+          </Card>
+        </>
+      )}
+
+      {confirmar && resultado && (
+        <Confirmar
+          titulo="¿Cargar estos datos?"
+          texto={[
+            `Se crean ${resultado.resumen.nuevas} unidades`,
+            resultado.resumen.actualizar ? ` y se actualizan ${resultado.resumen.actualizar}` : "",
+            `. Se registran ${resultado.resumen.personasNuevas} personas nuevas`,
+            resultado.resumen.personasExistentes ? ` y se usan ${resultado.resumen.personasExistentes} fichas que ya existían` : "",
+            ".",
+            resultado.resumen.noSeCargan ? ` ${resultado.resumen.noSeCargan} filas no se cargan (están en la lista de arriba).` : "",
+            fueraDeTolerancia ? ` Las alícuotas van a sumar ${sumaTexto}: el mes no se podrá cerrar hasta que cuadren.` : "",
+            " Nadie recibe acceso a la app por esto: los accesos se dan desde Accesos.",
+          ].join("")}
+          boton="Sí, cargar"
+          onSi={cargar}
+          onNo={() => setConfirmar(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function Chip({ color, children }: { color: string; children: ReactNode }) {
+  return (
+    <span style={{ fontSize: 12.5, fontWeight: 600, color, border: `1px solid ${color}`, borderRadius: 999, padding: "3px 10px" }}>{children}</span>
+  );
+}
+
+function NotaCelda({ nota }: { nota?: Nota }) {
+  if (!nota) return null;
+  const color = nota.nivel === "rojo" ? "var(--rojo)" : nota.nivel === "ambar" ? "var(--ambar)" : "var(--tenue)";
+  return <div style={{ fontSize: 11.5, color, lineHeight: 1.4, marginTop: 2 }}>{nota.texto}</div>;
+}

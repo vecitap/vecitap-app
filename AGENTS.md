@@ -287,6 +287,14 @@ historial, solo hay que rotarla.
   con o sin segmento dinámico), reiniciar `npm run dev` — el watcher de Next
   no siempre recoge una carpeta de ruta creada mientras el servidor ya
   estaba corriendo, y la ruta nueva da 404 hasta reiniciar
+- **Procesos: nunca cerrar todos los procesos Node de la máquina** (nada de
+  `taskkill /IM node.exe`, `killall node`, `Stop-Process -Name node`). Ahí
+  corren también el `npm run dev` de Nicolás, el editor y otras herramientas.
+  El asistente detiene **solo el proceso que levantó él, por su PID**: anotarlo
+  al arrancarlo (o buscarlo por el puerto que usó, p. ej.
+  `Get-NetTCPConnection -LocalPort 3123 | Select OwningProcess`) y cerrar ese,
+  con su árbol (`taskkill /PID <pid> /T /F`). Pasó el 18-oct: se cerraron
+  todos los Node de la máquina para bajar un `next start` de prueba
 - **Lección de testing: hay una clase de bug que `npm run dev` no muestra.**
   Medido el 28-sep: un `POST` a una página devuelve **200 en dev y 405 en el
   build de producción**. Por eso el 405 de "Salir" (un redirect 307 después de

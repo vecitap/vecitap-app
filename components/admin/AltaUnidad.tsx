@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Campo, Input, Select } from "@/components/ui";
 import { num0, numeroMalEscrito } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
+import { TIPOS_UNIDAD } from "@/lib/admin/tipos";
 
 const TRATAMIENTOS = ["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""];
 
@@ -22,6 +23,7 @@ export function AltaUnidad({
   const [f, setF] = useState({
     codigo: "",
     alicuota: "",
+    tipo: "apartamento",
     saldo: "",
     saldoHon: "",
     prefijo: "Sr.",
@@ -55,6 +57,7 @@ export function AltaUnidad({
         alicuota: num0(f.alicuota),
         saldo_inicial: num0(f.saldo),
         saldo_inicial_hon: num0(f.saldoHon),
+        tipo: f.tipo,
       })
       .select("id")
       .single();
@@ -136,6 +139,16 @@ export function AltaUnidad({
           <Campo etiqueta="Alícuota %">
             <Input className="mono" value={f.alicuota} onChange={(e) => set("alicuota", e.target.value)} placeholder="2,41144" />
           </Campo>
+          <Campo etiqueta="Tipo de unidad">
+            <Select value={f.tipo} onChange={(e) => set("tipo", e.target.value)}>
+              {Object.entries(TIPOS_UNIDAD).map(([k, t]) => (
+                <option key={k} value={k}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+          <div />
           <Campo etiqueta="Saldo inicial de condominio" ayuda="Lo que arrastra del sistema anterior.">
             <Input className="mono" value={f.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="0,00" />
           </Campo>

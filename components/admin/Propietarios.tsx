@@ -10,7 +10,7 @@ import { nombreDe, vigente } from "@/lib/admin/personas";
 import { pagaDe } from "@/lib/paga";
 import type { SaldoActual, UnidadConPaga } from "@/lib/admin/tipos";
 import { AltaUnidad } from "./AltaUnidad";
-import { ImportarUnidades } from "./ImportarUnidades";
+import { CargarDatos } from "./CargarDatos";
 import { ImportarSaldos } from "./ImportarSaldos";
 
 const FILTROS: [string, string][] = [
@@ -71,7 +71,7 @@ export function Propietarios({
   const base = `/admin/${orgId}/${edificioId}/propietarios`;
 
   if (pantalla === "importar") {
-    return <ImportarUnidades orgId={orgId} edificioId={edificioId} unidades={unidades} onVolver={() => setPantalla("lista")} />;
+    return <CargarDatos orgId={orgId} edificioId={edificioId} unidades={unidades} onVolver={() => setPantalla("lista")} />;
   }
   if (pantalla === "saldos") {
     return <ImportarSaldos edificioId={edificioId} unidades={unidades} onVolver={() => setPantalla("lista")} />;
@@ -107,7 +107,7 @@ export function Propietarios({
                 <FileSpreadsheet size={14} /> Cargar saldos
               </Button>
               <Button type="button" variante="secundario" mini onClick={() => setPantalla("importar")}>
-                <Upload size={14} /> Importar unidades
+                <Upload size={14} /> Cargar datos
               </Button>
               <Button type="button" mini onClick={() => setAlta(true)}>
                 <Plus size={14} /> Nueva unidad

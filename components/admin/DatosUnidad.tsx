@@ -8,23 +8,35 @@ import { fechaCorta, hoyLocalISO, num0, numeroMalEscrito, paraCampo } from "@/li
 import { correoValido, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
-import type { UnidadConPaga, Vinculo } from "@/lib/admin/tipos";
+import { TIPOS_UNIDAD, type TipoUnidad, type UnidadConPaga, type Vinculo } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
 
 const TRATAMIENTOS = ["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""];
 
-type FormPersona = { prefijo: string; nombre: string; documento: string; telefono: string; correo: string; enviar: boolean };
+type FormPersona = {
+  prefijo: string;
+  nombre: string;
+  documento: string;
+  telefono: string;
+  correo: string;
+  /** Ronda 5 (caso 57): el «Correo 2» de las planillas. No se usa para enviar nada. */
+  correoRespaldo: string;
+  enviar: boolean;
+};
 type Tipo = "propietario" | "inquilino";
 /** Qué hacer con cada persona cuyo correo cambió (ver `guardar`). */
 type Decisiones = Partial<Record<Tipo, "reemplazar" | "corregir">>;
 
 function aForm(v: Vinculo | null): FormPersona {
   return {
-    prefijo: v?.personas?.prefijo || "Sr.",
+    // Una ficha sin tratamiento (empresa o junta, ronda 5) se muestra así y
+    // así se guarda; «Sr.» es solo para una persona que todavía no existe.
+    prefijo: v?.personas ? (v.personas.prefijo ?? "") : "Sr.",
     nombre: v?.personas?.nombre || "",
     documento: v?.personas?.documento || "",
     telefono: v?.personas?.telefono || "",
     correo: v?.personas?.correo || "",
+    correoRespaldo: v?.personas?.correo_respaldo || "",
     enviar: v ? v.enviar_corte : true,
   };
 }
@@ -73,6 +85,7 @@ export function DatosUnidad({
     saldo: paraCampo(unidad.saldo_inicial),
     saldoHon: paraCampo(unidad.saldo_inicial_hon),
     activa: unidad.activa,
+    tipo: (unidad.tipo ?? "apartamento") as TipoUnidad,
   });
   const [paga, setPaga] = useState<Paga>(pagaDe(unidad.paga));
   const [p, setP] = useState<FormPersona>(aForm(prop));
@@ -126,6 +139,24 @@ export function DatosUnidad({
         ? await supabase.rpc("reemplazar_inquilino", args)
         : await supabase.rpc("reemplazar_propietario", args);
     if (error) throw error;
+    // El RPC crea la ficha nueva sin correo de respaldo (no lo recibe): se
+    // completa acá, sobre el vínculo que acaba de quedar vigente.
+    if (f.correoRespaldo.trim()) {
+      const { data: v } = await supabase
+        .from("vinculos")
+        .select("persona_id")
+        .eq("unidad_id", unidad.id)
+        .eq("tipo", tipo)
+        .is("hasta", null)
+        .maybeSingle();
+      if (v?.persona_id) {
+        const { error: eR } = await supabase
+          .from("personas")
+          .update({ correo_respaldo: f.correoRespaldo.trim().toLowerCase() })
+          .eq("id", v.persona_id);
+        if (eR) throw eR;
+      }
+    }
     const anterior = nombreDe(actualDe[tipo]) || `El ${tipo} anterior`;
     return [
       `${anterior} ya no figura como ${tipo} de ${unidad.codigo}; ahora lo es ${[f.prefijo, f.nombre.trim()].filter(Boolean).join(" ")}.`,
@@ -144,6 +175,7 @@ export function DatosUnidad({
       documento: f.documento.trim() || null,
       telefono: f.telefono.trim() || null,
       correo: f.correo.trim() || null,
+      correo_respaldo: f.correoRespaldo.trim().toLowerCase() || null,
     };
 
     if (actual?.personas?.id) {
@@ -220,7 +252,7 @@ export function DatosUnidad({
     const supabase = crearClienteNavegador();
     const { error } = await supabase
       .from("unidades")
-      .update({ codigo: u.codigo.trim(), alicuota: num0(u.alicuota), saldo_inicial: num0(u.saldo), saldo_inicial_hon: num0(u.saldoHon), activa: u.activa })
+      .update({ codigo: u.codigo.trim(), alicuota: num0(u.alicuota), saldo_inicial: num0(u.saldo), saldo_inicial_hon: num0(u.saldoHon), activa: u.activa, tipo: u.tipo })
       .eq("id", unidad.id);
     if (error) throw error;
     const avisos: string[] = [];
@@ -292,6 +324,7 @@ export function DatosUnidad({
 
   function bloque(titulo: string, f: FormPersona, setF: (f: FormPersona) => void, ayuda: string, pie?: ReactNode) {
     const correoMal = !!f.correo && !correoValido(f.correo);
+    const respaldoMal = !!f.correoRespaldo && !correoValido(f.correoRespaldo);
     return (
       <Card>
         <h3 style={{ margin: "0 0 4px", fontSize: 14 }}>{titulo}</h3>
@@ -318,6 +351,15 @@ export function DatosUnidad({
           <div style={{ gridColumn: "1 / -1" }}>
             <Campo etiqueta="Correo" error={correoMal ? "Ese correo no se entiende." : undefined}>
               <Input value={f.correo} onChange={(e) => setF({ ...f, correo: e.target.value })} />
+            </Campo>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Campo
+              etiqueta="Correo de respaldo"
+              ayuda="Un segundo correo, para tenerlo a mano. Los recibos y avisos van solo al correo de arriba."
+              error={respaldoMal ? "Ese correo no se entiende." : undefined}
+            >
+              <Input value={f.correoRespaldo} onChange={(e) => setF({ ...f, correoRespaldo: e.target.value })} />
             </Campo>
           </div>
           <label style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
@@ -351,6 +393,16 @@ export function DatosUnidad({
           <Campo etiqueta="Alícuota %">
             <Input className="mono" value={u.alicuota} onChange={(e) => setU({ ...u, alicuota: e.target.value })} />
           </Campo>
+          <Campo etiqueta="Tipo de unidad" ayuda="Solo informativo: el reparto sigue siendo por alícuota.">
+            <Select value={u.tipo} onChange={(e) => setU({ ...u, tipo: e.target.value as TipoUnidad })}>
+              {Object.entries(TIPOS_UNIDAD).map(([k, t]) => (
+                <option key={k} value={k}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+          <div />
           <Campo etiqueta="Saldo inicial de condominio" ayuda="Solo cuenta mientras el edificio no tenga ningún mes cerrado.">
             <Input className="mono" value={u.saldo} onChange={(e) => setU({ ...u, saldo: e.target.value })} />
           </Campo>

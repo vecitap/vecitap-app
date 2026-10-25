@@ -3,7 +3,9 @@ import type { Database } from "@/types/supabase";
 export type Persona = Pick<
   Database["public"]["Tables"]["personas"]["Row"],
   "id" | "prefijo" | "nombre" | "documento" | "telefono" | "correo"
->;
+> &
+  /** Ronda 5: solo lo piden la ficha y Propietarios (Cargar datos), no todas las pantallas. */
+  Partial<Pick<Database["public"]["Tables"]["personas"]["Row"], "correo_respaldo">>;
 
 /** Vínculo de una unidad con una persona (propietario/inquilino), con la persona anidada — mismo shape que el `select` de app.html:930-933. */
 export type Vinculo = Pick<
@@ -16,9 +18,23 @@ export type Vinculo = Pick<
 export type Unidad = Pick<
   Database["public"]["Tables"]["unidades"]["Row"],
   "id" | "codigo" | "alicuota" | "saldo_inicial" | "saldo_inicial_hon" | "activa"
-> & {
-  vinculos: Vinculo[];
-};
+> &
+  /** Ronda 5: el tipo de unidad; solo lo piden Propietarios y la ficha. */
+  Partial<Pick<Database["public"]["Tables"]["unidades"]["Row"], "tipo">> & {
+    vinculos: Vinculo[];
+  };
+
+/** Los valores de `unidades.tipo` (lista cerrada en la base, unidades_tipo_check). */
+export const TIPOS_UNIDAD = {
+  apartamento: "Apartamento",
+  casa: "Casa",
+  local: "Local",
+  oficina: "Oficina",
+  estacionamiento: "Estacionamiento",
+  deposito: "Depósito",
+  otro: "Otro",
+} as const;
+export type TipoUnidad = keyof typeof TIPOS_UNIDAD;
 
 /**
  * Unidad con `paga` ("¿quién paga el condominio?"). Aparte de `Unidad` a
