@@ -645,7 +645,15 @@ caso 76, aprobado; «Descartar» recuerda los recibos (hecho, caso 78).
   oscuro (#0E9C86) daba 3,43:1, debajo del mínimo. Si prefiere uno más oscuro,
   #166534 da 7,13:1.
 - **a. Los enlaces de Accesos** (invitación de residente y mensaje para el
-  vigilante): **sin cambiar nada todavía, a la espera de Nicolás.** Los arma
+  vigilante). **Resuelto el 26-oct, sin commit:** Nicolás confirmó que
+  `NEXT_PUBLIC_SITE_URL` está solo en Production y aprobó el punto 2. Va en
+  una función aparte, `urlParaCompartir()` (`lib/url-sitio.ts`), y **no** en
+  `baseDelSitio()`. El motivo: los correos de Entrar tienen que volver al
+  mismo origen desde el que se pidieron, por la cookie PKCE del canje de
+  `/auth/confirmar`. Solo la usa Accesos. El comentario de `Accesos.tsx`
+  quedó corregido. Falta confirmar en Vercel que esté marcada la opción
+  «Automatically expose System Environment Variables». Lo que sigue es el
+  análisis original. Los arma
   `urlDelSitio()` (`lib/url-sitio.ts`), que toma, en este orden:
   1. `NEXT_PUBLIC_SITE_URL`, si está definida. Por diseño se define **solo en
      Production** de Vercel, con `https://vecitap.com`;

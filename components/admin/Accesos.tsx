@@ -5,7 +5,7 @@ import { Aviso, Badge, Button, Campo, Input, Select, type TonoBadge } from "@/co
 import { correoValido } from "@/lib/admin/personas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { fechaCorta } from "@/lib/formato";
-import { urlDelSitio } from "@/lib/url-sitio";
+import { urlParaCompartir } from "@/lib/url-sitio";
 import type { InvitacionAdmin, ResidenteAcceso, VigilanteAcceso } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
 import { otraCuentaEnNavegador } from "@/lib/cuenta-navegador";
@@ -372,11 +372,11 @@ export function Accesos({
                         // de largo a ese destino. El código viaja en la URL:
                         // es el mismo que va en texto dos líneas más abajo,
                         // atado a ese correo y de un solo uso.
-                        // `urlDelSitio()` y no `location.origin`: este texto se
-                        // le manda a un residente de verdad, así que tiene que
-                        // llevar el dominio público aunque quien lo copie esté
-                        // mirando un Preview de Vercel.
-                        `${urlDelSitio(
+                        // `urlParaCompartir()` y no `location.origin`: en
+                        // producción da https://vecitap.com aunque se copie
+                        // desde otro alias; en un Preview, la dirección fija
+                        // de la rama, no la del deploy que se tiene abierto.
+                        `${urlParaCompartir(
                           `/entrar?volver=${encodeURIComponent(`/mi/agregar?codigo=${codigo.token}`)}`
                         )}\n\n` +
                         // "Entre o cree" (ronda 2): quien ya tiene cuenta —p. ej.
@@ -590,7 +590,7 @@ export function Accesos({
                       `Hola. Para entrar al panel de seguridad de la garita, abra ` +
                         // El original manda a `garita.html`, que en main es un
                         // archivo suelto. Acá la garita es una ruta de la app.
-                        `${urlDelSitio("/garita")}\n\n` +
+                        `${urlParaCompartir("/garita")}\n\n` +
                         // «No tengo cuenta todavía» es el enlace de /entrar (el texto de
                         // main, «Es mi primera vez», era de garita.html; ronda 5, caso 76).
                         `Toque "No tengo cuenta todavía", cree su clave con el correo ` +

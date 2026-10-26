@@ -23,6 +23,9 @@
  * Por eso **`NEXT_PUBLIC_SITE_URL` no se pone en Preview ni en `.env.local`**:
  * definirla ahí rompería justo el caso 2, mandando los correos de un Preview
  * al dominio de producción.
+ *
+ * Los enlaces que se le mandan a otra persona salen por `urlParaCompartir()`
+ * (más abajo), que en un Preview prefiere la dirección fija de la rama.
  */
 
 const LOCAL = "http://localhost:3000";
@@ -53,6 +56,33 @@ export function baseDelSitio(): string {
  */
 export function urlDelSitio(ruta: string = "/"): string {
   return new URL(ruta, `${baseDelSitio()}/`).toString();
+}
+
+/**
+ * Como `urlDelSitio()`, para un enlace que se **le manda a otra persona** (los
+ * mensajes que Accesos copia para un residente o un vigilante). En producción
+ * da lo mismo, porque `NEXT_PUBLIC_SITE_URL` manda. Solo cambia en un Preview:
+ * usa `NEXT_PUBLIC_VERCEL_BRANCH_URL`, la dirección fija de la rama, en vez de
+ * la que tiene abierta el navegador. Así el enlace no queda pegado a un deploy
+ * en particular (`…-abc123….vercel.app`) y lleva a lo último de la rama aunque
+ * se abra días después.
+ *
+ * No se usa para los enlaces de los correos de Entrar: esos los abre la misma
+ * persona que los pidió, y tienen que volver al mismo origen, porque el canje
+ * del `?code=` de `/auth/confirmar` necesita la cookie que Supabase dejó ahí
+ * (PKCE). Si se cambiara a la dirección de la rama, quien los pidiera desde la
+ * dirección de un deploy recibiría «el enlace ya no sirve».
+ *
+ * Vercel solo define la variable si está marcada la opción «Automatically
+ * expose System Environment Variables» del proyecto. Sin ella se cae en
+ * `urlDelSitio()`, igual que antes.
+ */
+export function urlParaCompartir(ruta: string = "/"): string {
+  if (!process.env.NEXT_PUBLIC_SITE_URL?.trim() && process.env.NEXT_PUBLIC_VERCEL_ENV === "preview") {
+    const rama = process.env.NEXT_PUBLIC_VERCEL_BRANCH_URL?.trim();
+    if (rama) return new URL(ruta, `${normalizar(rama)}/`).toString();
+  }
+  return urlDelSitio(ruta);
 }
 
 /**
