@@ -10,6 +10,7 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { ConceptoCobro } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
+import { CuotasExtraordinarias } from "./CuotasExtraordinarias";
 
 type ActualizarConcepto = Database["public"]["Tables"]["conceptos_cobro"]["Update"];
 
@@ -38,12 +39,18 @@ const montoSinUso = (modo: string) => modo.startsWith("presupuesto") || modo.sta
 export function Cobros({
   orgId,
   edificioId,
-  conceptos,
+  conceptos: todos,
+  avance,
 }: {
   orgId: string;
   edificioId: string;
   conceptos: ConceptoCobro[];
+  /** Cuotas extraordinarias: cuántas ya se cobraron (ronda 7, bloque 5). */
+  avance: Record<string, number>;
 }) {
+  // Las extraordinarias (con `cuotas`) van en su propia tarjeta.
+  const conceptos = todos.filter((c) => c.cuotas === null);
+  const extraordinarias = todos.filter((c) => c.cuotas !== null);
   const router = useRouter();
   const [nuevo, setNuevoEstado] = useState({ nombre: "", bolsillo: "condominio", modo: "presupuesto_alicuota", monto: "0,00", iva: "0" });
   const [borrar, setBorrar] = useState<ConceptoCobro | null>(null);
@@ -96,6 +103,7 @@ export function Cobros({
   }
 
   const usaPresupuesto = conceptos.some((c) => c.activo && c.modo.startsWith("presupuesto"));
+  const hayActivo = todos.some((c) => c.activo);
   const usaGasto = conceptos.some((c) => c.activo && c.modo.startsWith("gasto"));
   // El título de la columna: uno solo si todos los cobros son del mismo tipo;
   // si se mezclan, cada celda lleva su unidad al lado.
@@ -119,7 +127,7 @@ export function Cobros({
             Todo lo que aparece en el recibo sale de esta lista. Agregar un cobro nuevo es agregar
             una fila, no programar.
           </p>
-          {!conceptos.some((c) => c.activo) && (
+          {!hayActivo && (
             <div style={{ marginBottom: 14 }}>
               <Aviso tono="rojo" titulo="Sin cobros activos el mes no se puede cerrar">
                 Un edificio necesita al menos un cobro encendido.
@@ -175,13 +183,15 @@ export function Cobros({
         )}
       </div>
 
+      <CuotasExtraordinarias orgId={orgId} edificioId={edificioId} extraordinarias={extraordinarias} avance={avance} />
+
       <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)", padding: 18 }}>
         <h2 style={{ margin: "0 0 4px", fontSize: 16, fontFamily: "var(--font-titulos)" }}>Agregar un cobro</h2>
         <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
-          Un fondo de reserva, una cuota extraordinaria, vigilancia adicional: todo se modela
-          igual.
+          Un fondo de reserva, vigilancia adicional: se cobra todos los meses mientras esté encendido. Para un
+          cobro que se termina (una cuota extraordinaria), use la tarjeta de arriba.
         </p>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "2fr 1fr 2fr 1fr 1fr auto", alignItems: "end" }}>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", alignItems: "end" }}>
           <Campo etiqueta="Nombre en el recibo">
             <Input value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} placeholder="Fondo de reserva" />
           </Campo>

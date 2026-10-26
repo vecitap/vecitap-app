@@ -8,6 +8,7 @@ import { usuarioActual } from "@/lib/supabase/cache";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { tasaDelDia } from "@/lib/tasa";
 import { esUuid } from "@/lib/validacion";
+import { ajustesCobroDe } from "@/lib/cobro";
 
 const noEncontrado = () => new NextResponse("No encontrado", { status: 404 });
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
     .eq("periodo_id", periodoId);
   if (unidadId) consultaRecibos = consultaRecibos.eq("unidad_id", unidadId);
 
-  const [{ data: org }, { data: edificio }, { data: periodo }, { data: unidades }, { data: recibos }, tasa] = await Promise.all([
+  const [{ data: org }, { data: edificio }, { data: periodo }, { data: unidades }, { data: recibos }, tasa, { data: cuentas }, cobro] = await Promise.all([
     supabase.from("organizaciones").select("nombre,logo_url").eq("id", orgId).maybeSingle(),
     supabase.from("edificios").select("nombre,rif").eq("id", edificioId).eq("org_id", orgId).maybeSingle(),
     supabase.from("periodos").select("etiqueta,estado").eq("id", periodoId).eq("edificio_id", edificioId).maybeSingle(),
@@ -66,6 +67,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
       .order("codigo"),
     consultaRecibos,
     tasaDelDia(supabase),
+    // Ronda 7: los datos para pagar del edificio, en cada recibo.
+    supabase.from("datos_pago").select("id,destino,tipo,banco,titular,documento,cuenta,nota,orden").eq("edificio_id", edificioId).order("orden"),
+    ajustesCobroDe(orgId),
   ]);
   if (!org || !edificio || !periodo || periodo.estado !== "cerrado") return noEncontrado();
 
@@ -75,7 +79,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   const filas: ReciboAdmin[] = (recibos ?? []).slice().sort((a, b) => (orden.get(a.unidad_id) ?? 0) - (orden.get(b.unidad_id) ?? 0));
   if (!filas.length) return NextResponse.redirect(new URL(volver, req.url));
 
-  const html = recibosAdminEnPapel(filas, { edificio, organizacion: org, unidades: lista, etiqueta: periodo.etiqueta, tasa });
+  const html = recibosAdminEnPapel(filas, { edificio, organizacion: org, unidades: lista, etiqueta: periodo.etiqueta, tasa, cuentas: cuentas ?? [], soloUsd: cobro.soloUsd });
   return new NextResponse(paraPantalla(html, volver), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" },
   });

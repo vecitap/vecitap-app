@@ -1898,3 +1898,338 @@ sobre la propuesta del caso 71).
   Verificado en pruebas, en una transacción deshecha: la administradora ve la reapertura;
   el residente, no.
 - **Cómo se revierte:** `pedirDescartar` en `components/admin/CierreMes.tsx`.
+
+---
+
+## Ronda 7 del tramo 2 — lo que necesita el piloto de GRUPO ING3 (26-oct)
+
+> Pedido de Nicolás del 26-oct, en nueve bloques. Todo en `dev`, sin commit. Las
+> migraciones están aplicadas en vecitap-pruebas y **no** en producción. Lista de
+> migraciones y pruebas: `docs/estado-migracion.md`, «Ronda 7 del tramo 2».
+
+### 79. «Cargar datos»: avisos en una línea, agrupados, y corregir en la previa
+
+**Caso de uso:** la administradora sube su planilla y aparecen avisos. Hoy tiene que
+corregir el Excel y volver a subirlo.
+
+- **Antes:** cada aviso iba escrito debajo de su celda, en la tabla de la previa. Para
+  corregir un correo había que volver al Excel, corregir y subirlo de nuevo. Las filas
+  que no se cargaban iban en una lista aparte.
+- **Ahora:**
+  - **Arriba, una línea:** «41 filas bien · 12 con avisos · 1 con errores» (con avisos en
+    ámbar, con errores en rojo). Se cuenta por fila: una fila con dos avisos es una.
+  - **«Avisos»:** una línea por tipo de aviso, con cuántas filas lo tienen («10 filas
+    que esperan una respuesta en «Personas para revisar»», «2 filas con un teléfono que no
+    parece de Venezuela»). Primero lo rojo (no se carga) y después lo más repetido.
+    «ver más» muestra las filas: número de fila, unidad y el aviso completo.
+  - **Corregir ahí mismo:** si el aviso es de un campo que el archivo trae (correo,
+    teléfono, cédula, nombre, alícuota, saldo, quién paga, «recibe corte»…), la fila trae
+    el campo con lo que dice el archivo y un botón «Corregir». Al tocarlo, la previa
+    entera se vuelve a revisar **con la misma función que lee el archivo**
+    (`analizar()`): no hay reglas aparte para lo corregido. Si se corrigió un correo, un
+    teléfono o una cédula, la pregunta «¿es la misma persona?» se vuelve a hacer sola
+    (verificado con la planilla anonimizada: al darle a 03D otro teléfono y otros
+    correos, su pregunta desaparece y quedan 9 de 10). La línea de arriba y los avisos se
+    actualizan. Las filas que no se cargan por un campo (alícuota que no se entiende,
+    saldo, quién paga) también se corrigen así.
+  - Lo corregido es lo que va a `importar_unidades()`. **Nada se guarda antes de
+    confirmar la carga**, y «Descartar» o subir otro archivo borra las correcciones. En
+    la tabla de abajo, la celda corregida dice «corregido en la previa».
+  - Si el campo no está en el archivo (por ejemplo, no hay columna de correo), el aviso
+    lo dice y no ofrece corregir: la columna se elige arriba.
+  - Una fila que espera «¿es la misma persona?» ofrece corregir sus datos de contacto
+    (teléfono, correos y cédula del propietario y del inquilino que la fila trae): es lo que
+    decide si se juntan.
+  - La fila sin alícuota sigue pudiéndose cargar como estacionamiento con alícuota 0,
+    ahora desde su aviso.
+  - **En el teléfono:** los avisos son una columna, sin tabla; el campo y el botón bajan
+    de línea si no caben.
+- **Arreglado en la validación en el navegador (26-oct, noche):** después de «Descartar»,
+  volver a elegir el mismo archivo no hacía nada (el campo conservaba la selección y el
+  navegador no avisa de un cambio con el mismo archivo); ahora el campo se vacía después de
+  leer cada archivo. Y los avisos «el archivo dice X, no se cambia» de una ficha que ya
+  existe se agrupan como «con un dato distinto al de la ficha que ya existe (no se
+  cambia)», sin el dato de la primera fila en el título.
+- **Cómo se revierte:** `components/admin/CargarDatos.tsx` (estado `ediciones`,
+  `GrupoAvisos`, `CorregirCelda`), `lib/admin/cargar-datos/avisos.ts` y los campos
+  `grupo`/`campo`/`motivoCampo` de `lib/admin/cargar-datos/analisis.ts`. Sin migración.
+
+### 80. Datos para pagar, por edificio: en el portal, en el recibo impreso y en el correo
+
+**Caso de uso:** el propietario abre su recibo y no sabe a qué cuenta transferir. Hoy se
+lo pregunta a la administradora por WhatsApp.
+
+- **Antes:** no había dónde cargar las cuentas del edificio. El correo del recibo daba el
+  total en $ y los Bs «a la tasa de hoy», calculados en realidad con la tasa del recibo.
+- **Ahora:**
+  - **Ajustes → «Datos para pagar»** (por edificio): una tarjeta por cuenta con «Para
+    pagar» (condominio u honorarios de administración), tipo (transferencia, pago móvil
+    u otro), banco (de la lista de bancos, u «Otro…»), titular, RIF o cédula, cuenta o
+    teléfono y una nota. Se agregan, se cambian y se quitan. Solo la propietaria de la
+    cuenta y la administradora (`puede_operar`).
+  - **Portal (/mi):** debajo del saldo, «Datos para pagar», con un botón «Copiar» al
+    lado de la cuenta y del RIF. Con dos cuentas, dice cuánto va a cada una. No le sale
+    al propietario cuya unidad paga el inquilino (él no paga).
+  - **«Reportar un pago»:** si el edificio tiene cuenta de honorarios, pregunta «¿A qué
+    cuenta pagó?» y el pago se abona a esa parte del saldo (`pagos.destino`), con la
+    deuda de esa cuenta en «Pagar deuda total». Sin cuenta de honorarios, no pregunta
+    nada y todo sigue yendo a condominio, como antes.
+  - **Recibo impreso** (Admin y portal): el bloque «Datos para pagar» debajo del
+    resumen, con el monto de cada cuenta en $ y en Bs. No sale si el recibo dice «Este
+    mes no tiene que pagar».
+  - **Correo del recibo:** el total en USD; debajo, **el monto en Bs calculado con la
+    tasa del día en que se encola**, tomada de `tasas_bcv` con su fecha, y la frase
+    «Calculado a la tasa oficial BCV del dólar del 23/10/2026. Si paga en bolívares, use
+    la tasa BCV del día en que pague.»; los datos para pagar; sin desglose y sin PDF. Se
+    quitó «El monto en bolívares es referencial» del pie (lo dice la frase nueva).
+  - **A qué cuenta va cada parte (decisión por defecto):** el honorario y el honorario
+    anterior, a la cuenta de honorarios; todo lo demás, servicio incluido, a la de
+    condominio. Si el edificio no tiene cuenta de honorarios, todo a la de condominio.
+  - **El residente no lee la tabla:** ve los datos de su edificio con `datos_pago_de()`,
+    acotada a sus unidades. Verificado en pruebas: el residente lee 0 filas de la tabla y
+    2 por la función; no puede insertar; la administradora lee e inserta; un edificio de
+    otra organización se rechaza.
+- **Decidido por mi cuenta:** los Bs del correo se redondean hacia arriba al céntimo, como
+  en «Reportar un pago» (así el pago nunca queda corto). Con cuenta de honorarios y un
+  recibo sin honorarios, el correo muestra la cuenta de honorarios con «$ 0,00».
+- **Arreglado en la validación en el navegador:** dos cuentas agregadas seguidas quedaban
+  con el mismo orden; ahora el orden sale de la base.
+- **Cómo se revierte:** `supabase/rollbacks/20261026120000_datos_pago_rollback.sql`
+  (borra la tabla: se pierden las cuentas cargadas) y, en la app, `DatosPago.tsx`,
+  `DatosParaPagar.tsx`, `lib/datos-pago.ts` y los usos en el papel, Cortes, el portal y
+  el formulario.
+
+### 81. El correo del recibo trae el código de invitación a quien todavía no tiene acceso
+
+**Caso de uso:** el primer mes del piloto, casi nadie tiene usuario. La administradora
+tendría que mandar un código por WhatsApp a cada propietario desde Accesos.
+
+- **Antes:** el correo del recibo decía «si es la primera vez que entra, use este mismo
+  correo para crear su clave», pero sin código no se puede agregar la unidad.
+- **Ahora:**
+  - Si quien recibe el recibo **no tiene acceso a esa unidad** (no hay una membresía
+    activa de residente en esa unidad con una cuenta de ese correo), el correo trae
+    «Todavía no tiene usuario en la app», el código y el enlace «Crear mi usuario» (el
+    mismo de Accesos: `/entrar` con el código ya puesto).
+  - **Reutiliza** la invitación pendiente y vigente de ese correo y esa unidad. Solo crea
+    una nueva si no hay, con `crear_invitacion()` (aparece en Accesos como cualquier
+    otra). Verificado en pruebas: al encolar dos veces el mismo mes, la segunda vez no
+    se crea ninguna.
+  - **No se crea una por mes:** la invitación del recibo vence a los 45 días, y cada vez
+    que vuelve a salir en un recibo se extiende 45 días desde ese día.
+  - **Cuando ya tiene acceso, deja de traer el código** (verificado: la propietaria de
+    prueba, que tiene cuenta, recibe el correo sin código).
+  - Quien tiene dos unidades recibe un código por unidad (cada código agrega una).
+  - Si la invitación no se puede crear (la organización está atrasada con Vecitap, por
+    ejemplo), ese correo sale igual, sin código: el recibo nunca se frena por esto.
+  - «Enviar una prueba» muestra el código si ya existe, pero nunca crea invitaciones.
+- **Decidido por mi cuenta:**
+  - Para poder reutilizar un código hay que guardarlo (la base guardaba solo su hash).
+    Va en una tabla aparte, `invitaciones_codigo`, cerrada a la app (RLS sin políticas,
+    como `secretos`), y solo para invitaciones de residente. El código solo no sirve:
+    `aceptar_invitacion()` exige que la cuenta tenga el correo de la invitación.
+  - Las invitaciones hechas desde Accesos **desde ahora** también guardan su código, así
+    que el recibo las reutiliza (y las extiende a 45 días; Accesos lo dice). Una pendiente
+    de antes de este cambio no tiene código guardado: el correo dice «use el código de
+    invitación que le envió su administración» y no se crea otra, para no anular la que
+    ya le mandaron. En producción no hay ninguna.
+  - 45 días: un poco más que un mes, para que el recibo siguiente la encuentre viva.
+- **Cómo se revierte:** `supabase/rollbacks/20261026130000_invitacion_en_recibo_rollback.sql`.
+  Las invitaciones ya creadas no se borran; solo se pierde el código guardado.
+
+### 82. Cobro solo en dólares, por organización
+
+**Caso de uso:** una administradora cobra en dólares y no quiere que sus propietarios vean
+ni paguen en bolívares.
+
+- **Antes:** el recibo, el portal y el correo siempre mostraban el equivalente en Bs, y el
+  formulario de pago ofrecía bolívares por omisión.
+- **Ahora:** Ajustes → «Cómo cobra la administradora» → **«Cobrar solo en dólares»**,
+  apagado por omisión, para toda la organización (tabla nueva `ajustes_cobro`, que escribe
+  `puede_operar`: la propietaria de la cuenta y la administradora).
+  - **Encendido:** el recibo impreso no trae el bloque en bolívares ni los Bs de los datos
+    para pagar, y el pie dice «Lo que se debe está en dólares y se paga en dólares»; «Mi
+    recibo» no muestra «Si paga hoy» en Bs ni la nota de la tasa; el correo del recibo
+    sale sin el monto en Bs ni la frase de la tasa; «Reportar un pago» no ofrece moneda
+    («Su administración cobra solo en dólares») y arranca en Zelle. **La base también lo
+    exige:** un residente no puede reportar un pago en bolívares (verificado en pruebas:
+    en Bs lo rechaza, en dólares lo acepta).
+  - **Apagado:** todo sigue como hoy (verificado: el correo trae los Bs).
+- **Decidido por mi cuenta:** la administradora **sí** puede registrar a mano un pago en
+  bolívares con la opción encendida, por si igual le llega una transferencia en Bs. La
+  opción va en una tabla aparte y no en `organizaciones` porque ahí solo escribe la
+  propietaria de la cuenta.
+- **Cómo se revierte:** `supabase/rollbacks/20261026140000_cobro_solo_usd_rollback.sql` y,
+  en la app, `AjustesCobro.tsx`, `lib/cobro.ts` y la prop `soloUsd` en el papel, «Mi
+  recibo» y el formulario.
+
+### 83. Cuotas extraordinarias en N cuotas
+
+**Caso de uso:** la junta aprueba una cuota extraordinaria de $ 3.000 para el ascensor,
+a pagar en 3 meses.
+
+- **Antes:** Cobros ya permitía un cobro con nombre propio, repartido por alícuota o igual
+  para cada unidad, pero se cobraba **todos los meses** hasta que alguien lo apagara, y no
+  se podía dividir: había que cargar $ 1.000 y acordarse de apagarlo al tercer mes.
+- **Ahora:** Cobros → **«Cuotas extraordinarias»**: nombre, cómo se reparte (**por
+  alícuota**, con el monto total del edificio, o **monto fijo por unidad**), el monto, y
+  **en cuántas cuotas** (1 por omisión).
+  - Cada cierre de mes cobra el monto ÷ N. En el recibo es una línea aparte: «Cuota
+    extraordinaria ascensor (cuota 2 de 3)» (con N = 1, solo el nombre). La última cuota
+    se lleva el resto del redondeo: la suma de las N da el monto exacto (verificado: 3
+    cuotas de $ 100 por alícuota en una unidad de 50 % = 16,6667 + 16,6667 + 16,6666).
+  - Completas las N, **deja de cobrarse sola** (verificado: el cuarto mes no la cobra) y
+    la tarjeta dice «Terminada». Mientras tanto dice «1 de 3 cuotas cobradas».
+  - **Reabrir un mes no descuadra la cuenta:** cuántas van se cuenta en los recibos de los
+    meses cerrados, no en un contador (verificado: reabrir y volver a cerrar diciembre
+    sigue diciendo «cuota 2 de 3»).
+  - Va en el bolsillo de condominio: **se suma al saldo y cuenta para la mora** igual que
+    la cuota normal. Los saldos siguen saliendo de `saldos_actuales`.
+  - La vista previa del cierre (`simular_cierre`) usa la misma regla.
+  - Se puede apagar (no se cobra mientras esté apagada) y eliminar solo si todavía no se
+    cobró ninguna cuota.
+  - De paso, «Agregar un cobro» ya no se sale de la pantalla en el teléfono.
+- **Decidido por mi cuenta:** solo con «por alícuota» o «monto fijo por unidad» y en el
+  bolsillo de condominio (la base lo exige). Con «monto fijo por unidad», el monto que se
+  escribe es el de cada unidad, dividido en las N cuotas. Sin IVA.
+- **Cómo se revierte:** `supabase/rollbacks/20261026150000_cuotas_extraordinarias_rollback.sql`
+  (antes, apagar o borrar las extraordinarias: sin la columna se volverían cobros de todos
+  los meses) y `CuotasExtraordinarias.tsx`.
+
+### 84. Redondeo de cuotas, con la diferencia al fondo de reserva
+
+**Caso de uso:** la administradora prefiere cuotas redondas ($ 65 en vez de $ 61,73): son
+más fáciles de pagar y de cuadrar.
+
+- **Antes:** no existía. El único redondeo era el «perdón de centavos» del edificio, que va
+  al revés (perdona deudas chicas).
+- **Ahora:** Ajustes → «Cómo cobra la administradora» → **«Redondeo de las cuotas»**: sin
+  redondeo (por omisión), al dólar entero o a múltiplos de $ 5, para toda la
+  organización.
+  - **Siempre hacia arriba.** Lo que se emite ese mes a cada unidad (cuota,
+    extraordinarias, cargos de la unidad, honorario y servicio; **sin** la mora ni lo que
+    venía de meses anteriores) se redondea al cerrar el mes.
+  - **La diferencia va al fondo de reserva** y sale en el recibo como una línea aparte,
+    «Fondo de reserva por redondeo», en el bolsillo de condominio (verificado en pruebas:
+    61,725 → 65 con 3,275 al fondo; al dólar → 62 con 0,275).
+  - Se aplica al cerrar el mes: **no cambia meses ya cerrados** (verificado: octubre
+    queda igual). La vista previa del cierre ya muestra la cuota redondeada.
+- **Decidido por mi cuenta:**
+  - **El fondo de reserva no existía** como concepto. Se crea como una línea más de los
+    cobros del recibo, que es como el recibo muestra cada cobro, y no como una fila de
+    Cobros: su monto no se configura, sale del redondeo de cada unidad.
+  - Se redondea lo emitido en el mes, no el total con deuda anterior: si se redondeara el
+    total, la diferencia cambiaría con cada pago atrasado.
+- **Cómo se revierte:** `supabase/rollbacks/20261026160000_redondeo_cuotas_rollback.sql`.
+
+### 85. Mensajes masivos por correo, con el tope diario de Resend
+
+**Caso de uso:** la administradora tiene que avisar a todo el edificio de un corte de
+agua, o recordarles a los que deben.
+
+- **Antes:** no había cómo. Solo salían los recibos y los avisos de la garita. El
+  despachador mandaba 20 correos cada 5 minutos sin mirar el límite del plan de Resend:
+  pasado el cupo, Resend los rechaza y quedaban como fallidos.
+- **Ahora:** Admin → **«Mensajes»** (en el menú, después de «Cortes de cuenta»; sale si el
+  edificio tiene el módulo de correo).
+  - Asunto, texto y **para quién**: todo el edificio (propietarios e inquilinos), solo
+    propietarios, solo inquilinos o **solo quienes deben** (de cada unidad que debe, quien
+    paga: el propietario o el inquilino, según «¿quién paga?»).
+  - **Vista previa:** cuántas personas, cuántas con copia, cuántos correos, y si sale hoy
+    o se reparte en varios días. Debajo, cómo se va a ver. Después, **confirmación**
+    («¿Enviar este mensaje?… Una vez enviado no se puede retirar»).
+  - Cada persona recibe uno solo aunque tenga varias unidades, **con su correo de
+    respaldo en copia**. Se saltan los correos que rebotaron. Un doble toque no lo manda
+    dos veces (verificado). Las respuestas van al correo de respuesta de la
+    administración.
+  - **Historial:** «Mensajes enviados», con cuántos salieron, cuántos esperan y cuántos
+    fallaron; al tocar el asunto se ve el texto.
+  - **Tope diario:** el plan gratuito de Resend permite **100 correos por día**. El
+    despachador cuenta lo mandado en las últimas 24 horas (una copia cuenta como otro
+    correo) y no pasa de ahí: lo demás espera en la cola y sale al día siguiente. **Un
+    envío más grande que el cupo se reparte en varios días en vez de fallar**, y la vista
+    previa lo avisa. Los recibos y los avisos salen primero; los mensajes masivos,
+    después. Verificado en pruebas con el tope en 3: de 5 pendientes salieron 3 (primero
+    las pruebas) y el mensaje esperó.
+  - Solo la administración (`puede_operar`): un residente no puede enviar ni ver el
+    historial (verificado).
+- **Decidido por mi cuenta:**
+  - El tope vale para **toda la cuenta de Resend**, que es una sola para todas las
+    organizaciones. Se puede subir sin tocar código con el secreto `correo_tope_diario`
+    (cuando se pase al plan pago).
+  - Ventana de 24 horas corridas, no «el día»: no depende de a qué hora reinicia Resend
+    su cuenta, y nunca se pasa.
+  - **Ojo para el piloto:** con 53 unidades y dos destinatarios por unidad, los recibos
+    de un mes ya son ~100 correos: el cupo de un día. Ver los riesgos en
+    `docs/estado-migracion.md`.
+- **Cómo se revierte:** `supabase/rollbacks/20261026170000_mensajes_masivos_rollback.sql`
+  (cancela los mensajes que sigan en la cola y borra el historial) y `Mensajes.tsx`.
+
+### 86. Estado financiero del edificio, en PDF y en Excel
+
+**Caso de uso:** la junta pide cuánto entró y cuánto salió en octubre, o en el trimestre.
+
+- **Antes:** Estadísticas tenía el «informe para la asamblea» de un mes, pero no un
+  estado con saldo inicial y final, ni un rango de meses, ni Excel.
+- **Ahora:** Admin → **«Estado financiero»** (en el menú, después de Estadísticas). Se
+  elige «Desde» y «Hasta» (un mes o un rango) y se ve:
+  - **saldo inicial** (lo cobrado menos lo gastado antes del período), **ingresos** (los
+    pagos **confirmados** con fecha en el período), **egresos** (los **gastos del mes** de
+    los meses del período, los comunes y los cargados a una unidad) y **saldo final**;
+  - aparte, lo cobrado para **honorarios** de administración, que no es del edificio y no
+    entra en el saldo;
+  - si algún mes del período sigue abierto, un aviso: sus gastos todavía pueden cambiar.
+  - **«Descargar PDF»** abre la hoja lista para imprimir, con la barra «← Volver» como el
+    recibo (y vuelve al mismo rango); **«Descargar Excel»** baja un libro con tres hojas:
+    Resumen, Ingresos y Egresos.
+  - Verificado en pruebas: con un pago de $ 30 en septiembre, uno de $ 40 en octubre, $ 5
+    a honorarios, un pago sin confirmar de $ 99 y $ 100 de gastos en octubre: octubre da
+    30 + 40 − 100 = −30; los $ 5 aparte y los $ 99 no cuentan. Un residente no tiene
+    acceso.
+- **Decidido por mi cuenta:** el saldo es el del registro de Vecitap (cobrado menos
+  gastado), no el del banco: no hay un saldo bancario inicial cargado. Los pagos a
+  servicio cuentan como ingresos del edificio (se pagan a la cuenta del condominio). Lo
+  ven la administración, el contador y la junta de ese edificio.
+- **Cómo se revierte:** `supabase/rollbacks/20261026180000_estado_financiero_rollback.sql`,
+  la ruta `estado/` y `lib/admin/estado-financiero.ts`.
+
+### 87. Pago agrupado: una transferencia repartida entre varias unidades
+
+> Es la «fase 2» del caso 31 (propietarios con varias unidades), que había quedado fuera
+> de alcance. Hace falta antes del primer pago real: en el edificio piloto un propietario
+> con varias oficinas paga todas con una transferencia.
+
+**Caso de uso:** un propietario con tres oficinas transfiere una sola vez por las tres.
+
+- **Antes:** tenía que reportar la misma transferencia tres veces, partiendo el monto a
+  mano. Para la administradora eran tres pagos con la misma referencia que el banco
+  muestra como uno: la conciliación no los casaba.
+- **Ahora:**
+  - **«Reportar un pago»**, si quien mira paga dos o más unidades del **mismo edificio**:
+    «Esta transferencia paga varias de mis unidades». Se marcan las unidades; **cada una
+    propone su saldo** (en Bs a la tasa de la fecha del pago) y se puede cambiar. La suma
+    tiene que ser igual al total de la transferencia («Usar la suma como monto» lo copia).
+    Un solo comprobante.
+  - **Una transacción, N pagos:** un pago por unidad con el mismo `grupo_id`, en una sola
+    llamada (entran todos o ninguno). La base exige que sean una sola transferencia: mismo
+    edificio, fecha, moneda, método y referencia, y unidades distintas.
+  - **En Bs, los centavos cuadran:** cada parte se pasa a dólares redondeada a centavos y
+    la diferencia la absorbe la parte más grande, así **la suma de las partes es
+    exactamente el total** (verificado: 3 × Bs 500 a 886,2271 = 0,56 + 0,56 + 0,57 = 1,69).
+  - **Admin → Pagos recibidos:** cada parte dice «Agrupado con 02B, 03A · total $ …» y
+    muestra el comprobante de la transferencia. **Confirmar o anular uno confirma o anula
+    el grupo completo**; la base no deja cambiar una parte sola (verificado).
+  - **Conciliación con el banco:** el movimiento del banco se compara contra **la suma
+    del grupo**, y al conciliar se concilia el grupo entero.
+  - `pagos_posible_duplicado()` ignora los pagos del mismo grupo (comparten referencia a
+    propósito).
+  - **La administradora también puede registrar uno agrupado**: «Una sola transferencia
+    para varias unidades», con una fila por unidad y su monto, y el total.
+  - Los saldos siguen saliendo de `saldos_actuales`: cada parte es un pago normal de su
+    unidad.
+- **Decidido por mi cuenta:** solo unidades del mismo edificio (una transferencia va a una
+  sola cuenta); las partes en Bs se guardan a centavos (un pago suelto, a 4 decimales:
+  la diferencia es de menos de medio centavo); el comprobante queda con la primera parte.
+- **Cómo se revierte:** `supabase/rollbacks/20261026190000_pago_agrupado_rollback.sql`
+  (los pagos agrupados quedan como pagos sueltos, con su monto ya cuadrado) y los cambios
+  en `FormularioReportarPago.tsx` y `Pagos.tsx`.

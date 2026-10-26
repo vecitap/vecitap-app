@@ -11,6 +11,10 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 import { LogoOrg } from "./LogoOrg";
 import { DatosAdministradora } from "./DatosAdministradora";
 import { NuevoEdificio } from "./NuevoEdificio";
+import { DatosPago } from "./DatosPago";
+import { AjustesCobro } from "./AjustesCobro";
+import type { AjustesCobro as TipoAjustesCobro } from "@/lib/cobro-opciones";
+import type { CuentaPago } from "@/lib/datos-pago";
 import type { CategoriaConPartidas, EdificioAdmin, PartidaFija } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
@@ -34,12 +38,18 @@ export function Ajustes({
   edificio,
   categorias,
   puedeEditarOrg,
+  cuentas,
+  bancos,
+  ajustesCobro,
 }: {
   orgId: string;
   organizacion: { nombre: string; rif: string | null; logo_url: string | null };
   edificio: EdificioAdmin;
   categorias: CategoriaConPartidas[];
   puedeEditarOrg: boolean;
+  cuentas: CuentaPago[];
+  bancos: { codigo: string; nombre: string }[];
+  ajustesCobro: TipoAjustesCobro;
 }) {
   const router = useRouter();
   const [e, setE] = useState({
@@ -217,6 +227,8 @@ export function Ajustes({
 
       <LogoOrg orgId={orgId} nombre={organizacion.nombre} logoUrl={organizacion.logo_url} />
 
+      <AjustesCobro orgId={orgId} ajustes={ajustesCobro} />
+
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div>
@@ -268,6 +280,8 @@ export function Ajustes({
           <EstadoGuardado estado={guardarEdificio.estado} error={guardarEdificio.error} />
         </div>
       </Card>
+
+      <DatosPago orgId={orgId} edificioId={edificio.id} cuentas={cuentas} bancos={bancos} />
 
       <Card>
         <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Categorías y partidas fijas</h2>

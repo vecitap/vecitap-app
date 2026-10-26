@@ -83,6 +83,12 @@ export function Pagos({
   const [guardandoTasa, setGuardandoTasa] = useState(false);
 
   const [ex, setEx] = useState({ unidad: "", monto: "", motivo: "", destino: "condominio" });
+  // Ronda 7 (bloque 9): una transferencia repartida entre varias unidades.
+  const [agrupado, setAgrupado] = useState(false);
+  const [partes, setPartes] = useState<{ unidad: string; monto: string }[]>([
+    { unidad: "", monto: "" },
+    { unidad: "", monto: "" },
+  ]);
 
   const [viendo, setViendo] = useState<{ url: string; tipo: string; pago: PagoAdmin; ficha: ComprobanteFila } | null>(null);
   const [purga, setPurga] = useState<number | null>(null);
@@ -107,6 +113,19 @@ export function Pagos({
   }, [comprobantes]);
 
   const codigo = (id: string | null) => unidades.find((u) => u.id === id)?.codigo || "—";
+
+  // Ronda 7 (bloque 9): los pagos de una misma transferencia (grupo_id).
+  const grupos = useMemo(() => {
+    const m: Record<string, PagoAdmin[]> = {};
+    pagos.forEach((p) => {
+      if (p.grupo_id) (m[p.grupo_id] ??= []).push(p);
+    });
+    return m;
+  }, [pagos]);
+  /** El comprobante de un pago, o el de su grupo (se sube uno por transferencia). */
+  const compDe = (p: PagoAdmin) =>
+    comps[p.id] ?? (p.grupo_id ? grupos[p.grupo_id]?.map((x) => comps[x.id]).find(Boolean) : undefined);
+  const sumaPartes = partes.reduce((s, x) => s + (num(x.monto) ?? 0), 0);
 
   /* ── Tasa del BCV de la fecha del pago ──
      No la elige nadie: la pone la base. `propia` = es la publicada ESE
@@ -150,6 +169,7 @@ export function Pagos({
   }
 
   async function registrar() {
+    if (agrupado) return registrarAgrupado();
     if (!f.unidad) return notificar("Elija la unidad.", "error");
     const monto = num(f.monto);
     if (monto === null || monto <= 0) return notificar("El monto no se entiende.", "error");
@@ -182,11 +202,67 @@ export function Pagos({
     router.refresh();
   }
 
+  /** Ronda 7 (bloque 9): una transferencia para varias unidades; la suma de las partes es el total. */
+  async function registrarAgrupado() {
+    const total = num(f.monto);
+    if (total === null || total <= 0) return notificar("Escriba el total de la transferencia.", "error");
+    const filas = partes.filter((x) => x.unidad || x.monto.trim());
+    if (filas.length < 2) return notificar("Un pago agrupado reparte la transferencia entre dos o más unidades.", "error");
+    if (filas.some((x) => !x.unidad)) return notificar("Falta elegir la unidad de una de las partes.", "error");
+    if (new Set(filas.map((x) => x.unidad)).size !== filas.length) return notificar("Una unidad aparece dos veces.", "error");
+    const montos = filas.map((x) => num(x.monto) ?? 0);
+    if (montos.some((m) => m <= 0)) return notificar("El monto de una de las partes no se entiende.", "error");
+    const suma = montos.reduce((s, m) => s + m, 0);
+    if (Math.abs(suma - total) > 0.005)
+      return notificar(`Las partes suman ${nf(2).format(suma)} y el total es ${nf(2).format(total)}: tienen que ser iguales.`, "error");
+    if (!f.fecha || f.fecha > hoyLocalISO()) return notificar("La fecha del pago no puede ser futura.", "error");
+    if (f.moneda === "VES" && !tf) return notificar("No hay tasa del BCV para esa fecha. Cárguela abajo.", "error");
+    setOcupado(true);
+    const pide = PIDE[f.metodo] ?? {};
+    const grupo = crypto.randomUUID();
+    const supabase = crearClienteNavegador();
+    // Una sola llamada: o entran todas las partes o ninguna.
+    const { error } = await supabase.from("pagos").insert(
+      filas.map((x, i) => ({
+        org_id: orgId,
+        unidad_id: x.unidad,
+        fecha: f.fecha,
+        monto: montos[i],
+        moneda: f.moneda,
+        monto_usd: 0,
+        metodo: f.metodo,
+        destino: f.destino,
+        referencia: f.referencia.trim() || null,
+        banco_codigo: pide.banco ? f.banco || null : null,
+        telefono_origen: pide.telefono ? f.telefono.trim() : null,
+        documento_origen: pide.documento ? f.documento.trim() : null,
+        correo_origen: pide.correo ? f.correo.trim() : null,
+        estado: "reportado",
+        grupo_id: grupo,
+      }))
+    );
+    setOcupado(false);
+    if (error) return fallo(error);
+    setF({ ...f, monto: "", referencia: "" });
+    setPartes([
+      { unidad: "", monto: "" },
+      { unidad: "", monto: "" },
+    ]);
+    notificar(`Transferencia registrada para ${filas.length} unidades, como reportada. Falta conciliarla.`);
+    router.refresh();
+  }
+
   async function cambiarEstado(p: PagoAdmin, estado: string) {
     const campos = estado === "conciliado" ? { estado, conciliado_en: new Date().toISOString() } : { estado };
     const supabase = crearClienteNavegador();
-    const { error } = await supabase.from("pagos").update(campos).eq("id", p.id);
+    // Ronda 7 (bloque 9): un pago agrupado se confirma o se anula con todo su grupo.
+    const consulta = supabase.from("pagos").update(campos);
+    const { error } = await (p.grupo_id ? consulta.eq("grupo_id", p.grupo_id) : consulta.eq("id", p.id));
     if (error) return fallo(error);
+    if (p.grupo_id)
+      notificar(
+        `Se ${estado === "conciliado" ? "confirmó" : "anuló"} la transferencia completa (${grupos[p.grupo_id]?.length ?? 0} unidades).`
+      );
     router.refresh();
   }
 
@@ -211,7 +287,7 @@ export function Pagos({
   }
 
   async function verComprobante(p: PagoAdmin) {
-    const c = comps[p.id];
+    const c = compDe(p);
     if (!c) return;
     if (c.imagen_borrada_en)
       return notificar(
@@ -281,11 +357,22 @@ export function Pagos({
 
   const cruce = useMemo(() => {
     if (!mov) return null;
-    const reportados = pagos
-      .filter((p) => p.estado === "reportado")
+    // Ronda 7 (bloque 9): una transferencia agrupada es UN movimiento del
+    // banco, así que se compara contra la suma de su grupo.
+    const sueltos = pagos
+      .filter((p) => p.estado === "reportado" && !p.grupo_id)
       .map((p) => ({ id: p.id, monto: Number(p.monto), referencia: p.referencia, banco: p.banco, unidad_id: p.unidad_id }));
-    return cruzarConBanco(mov, reportados);
-  }, [mov, pagos]);
+    const agrupados = Object.entries(grupos)
+      .filter(([, ps]) => ps.every((p) => p.estado === "reportado"))
+      .map(([g, ps]) => ({
+        id: `g:${g}`,
+        monto: ps.reduce((s, p) => s + Number(p.monto), 0),
+        referencia: ps[0].referencia,
+        banco: ps[0].banco,
+        unidad_id: ps[0].unidad_id,
+      }));
+    return cruzarConBanco(mov, [...sueltos, ...agrupados]);
+  }, [mov, pagos, grupos]);
 
   async function conciliarLote() {
     if (!cruce) return;
@@ -295,7 +382,8 @@ export function Pagos({
       const { error } = await supabase
         .from("pagos")
         .update({ estado: "conciliado", conciliado_en: new Date().toISOString(), banco: c.pago.banco || null })
-        .eq("id", c.pago.id);
+        // Un grupo (id «g:…») se concilia entero.
+        .eq(c.pago.id.startsWith("g:") ? "grupo_id" : "id", c.pago.id.replace(/^g:/, ""));
       if (error) {
         setOcupado(false);
         return fallo(error);
@@ -368,6 +456,16 @@ export function Pagos({
                   </td>
                   <td className="mono cabeza" style={{ fontWeight: 600 }}>
                     {codigo(p.unidad_id)}
+                    {p.grupo_id && grupos[p.grupo_id] && (
+                      <div style={{ fontWeight: 400, fontSize: 11.5, color: "var(--tinta-2)" }}>
+                        Agrupado con{" "}
+                        {grupos[p.grupo_id]
+                          .filter((x) => x.id !== p.id)
+                          .map((x) => codigo(x.unidad_id))
+                          .join(", ")}{" "}
+                        · total {usd(grupos[p.grupo_id].reduce((s, x) => s + Number(x.monto_usd), 0))}
+                      </div>
+                    )}
                   </td>
                   <td data-t="Método">
                     {p.metodo}
@@ -388,7 +486,7 @@ export function Pagos({
                       </div>
                     )}
                     {p.correo_origen && <div style={{ color: "var(--tenue)" }}>{p.correo_origen}</div>}
-                    {comps[p.id] && (
+                    {compDe(p) && (
                       <button
                         type="button"
                         onClick={() => verComprobante(p)}
@@ -402,7 +500,7 @@ export function Pagos({
                           fontFamily: "inherit",
                         }}
                       >
-                        {comps[p.id].imagen_borrada_en ? "comprobante vencido" : "ver comprobante"}
+                        {compDe(p)!.imagen_borrada_en ? "comprobante vencido" : "ver comprobante"}
                       </button>
                     )}
                   </td>
@@ -472,16 +570,68 @@ export function Pagos({
             llegó.
           </p>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
-            <Campo etiqueta="Unidad">
-              <Select value={f.unidad} onChange={(e) => setF({ ...f, unidad: e.target.value })}>
-                <option value="">Elija</option>
-                {unidades.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.codigo}
-                  </option>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={agrupado} onChange={(e) => setAgrupado(e.target.checked)} />
+                Una sola transferencia para varias unidades
+              </label>
+            </div>
+            {agrupado ? (
+              <div style={{ gridColumn: "1 / -1", display: "grid", gap: 8 }}>
+                {partes.map((x, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <Select
+                      value={x.unidad}
+                      onChange={(e) => setPartes(partes.map((y, j) => (j === i ? { ...y, unidad: e.target.value } : y)))}
+                      style={{ flex: "1 1 140px", width: "auto" }}
+                    >
+                      <option value="">Unidad</option>
+                      {unidades.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.codigo}
+                        </option>
+                      ))}
+                    </Select>
+                    <Input
+                      className="mono"
+                      inputMode="decimal"
+                      placeholder={f.moneda === "VES" ? "Bs de esta unidad" : "USD de esta unidad"}
+                      value={x.monto}
+                      onChange={(e) => setPartes(partes.map((y, j) => (j === i ? { ...y, monto: e.target.value } : y)))}
+                      onBlur={() => setPartes(partes.map((y, j) => (j === i ? { ...y, monto: montoAlSalir(y.monto) } : y)))}
+                      style={{ flex: "1 1 120px", width: "auto" }}
+                    />
+                    {partes.length > 2 && (
+                      <Button type="button" mini variante="secundario" onClick={() => setPartes(partes.filter((_, j) => j !== i))}>
+                        Quitar
+                      </Button>
+                    )}
+                  </div>
                 ))}
-              </Select>
-            </Campo>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
+                  <Button type="button" mini variante="secundario" onClick={() => setPartes([...partes, { unidad: "", monto: "" }])}>
+                    + Otra unidad
+                  </Button>
+                  <span style={{ color: "var(--tinta-2)" }}>
+                    Suma de las partes: <b className="mono">{nf(2).format(sumaPartes)}</b>
+                    {num(f.monto) !== null && Math.abs(sumaPartes - (num(f.monto) ?? 0)) > 0.005 && (
+                      <span style={{ color: "var(--ambar)", fontWeight: 600 }}> · no es igual al total</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <Campo etiqueta="Unidad">
+                <Select value={f.unidad} onChange={(e) => setF({ ...f, unidad: e.target.value })}>
+                  <option value="">Elija</option>
+                  {unidades.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.codigo}
+                    </option>
+                  ))}
+                </Select>
+              </Campo>
+            )}
             <Campo etiqueta="Fecha del pago">
               <InputFecha sinFuturo value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
             </Campo>
@@ -491,7 +641,7 @@ export function Pagos({
                 <option value="VES">Bolívares</option>
               </Select>
             </Campo>
-            <Campo etiqueta={f.moneda === "VES" ? "Monto en Bs" : "Monto en USD"}>
+            <Campo etiqueta={(agrupado ? "Total de la transferencia" : "Monto") + (f.moneda === "VES" ? " en Bs" : " en USD")}>
               <Input className="mono" value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} onBlur={() => setF({ ...f, monto: montoAlSalir(f.monto) })} />
             </Campo>
             {f.moneda === "VES" && (

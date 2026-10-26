@@ -27,6 +27,8 @@ export type RegistroRecibo = {
   a_favor: number;
   mora: number;
   honorario: number;
+  /** Para repartir el total entre las cuentas de condominio y de honorarios (ronda 7). */
+  anterior_hon: number;
   servicio: number;
   conceptos: ConceptoRecibo[];
   detalle: CategoriaRecibo[];

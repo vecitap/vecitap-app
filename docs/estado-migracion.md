@@ -16,6 +16,294 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 7 del tramo 2 (26-oct) — lo que necesita el piloto de GRUPO ING3
+
+Pedido de Nicolás del 26-oct, en nueve bloques, hecho en orden y cada uno
+construido, probado en vecitap-pruebas y documentado antes del siguiente.
+Todo en `dev`, **sin commit**. `npx tsc --noEmit`, `npm run lint` y
+`npm run build` en verde al terminar. Desvíos frente a `main`: casos **79 a 87**
+de `docs/casos-de-uso-mejorados.md`.
+
+### Qué se hizo, por bloque
+
+| # | Bloque | Qué cambió | Caso |
+|---|---|---|---|
+| 1 | Previa de «Cargar datos» | Resumen en una línea (bien · avisos · errores); avisos agrupados con «ver más»; corregir en la previa, con la misma `analizar()`; la pregunta «¿misma persona?» se vuelve a hacer sola | 79 |
+| 2 | Datos para pagar | Tabla `datos_pago` por edificio (Ajustes); en el portal, el recibo impreso y el correo; el correo da los Bs a la tasa del día con su fecha | 80 |
+| 3 | Código en el correo del recibo | Quien no tiene acceso recibe su código y «Crear mi usuario»; se reutiliza la invitación pendiente (45 días, se extiende con cada recibo) | 81 |
+| 4 | Solo dólares | Opción por organización (`ajustes_cobro.solo_usd`); sin Bs en papel, portal, correo y formulario; la base rechaza el pago en Bs del residente | 82 |
+| 5 | Cuotas extraordinarias | `conceptos_cobro.cuotas`: N cuotas, «cuota 2 de 3», termina sola, cuenta para la mora; contada en los recibos (reabrir no descuadra) | 83 |
+| 6 | Redondeo | `ajustes_cobro.redondeo`: al dólar o a 5, hacia arriba; la diferencia, «Fondo de reserva por redondeo» | 84 |
+| 7 | Mensajes masivos | Pantalla «Mensajes»; historial; copia al correo de respaldo; **tope diario de Resend** en el despachador (100, o el secreto `correo_tope_diario`) | 85 |
+| 8 | Estado financiero | Pantalla «Estado financiero»; saldo inicial, ingresos, egresos, saldo final; PDF (vista para imprimir) y Excel | 86 |
+| 9 | Pago agrupado | `pagos.grupo_id`; el residente reparte una transferencia; la base cuadra los centavos y exige confirmar/anular el grupo entero; conciliación contra la suma | 87 |
+
+### Migraciones nuevas — aplicadas en vecitap-pruebas el 26-oct
+
+En este orden (cada guarda aborta si la anterior no está). Las funciones
+grandes que ya existían (`correo_recibo`, `cerrar_periodo`,
+`simular_cierre`, `despachar_correos`) se aplicaron en pruebas con los mismos
+reemplazos hechos dentro de la base, para no reenviar a mano cuerpos de 300
+líneas; **en los nueve casos el md5(prosrc) que quedó en la base es el del
+archivo** (comprobado). En producción se aplican los archivos tal cual.
+
+| # | Migración | Rollback | md5(prosrc) que deja |
+|---|---|---|---|
+| R7-1 | `20261026120000_datos_pago.sql` | `…_datos_pago_rollback.sql` | `correo_recibo` 83afc196… |
+| R7-2 | `20261026130000_invitacion_en_recibo.sql` | `…_invitacion_en_recibo_rollback.sql` | `correo_recibo` 3ad164ea…, `crear_invitacion` cf461ba9…, `encolar_recibos` cac4ad33… |
+| R7-3 | `20261026140000_cobro_solo_usd.sql` | `…_cobro_solo_usd_rollback.sql` | `correo_recibo` d84d3494… |
+| R7-4 | `20261026150000_cuotas_extraordinarias.sql` | `…_cuotas_extraordinarias_rollback.sql` | `cerrar_periodo` cfb4fbee…, `simular_cierre` 816f061e… |
+| R7-5 | `20261026160000_redondeo_cuotas.sql` | `…_redondeo_cuotas_rollback.sql` | `cerrar_periodo` f66ee0ad…, `simular_cierre` 6f06cc3e… |
+| R7-6 | `20261026170000_mensajes_masivos.sql` | `…_mensajes_masivos_rollback.sql` | `despachar_correos` 734b58aa… |
+| R7-7 | `20261026180000_estado_financiero.sql` | `…_estado_financiero_rollback.sql` | `estado_financiero` c4c4878e… |
+| R7-8 | `20261026190000_pago_agrupado.sql` | `…_pago_agrupado_rollback.sql` | `pagos_posible_duplicado` 13959e3e… |
+
+Dependencias: R7-2 necesita `20261005120000_crear_invitacion_reemplaza_pendiente.sql`
+(su guarda lo exige); R7-5 necesita R7-3 y R7-4. Los cuerpos de los rollbacks
+salen del repo (`esquema_inicial.sql` y migraciones anteriores) y se
+comprobaron por md5 contra la base antes de escribirlos.
+
+`types/supabase.ts`: los tipos nuevos se agregaron a mano, en el formato del
+generador. **Antes del commit conviene regenerarlo** desde vecitap-pruebas con
+la herramienta de Supabase y comparar: no debería cambiar nada más que el orden.
+
+### Producción: lo que falta aplicar antes de la carga de mañana
+
+Comprobado el 26-oct por lectura: producción tiene hasta
+`20260929120000_segunda_ronda_dia_local.sql`. **Faltan 12 de rondas
+anteriores y las 8 de esta**, en este orden, con respaldo antes:
+
+1. `20260930120000_unidades_paga.sql` (correr su paso 0 antes)
+2. `20260930130000_puede_operar_search_path.sql`
+3. `20260930140000_vinculos_org_coherente.sql` (su consulta previa tiene que dar 0)
+4. `20261005120000_crear_invitacion_reemplaza_pendiente.sql`
+5. `20261008120000_reemplazar_inquilino.sql`
+6. `20261008130000_mis_cuotas.sql`
+7. `20261008140000_reemplazar_propietario.sql`
+8. `20261008150000_indices_saldo_unidad.sql`
+9. `20261018120000_periodo_cerrado_exige_tasa.sql`
+10. `20261018130000_unidades_tipo_correo_respaldo.sql` (M2)
+11. `20261018140000_importar_unidades.sql` (M3)
+12. `20261025120000_importar_unidades_plantilla.sql` (M4)
+13. a 20. R7-1 a R7-8, en el orden de la tabla de arriba.
+
+**Sin 10–12, «Cargar datos» no funciona en producción** (la función
+`importar_unidades` no existe ahí). Y el código de `dev` pide las columnas y
+funciones de todas: si se publica en `integration` sin ellas, se caen
+Propietarios, la ficha, Ajustes, Cobros, el portal y los correos.
+
+### Lista de pruebas — ronda 7 (Preview de `dev`, base vecitap-pruebas)
+
+Cuentas: **`+admin`** (propietaria de la cuenta de «Administradora Prueba
+Gustavo»), **`+propietario`** (propietario de 02A, 02B, 02C, 02D y 08D en el
+Edificio Gustavo). Edificios: **Edificio Gustavo** (53 unidades, octubre
+cerrado) y **Edificio Ronda 6** (53 unidades, sin meses). Archivos:
+`C:\Users\Nicolas\Downloads\planillas-ronda5\`.
+
+**Ojo con los correos en pruebas:** el enlace de los correos sale de
+`correo_enlace` de pruebas, que es `https://mi.vecitap.com` (el sitio viejo):
+«Ver mi recibo» y «Crear mi usuario» llevan ahí, no al Preview. El contenido
+del correo se prueba igual; el enlace, no.
+
+| # | Bloque · cuenta y datos | Qué hacer | Qué debe pasar |
+|---|---|---|---|
+| R1 | 1 · `+admin`, Edificio Ronda 6, `piloto-orga-anonimo.csv` | Propietarios → Cargar datos → subir el archivo. Mirar «2. Qué va a pasar» | Una línea: «41 filas bien · 12 con avisos · 1 con errores». En «Avisos», una línea por tipo («10 filas que esperan una respuesta…», «2 filas con un teléfono que no parece de Venezuela», «1 fila no se cargan: no tiene alícuota») |
+| R2 | 1 · ídem | En «2 filas con texto en el teléfono», tocar «ver más» y corregir el teléfono de 10C a 0414-5551234 → «Corregir» | El aviso de 10C desaparece; la línea de arriba pasa a «42 bien · 11 con avisos»; en la tabla, la celda dice «corregido en la previa» |
+| R3 | 1 · ídem | En «Avisos» → «10 filas que esperan una respuesta en «Personas para revisar»» → ver más → fila 15 (03D): cambiar el teléfono, el correo y el correo 2 por otros (uno por uno, «Corregir») | La pregunta de 03D desaparece de «Personas para revisar» sola: quedan 9 de 10 |
+| R4 | 1 · ídem | «Descartar» y volver a subir el archivo | Las correcciones ya no están: nada se guardó |
+| R5 | 1 · ídem | Hacer R1–R2 desde el **teléfono** | Los avisos se leen en una columna; el campo y «Corregir» bajan de línea; nada se sale de la pantalla |
+| R6 | 2 · `+admin`, Edificio Gustavo | Ajustes → «Datos para pagar» → agregar una de condominio (Transferencia, un banco, titular, RIF, cuenta) y una de honorarios (Pago móvil, teléfono) | Quedan las dos tarjetas; se pueden cambiar y quitar |
+| R7 | 2 · `+propietario`, 02A | Entrar al portal | Debajo del saldo, «Datos para pagar» con las dos cuentas y cuánto va a cada una; «Copiar» copia la cuenta |
+| R8 | 2 · `+propietario`, 02A | Reportar un pago | Pregunta «¿A qué cuenta pagó?»; al elegir honorarios, «Pagar deuda total» usa la parte de honorarios |
+| R9 | 2 · `+admin`, Edificio Gustavo | Cortes de cuenta → octubre → imprimir un recibo | Debajo del resumen, «Datos para pagar» con $ y Bs por cuenta |
+| R10 | 2 y 3 · `+admin`, Edificio Gustavo | Cortes → «Enviar una prueba» a su correo | El correo trae el total en $, los Bs con la frase «Calculado a la tasa oficial BCV del dólar del …», y los datos para pagar |
+| R11 | 3 · `+admin`, Edificio Gustavo | En una unidad sin acceso (por ejemplo 03A), poner en la ficha un correo suyo con `+`; Cortes → enviar el mes | El correo de esa persona trae «Todavía no tiene usuario en la app», un código y «Crear mi usuario». En Accesos aparece la invitación |
+| R12 | 3 · ídem | Volver a enviar el mes | No aparece otra invitación en Accesos; el código del correo es el mismo |
+| R13 | 3 · `+propietario` | Mirar el correo del recibo de 02A | No trae código (ya tiene acceso) |
+| R14 | 4 · `+admin` | Ajustes → «Cobrar solo en dólares» → Guardar. Con `+propietario`: Mi recibo, el recibo impreso y Reportar un pago | No hay Bs en ningún lado; Reportar dice «Su administración cobra solo en dólares» y no ofrece moneda |
+| R15 | 4 · `+admin` | Apagar «Cobrar solo en dólares» | Todo vuelve a mostrar Bs |
+| R16 | 5 · `+admin`, Edificio Ronda 6 | Cobros → «Cuotas extraordinarias» → «Ascensor», por alícuota, $ 300, 3 cuotas → Agregar. Abrir y cerrar noviembre | La tarjeta dice «0 de 3 cuotas cobradas» y después «1 de 3». El recibo trae «Ascensor (cuota 1 de 3)» con $ 100 × alícuota |
+| R17 | 5 · ídem | Reabrir noviembre y volver a cerrarlo | Sigue «cuota 1 de 3» |
+| R18 | 5 · ídem | Cerrar diciembre y enero; abrir y cerrar febrero | Diciembre «2 de 3», enero «3 de 3»; febrero ya no la trae; la tarjeta dice «Terminada» |
+| R19 | 6 · `+admin`, Edificio Ronda 6 | Ajustes → Redondeo «A múltiplos de $ 5» → Guardar; abrir el mes siguiente con gastos que no den redondo y cerrarlo | Cada recibo termina en múltiplo de 5 en lo del mes, con la línea «Fondo de reserva por redondeo». Los meses ya cerrados no cambian |
+| R20 | 7 · `+admin`, Edificio Gustavo | Mensajes → «Solo propietarios», asunto y texto | Dice cuántas personas y cuántos correos, y «Sale hoy» (o en cuántos días); abajo, cómo se va a ver |
+| R21 | 7 · ídem | Enviar → confirmar | «Mensaje en camino»; en «Mensajes enviados» aparece con «0 enviados · N esperando», y a los minutos, «N enviados». Tocar dos veces seguidas: «Ese mismo mensaje ya se envió hace un momento» |
+| R22 | 7 · `+propietario` | Mirar el correo | Llega el mensaje (y la copia, si la ficha tiene correo de respaldo) |
+| R23 | 8 · `+admin`, Edificio Gustavo | Estado financiero → octubre a octubre | Saldo inicial, ingresos, egresos, saldo final; la suma cuadra |
+| R24 | 8 · ídem | «Descargar PDF» → «Volver» | Hoja para imprimir; «Volver» regresa al mismo rango |
+| R25 | 8 · ídem | «Descargar Excel» | Un archivo con las hojas Resumen, Ingresos y Egresos |
+| R26 | 9 · `+propietario`, 02A | Reportar un pago → «Esta transferencia paga varias de mis unidades» → marcar 02A, 02B y 02C (proponen su saldo) → «Usar la suma como monto» → referencia, comprobante → Reportar | Mis pagos muestra tres pagos «esperando revisión» |
+| R27 | 9 · `+admin` | Pagos recibidos | Cada uno dice «Agrupado con 02B, 02C · total $ …» y «ver comprobante» abre el mismo |
+| R28 | 9 · ídem | «Conciliar» en uno solo | Se confirman los tres; el aviso dice «la transferencia completa (3 unidades)» |
+| R29 | 9 · `+admin` | Pagos recibidos → registrar → «Una sola transferencia para varias unidades», dos unidades con montos que no suman el total | «Las partes suman … y el total es …: tienen que ser iguales». Con la suma correcta, se registran |
+| R30 | 9 · `+admin` | Conciliar con el banco: un extracto con un movimiento por el total del grupo de R29 | Casa con el grupo y lo concilia entero |
+
+### Validación en el navegador (26-oct, noche)
+
+Contra `next start` (build de producción, puerto 3123), conectado a
+vecitap-pruebas, con Playwright instalado con `--no-save` (`package.json` y
+`package-lock.json` sin cambios: mismo sha256 antes y después). Script:
+`scripts/validacion-ronda7.mjs`; capturas en `scripts/capturas-ronda7/`
+(ignorada por Git). Cuentas `admin.prueba` y `residente.prueba` (clave temporal,
+solo en pruebas, en `.env.local`). Datos propios: organización «ZZZ Validación
+Ronda 7», con «ZZZ Torre Cerrada» (6 unidades, octubre cerrado; el residente es
+propietario de ZA-1, ZA-2 y ZA-3) y «ZZZ Torre Nueva» (sin meses). Ningún dato
+de Gustavo. Correos: 8, todos a @resend.dev (1 prueba, 3 recibos, 4 del
+mensaje).
+
+**Resultado: las 16 pruebas pasan en escritorio.** En tamaño de teléfono
+(390 × 844) pasan la 1, la 2 y la 4, y ninguna pantalla nueva se sale del
+ancho (Ajustes, Cobros, Mensajes, Estado financiero, Pagos recibidos, el portal y
+Reportar un pago con el pago agrupado).
+
+| # | Resultado | Lo que se vio |
+|---|---|---|
+| 1 | OK | «41 filas bien · 12 con avisos · 1 con errores». Avisos: «1 fila no se cargan: no tiene alícuota», «10 filas que esperan una respuesta en «Personas para revisar»», «2 filas con texto en el teléfono», «2 filas con un teléfono que no parece de Venezuela». «ver más» abre y «ver menos» cierra |
+| 2 | OK | 10C (fila 42): «42 filas bien · 11 con avisos · 1 con errores» y «corregido en la previa». 03D: «10 filas que esperan…» → «9 filas que esperan…» |
+| 3 | OK, **después de un arreglo** | Volver a subir el mismo archivo después de «Descartar» no hacía nada. Arreglado. Después: «41 filas bien…» otra vez, 10C en ámbar, 03D pregunta; 0 unidades cargadas |
+| 4 | OK | Igual que 1 y 2, en el teléfono, sin desborde. (Con más personas ya cargadas en la organización los números cambian: ver abajo) |
+| 5 | OK | «Cargar 53 unidades» → «Datos cargados»: «53 unidades nuevas. 29 personas nuevas.». 10C guarda 04245551666 (en la base y en la ficha, pestaña «Datos») |
+| 6 | OK, **con un arreglo** | Las dos cuentas quedaban con el mismo orden (1 y 1). Arreglado (1 y 2). En el portal: «Condominio · $ 120,00», «Honorarios de administración · $ 10,00», 4 botones «Copiar» |
+| 7 | OK | «¿A qué cuenta pagó?»: Condominio / Honorarios de administración; la ayuda dice «Condominio: $ 120,00 · Honorarios: $ 10,00. Si pagó las dos, reporte un pago por cada una.» |
+| 8 | OK | Papel: «Datos para pagar · Condominio: $ 120,00 · Bs 106.347,26 … Honorarios de administración: $ 10,00 · Bs 8.862,28». Correo (ZA-4): «Total a pagar $ 100,00 Bs 88.622,71 Calculado a la tasa oficial BCV del dólar del 23/10/2026. Si paga en bolívares, use la tasa BCV del día en que pague.» y los datos para pagar |
+| 9 | OK | «3 correos encolados · 3 unidades sin correo». ZA-4 trae el código y «Crear mi usuario»; en Accesos → **Invitaciones** aparece. Reenviar: 3 → 3 invitaciones y 3 → 3 correos (no se manda de nuevo). ZA-1 (con acceso): sin código |
+| 10 | OK | Encendido: sin «Bs» en Mi recibo, Reportar ni el papel; Reportar dice «Su administración cobra solo en dólares». Apagado: vuelven |
+| 11 | OK | La app **sí deja abrir y cerrar meses que todavía no llegan**. Noviembre «Ascensor (cuota 1 de 3)»; reabrir y cerrar: sigue «1 de 3»; diciembre «2 de 3», enero «3 de 3», febrero sin Ascensor; la tarjeta: «Terminada» |
+| 12 | OK | Marzo: los 53 recibos en múltiplo de 5, con «Fondo de reserva por redondeo» (01A: cuota 5 = 2,9769 + 2,0231). Febrero, igual que antes. Queda «Sin redondeo» |
+| 13 | OK | «4 personas · 4 correos. Sale hoy. El plan de correo permite 100 por día; hoy quedan 95.» Historial con el mensaje; el segundo envío: «Ese mismo mensaje ya se envió hace un momento.» |
+| 14 | OK | Saldo inicial $ 0,00 + ingresos $ 50,00 − egresos $ 600,00 = $ −550,00; «Aparte, $ 10,00 cobrados para honorarios…». «Volver» del PDF regresa a `desde=2026-10&hasta=2026-10`. Excel: hojas Resumen, Ingresos, Egresos, con los mismos números |
+| 15 | OK | Propone Bs 115.209,53 por unidad (su saldo de $ 130); tres pagos de $ 130,00 con el mismo grupo; la suma cuadra con el total. En Admin: 3 «Agrupado con…» y 3 «ver comprobante». Conciliar uno: «Se confirmó la transferencia completa (3 unidades).» |
+| 16 | OK | 40 + 50: «Las partes suman 90,00 y el total es 100,00: tienen que ser iguales.» 50 + 50: «Transferencia registrada para 2 unidades, como reportada.» El extracto con un movimiento de 100,00: «Conciliar 1 pagos» y los dos quedan conciliados |
+
+**Arreglos hechos durante la validación:**
+1. `CargarDatos.tsx`: después de leer un archivo se vacía el campo, para que
+   volver a elegir el mismo archivo funcione (prueba 3).
+2. `DatosPago.tsx`: el orden de una cuenta nueva sale de la base (prueba 6).
+3. `analisis.ts`: los avisos «el archivo dice X, no se cambia» de una ficha
+   existente se agrupan como «con un dato distinto al de la ficha que ya existe
+   (no se cambia)» (antes el título llevaba el dato de la primera fila).
+
+**Anotado, sin tocar (de rondas anteriores):** «Cargar saldos» y el extracto
+del banco tienen el mismo problema de volver a elegir el mismo archivo. En
+«Gastos del mes», después de cerrar un mes el formulario «Abrir un mes» vuelve a
+proponer el mismo mes (con «Ese mes ya pasó») en vez del siguiente. El botón
+dice «Conciliar 1 pagos» (plural con 1).
+
+**Ajustes al documento para Gustavo:**
+- 1 a 4: **los números no van a ser 41 · 12 · 1**: en su administradora ya están
+  las personas de esa planilla (cargadas en la ronda 5) y el Edificio Ronda 6 ya
+  tiene 53 unidades, así que la previa encuentra fichas y unidades existentes.
+  Lo que se revisa es la forma y que corregir sume una fila «bien» y quite una
+  pregunta. Mejor: hacer 1 a 4 en el edificio nuevo de la prueba 5 (sin
+  unidades), y aun así las personas de la administradora cambian los números.
+- 2: el aviso del teléfono de 10C está en «2 filas con texto en el teléfono»;
+  el de 03D, en «… filas que esperan una respuesta en «Personas para revisar»».
+- 5: la ficha abre en «Estado de cuenta»: el teléfono está en la pestaña
+  **«Datos»**. Y las respuestas: en 05C y 05D el botón es «No» (o «No, ninguna:
+  es otra persona» si hay varias candidatas).
+- 6: los montos en el portal dicen «Condominio · $ …» y «Honorarios de
+  administración · $ …».
+- 9: la invitación está en Accesos → pestaña **«Invitaciones»**. Al reenviar
+  **no sale un correo nuevo** (cada persona recibe el recibo una sola vez): lo
+  que se comprueba es que no aparece otra invitación.
+- 11: sí deja cerrar meses futuros; quitar la nota «si la app no deja…».
+- 13: después del primer envío el formulario se vacía; para el segundo, escribir
+  el mismo asunto y texto y enviar: sale «Ese mismo mensaje ya se envió hace un
+  momento.»
+- 16: el extracto tiene que traer una **referencia de 6 dígitos o más** (como un
+  banco de verdad) y la misma en el pago; con letras («ZZZ16») no casa.
+- 8, 9 y 13 en pruebas: el cupo lo comparten las dos bases (ver «Resend»,
+  abajo).
+
+### Resend: pruebas y producción
+
+Las dos bases tienen **claves distintas** (otro hash), pero el **mismo
+remitente** (`envios.vecitap.com`, mismo hash). Un dominio se verifica en una
+sola cuenta de Resend, así que con mucha probabilidad son **dos claves de la
+misma cuenta**, y comparten el cupo de 100 por día. Desde acá no se puede
+confirmar sin llamar a Resend con las claves. En pruebas salieron 9 correos en
+las últimas 24 horas (8 de esta validación).
+
+**Propuesta (sin aplicar):** mañana, durante el piloto,
+1. en vecitap-pruebas, apagar el despachador: `select cron.alter_job((select
+   jobid from cron.job where jobname = 'vecitap_correos'), active := false);`
+   (se vuelve a prender con `active := true`); o, si Gustavo sigue probando,
+   ponerle tope: `select guardar_secreto('correo_tope_diario', '10');`
+2. en producción, el tope en 90 para dejar margen:
+   `select guardar_secreto('correo_tope_diario', '90');` (lo corre el operador
+   o Nicolás; es un dato, no una migración).
+
+`correo_enlace` en producción: **`https://vecitap.com/mi`** (correcto).
+
+### Paso 8: las 20 migraciones en producción, en orden
+
+Respaldo antes (docs/respaldo.md). Cada una, el archivo tal cual; después, su
+consulta. Las md5 son las de vecitap-pruebas.
+
+| # | Migración | Verificación (resultado esperado) |
+|---|---|---|
+| 1 | `20260930120000_unidades_paga.sql` (paso 0 antes) | `select count(*) from information_schema.columns where table_name='unidades' and column_name='paga';` → 1 |
+| 2 | `20260930130000_puede_operar_search_path.sql` | `select proconfig from pg_proc where proname='puede_operar';` → `{search_path=public}` |
+| 3 | `20260930140000_vinculos_org_coherente.sql` (consulta previa = 0) | `select count(*) from pg_trigger where tgname in ('vinculos_unidad_misma_org','unidades_org_con_vinculos');` → 2 |
+| 4 | `20261005120000_crear_invitacion_reemplaza_pendiente.sql` | `select md5(prosrc) from pg_proc where proname='crear_invitacion';` → d5807ae08c2fb3415f04056493b5e5a7 |
+| 5 | `20261008120000_reemplazar_inquilino.sql` | `select count(*) from pg_proc where proname='reemplazar_inquilino';` → 1 |
+| 6 | `20261008130000_mis_cuotas.sql` | `select md5(prosrc) from pg_proc where proname='mis_cuotas';` → 7cf5f15d328f76cc2ee23b9e2f4dcb0d |
+| 7 | `20261008140000_reemplazar_propietario.sql` | `select count(*) from pg_proc where proname in ('reemplazar_propietario','vinculos_propietario_sale_accesos');` → 2 |
+| 8 | `20261008150000_indices_saldo_unidad.sql` | `select count(*) from pg_indexes where indexname in ('ajustes_sin_cerrar_por_unidad','pagos_conciliados_sin_cerrar_por_unidad','recibos_por_unidad');` → 3 |
+| 9 | `20261018120000_periodo_cerrado_exige_tasa.sql` | `select count(*) from pg_constraint where conname='periodos_cerrado_con_tasa';` → 1 |
+| 10 | `20261018130000_unidades_tipo_correo_respaldo.sql` (M2) | `select count(*) from information_schema.columns where (table_name,column_name) in (('unidades','tipo'),('personas','correo_respaldo'));` → 2 |
+| 11 | `20261018140000_importar_unidades.sql` (M3) | `select count(*) from pg_proc where proname='importar_unidades';` → 1 |
+| 12 | `20261025120000_importar_unidades_plantilla.sql` (M4) | `select md5(prosrc) from pg_proc where proname='importar_unidades';` → 467fadf95398b1ce1e99ed8bb6b85655, y `select to_regclass('public.notas_unidad');` → notas_unidad |
+| 13 | `20261026120000_datos_pago.sql` | `select md5(prosrc) from pg_proc where proname='correo_recibo';` → 83afc196154108cf42d6fa594f36becd |
+| 14 | `20261026130000_invitacion_en_recibo.sql` | `select proname, md5(prosrc) from pg_proc where proname in ('correo_recibo','crear_invitacion','encolar_recibos');` → 3ad164ea…, cf461ba9…, cac4ad33… |
+| 15 | `20261026140000_cobro_solo_usd.sql` | `select md5(prosrc) from pg_proc where proname='correo_recibo';` → d84d3494c388f5fa1edb9e4195d1f4ad |
+| 16 | `20261026150000_cuotas_extraordinarias.sql` | `select proname, md5(prosrc) from pg_proc where proname in ('cerrar_periodo','simular_cierre');` → cfb4fbee…, 816f061e… |
+| 17 | `20261026160000_redondeo_cuotas.sql` | ídem → f66ee0ad4fe97ac0be046bf13ab4751e, 6f06cc3e42184a36ff82ace505e59dc8 |
+| 18 | `20261026170000_mensajes_masivos.sql` | `select md5(prosrc) from pg_proc where proname='despachar_correos';` → 734b58aa8b3e953b70774e054a62ec22 |
+| 19 | `20261026180000_estado_financiero.sql` | `select md5(prosrc) from pg_proc where proname='estado_financiero';` → c4c4878ecf9f8a9eb6fad425323df9e5 |
+| 20 | `20261026190000_pago_agrupado.sql` | `select count(*) from pg_trigger where tgname in ('pagos_grupo_al_insertar','pagos_grupo_mismo_estado');` → 2, y `md5(prosrc)` de `pagos_posible_duplicado` → 13959e3ec8eaf321a99d5b32aa063b07 |
+
+Al final, la comparación de conjunto: la consulta de md5 de todas las funciones
+de `public` en las dos bases tiene que dar lo mismo (salvo `mis_unidades` y lo
+que se haya cambiado a propósito).
+
+### Riesgos para la carga y el piloto de mañana
+
+1. **Producción no tiene 20 migraciones** (12 de rondas anteriores + 8 de esta):
+   sin aplicarlas, «Cargar datos» no existe y el código de `dev` no funciona
+   ahí. Son muchas para una noche: respaldo antes, en el orden de arriba, y
+   leer la verificación de cada una. Lo mínimo para cargar datos: 1–12.
+2. **Nada de esta ronda se probó en el navegador** desde acá (no hay claves
+   de las cuentas de prueba en la máquina): la base sí, la pantalla no. La
+   lista de arriba es la que lo cubre; R1–R5 son las de mañana.
+3. **El cupo de Resend:** 100 correos por día en el plan gratuito, para toda
+   la cuenta. GRUPO ING3 tiene 53 unidades: con propietario e inquilino con
+   correo, los recibos de un mes ya son ~100. Un mensaje masivo el mismo día
+   se va al día siguiente (el despachador ahora lo reparte en vez de fallar).
+4. **GRUPO ING3 ya tiene 53 unidades en producción** (cargadas antes): la carga
+   de mañana las encuentra como «ya existen» y por omisión las omite. Para
+   cargar sus personas hay que marcar «Actualizar todas».
+5. **Invitaciones automáticas:** el primer envío de recibos crea una
+   invitación por cada propietario sin cuenta (hasta ~53 de una vez), y salen
+   en Accesos. Es lo pedido, pero conviene avisarle a la administradora.
+6. **`types/supabase.ts` a mano:** compila, pero regenerarlo antes del commit.
+7. **El correo de los recibos en pruebas** lleva a `mi.vecitap.com` (el
+   secreto `correo_enlace` de pruebas): en producción es
+   `https://vecitap.com/mi`, el correcto.
+8. Plan Free de Supabase y de Vercel: decisión de Nicolás para el piloto, sin
+   cambios.
+
+### Título del commit
+
+`Ronda 7 del tramo 2: lo que necesita el piloto de GRUPO ING3`
+
+Previa de carga corregible, datos para pagar, código de invitación en el
+recibo, cobro solo en dólares, cuotas extraordinarias, redondeo, mensajes
+masivos, estado financiero y pago agrupado, con 8 migraciones probadas en
+vecitap-pruebas.
+
+---
+
 ## Ronda 5 del tramo 2 (18-oct; M3 revisada el 24-oct) — importador «Cargar datos»; M3 aprobada
 
 Todo en `dev`, **sin commit** (Gustavo está probando la ronda 4 en el Preview

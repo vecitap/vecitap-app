@@ -31,7 +31,20 @@ import { CAMPOS, correosDe, type Campo } from "./columnas";
 
 export type Nivel = "rojo" | "ambar" | "info";
 /** `queda`: lo que se queda cuando algo del archivo no se aplica («Se queda: Sr. Mefaz…»). */
-export type Nota = { nivel: Nivel; texto: string; queda?: string };
+export type Nota = {
+  nivel: Nivel;
+  texto: string;
+  queda?: string;
+  /**
+   * Cómo se agrupa en la lista de avisos (ronda 7): «12 filas sin correo del
+   * propietario». Sin él, se agrupa por el texto sin lo que va entre «».
+   */
+  grupo?: string;
+  /** El campo que se corrige en la previa para resolver el aviso (ronda 7). */
+  campo?: Campo;
+  /** La fila espera «¿es la misma persona?»: se ofrecen sus datos de contacto para corregir (ronda 7). */
+  persona?: true;
+};
 
 /** Una persona que ya existe en la administradora. */
 export type PersonaOrg = {
@@ -80,6 +93,8 @@ export type FilaPrevia = {
   motivo?: string;
   sinAlicuota?: boolean;
   existente?: { cambios: string[] };
+  /** El campo que causa que la fila no se cargue, si se puede corregir en la previa (ronda 7). */
+  motivoCampo?: Campo;
   tipo: TipoUnidad;
   campos: Partial<Record<Exclude<Campo, "ignorar" | "codigo">, ValorCampo>>;
   notas: Nota[];
@@ -367,6 +382,7 @@ export function analizar(
     if (!clave) {
       base.estado = "no";
       base.motivo = "no tiene código de unidad";
+      base.motivoCampo = "codigo";
       return;
     }
     const repetidas = filasDeCodigo.get(clave)!;
@@ -382,9 +398,11 @@ export function analizar(
     if (aCelda && alicuota === null) {
       base.estado = "no";
       base.motivo = `la alícuota «${aCelda}» no se entiende`;
+      base.motivoCampo = "alicuota";
     } else if (alicuota !== null && (alicuota < 0 || alicuota > 100)) {
       base.estado = "no";
       base.motivo = `la alícuota ${aCelda} no puede ser negativa ni mayor que 100`;
+      base.motivoCampo = "alicuota";
     }
     campos.alicuota = { valor: alicuota === null ? "" : nf(5).format(alicuota) };
 
@@ -411,6 +429,7 @@ export function analizar(
         base.estado = "no";
         base.sinAlicuota = true;
         base.motivo = "no tiene alícuota";
+        base.motivoCampo = "alicuota";
       }
     }
 
@@ -420,6 +439,7 @@ export function analizar(
     if (saldo.malo && base.estado !== "no") {
       base.estado = "no";
       base.motivo = `el saldo «${sCelda}» no se entiende`;
+      base.motivoCampo = "saldo";
     }
     campos.saldo = {
       valor: saldo.valor === null ? "" : usd(saldo.valor),
@@ -435,6 +455,7 @@ export function analizar(
     if (saldoHon.malo && base.estado !== "no") {
       base.estado = "no";
       base.motivo = `el saldo de administración «${hCelda}» no se entiende`;
+      base.motivoCampo = "saldo_hon";
     }
     if (col("saldo_hon") >= 0) {
       campos.saldo_hon = {
@@ -464,6 +485,7 @@ export function analizar(
     if (col("paga") >= 0 && paga === null && base.estado !== "no") {
       base.estado = "no";
       base.motivo = `«${pCelda}» en quién paga: tiene que decir propietario o inquilino`;
+      base.motivoCampo = "paga";
     }
     if (col("paga") >= 0) campos.paga = { valor: paga === "inquilino" ? "Inquilino" : "Propietario" };
 
@@ -500,20 +522,20 @@ export function analizar(
         campos[kTel] = {
           valor: telCrudo,
           nota: /[a-zñ]/i.test(telCrudo)
-            ? { nivel: "ambar", texto: "trae texto además del número: se guarda tal cual, revíselo" }
+            ? { nivel: "ambar", texto: "trae texto además del número: se guarda tal cual, revíselo", grupo: "con texto en el teléfono" }
             : !telNorm
-              ? { nivel: "ambar", texto: "no parece un teléfono de Venezuela: se guarda tal cual" }
+              ? { nivel: "ambar", texto: "no parece un teléfono de Venezuela: se guarda tal cual", grupo: "con un teléfono que no parece de Venezuela" }
               : undefined,
         };
       }
       campos[kCor] = {
         valor: correo,
-        nota: malos.length ? { nivel: "ambar", texto: `«${malos.join(" ")}» no es un correo válido: no se guarda` } : undefined,
+        nota: malos.length ? { nivel: "ambar", texto: `«${malos.join(" ")}» no es un correo válido: no se guarda`, grupo: "con un correo que no es válido" } : undefined,
       };
       if (col(kResp) >= 0 || col(kCor) >= 0) {
         campos[kResp] = {
           valor: respaldo,
-          nota: todos.length > 2 ? { nivel: "ambar", texto: `hay más de dos correos: «${todos.slice(2).join(" ")}» no se guarda` } : undefined,
+          nota: todos.length > 2 ? { nivel: "ambar", texto: `hay más de dos correos: «${todos.slice(2).join(" ")}» no se guarda`, grupo: "con más de dos correos" } : undefined,
         };
       }
 
@@ -528,7 +550,7 @@ export function analizar(
       if (deColumna === "malo") {
         // Decisión de Nicolás del 25-oct: nunca «Sr.» por omisión en este caso.
         prefijo = null;
-        campos[kTrat] = { valor: tratCrudo, nota: { nivel: "ambar", texto: "no está en la lista: se carga sin tratamiento" } };
+        campos[kTrat] = { valor: tratCrudo, nota: { nivel: "ambar", texto: "no está en la lista: se carga sin tratamiento", grupo: "con un tratamiento que no está en la lista" } };
       } else if (deColumna !== undefined) {
         prefijo = deColumna;
         campos[kTrat] = { valor: deColumna ?? "Sin tratamiento" };
@@ -540,7 +562,7 @@ export function analizar(
 
       const corte = leerSiNo(corteCrudo);
       if (corte === "malo") {
-        campos[kCorte] = { valor: corteCrudo, nota: { nivel: "ambar", texto: "tiene que decir Sí o No: no se usa" } };
+        campos[kCorte] = { valor: corteCrudo, nota: { nivel: "ambar", texto: "tiene que decir Sí o No: no se usa", grupo: "con «recibe corte» que no dice Sí ni No" } };
       } else if (col(kCorte) >= 0) {
         campos[kCorte] = { valor: corte === null ? "" : corte ? "Sí" : "No" };
       }
@@ -548,7 +570,7 @@ export function analizar(
       campos[rol] = { valor: nombreCrudo };
       if (!nombre) {
         if (telCrudo || correo || docCrudo) {
-          notas.push({ nivel: "ambar", texto: `hay teléfono, correo o cédula ${etiqueta} pero no su nombre: no se guarda` });
+          notas.push({ nivel: "ambar", texto: `hay teléfono, correo o cédula ${etiqueta} pero no su nombre: no se guarda`, grupo: `con datos ${etiqueta} pero sin su nombre`, campo: rol });
           if (campos[kTel]) campos[kTel]!.nota = { nivel: "ambar", texto: "sin nombre: no se guarda" };
           if (docCrudo) campos[kDoc] = { valor: docCrudo, nota: { nivel: "ambar", texto: "sin nombre: no se guarda" } };
           campos[kCor] = { valor: correo, nota: correo ? { nivel: "ambar", texto: "sin nombre: no se guarda" } : campos[kCor]!.nota };
@@ -949,6 +971,7 @@ export function analizar(
     if (d.paga === "inquilino" && !gInq && !(existente && vigente(existente.vinculos, "inquilino"))) {
       f.estado = "no";
       f.motivo = "paga el inquilino, pero la fila no trae su nombre";
+      f.motivoCampo = "inquilino";
       continue;
     }
 
@@ -965,7 +988,15 @@ export function analizar(
         } else {
           f.notas.push({ nivel: "info", texto: `${rol === "propietario" ? "el propietario" : "el inquilino"} ya está en la administradora: se usa la ficha de ${describir(quien)}` });
         }
-        g.completa.forEach((t) => f.notas.push({ nivel: t.queda ? "ambar" : "info", texto: t.texto, queda: t.queda }));
+        g.completa.forEach((t) =>
+          f.notas.push({
+            nivel: t.queda ? "ambar" : "info",
+            texto: t.texto,
+            queda: t.queda,
+            // Validación de la ronda 7: sin esto, el título del grupo llevaba el dato de la primera fila.
+            grupo: t.queda ? "con un dato distinto al de la ficha que ya existe (no se cambia)" : undefined,
+          })
+        );
       } else if (g.candidatos.length > 1 && g.candidatos[0].fila === f.fila) {
         f.notas.push({
           nivel: "info",
@@ -998,10 +1029,10 @@ export function analizar(
         return ficha?.correo || g.correo;
       };
       if (col("saldo") >= 0 && d.saldo === null && !ctx.hayCierres && carga.accion === "crear")
-        f.notas.push({ nivel: "ambar", texto: "no trae saldo de condominio: se carga en 0" });
-      if (col("propietario") >= 0 && !gProp && !vProp) f.notas.push({ nivel: "ambar", texto: "falta el nombre del propietario" });
+        f.notas.push({ nivel: "ambar", texto: "no trae saldo de condominio: se carga en 0", grupo: "sin saldo de condominio (se cargan en 0)", campo: "saldo" });
+      if (col("propietario") >= 0 && !gProp && !vProp) f.notas.push({ nivel: "ambar", texto: "falta el nombre del propietario", grupo: "sin nombre del propietario", campo: "propietario" });
       else if (col("correo") >= 0 && (gProp || vProp) && !correoDe(gProp, vProp))
-        f.notas.push({ nivel: "ambar", texto: "falta el correo del propietario: no le va a llegar el recibo por correo" });
+        f.notas.push({ nivel: "ambar", texto: "falta el correo del propietario: no le va a llegar el recibo por correo", grupo: "sin correo del propietario: no les llega el recibo por correo", campo: "correo" });
 
       // Quién recibe el corte, como queda la unidad después de la carga.
       // null = la unidad no tiene a nadie en ese rol.
@@ -1012,11 +1043,11 @@ export function analizar(
       };
       const r = [recibe("propietario", vProp), recibe("inquilino", vInq)].filter((x) => x !== null);
       if (r.length && r.every((x) => x === false))
-        f.notas.push({ nivel: "ambar", texto: "nadie de esta unidad recibe el corte: el recibo no le va a llegar a nadie por correo" });
+        f.notas.push({ nivel: "ambar", texto: "nadie de esta unidad recibe el corte: el recibo no le va a llegar a nadie por correo", grupo: "donde nadie recibe el corte" });
 
       const pagaFinal = carga.paga ?? (existente?.paga as Paga | undefined) ?? "propietario";
       if (pagaFinal === "inquilino" && (gInq || vInq) && !correoDe(gInq, vInq))
-        f.notas.push({ nivel: "ambar", texto: "paga el inquilino, pero no hay correo del inquilino: no le va a llegar el recibo por correo" });
+        f.notas.push({ nivel: "ambar", texto: "paga el inquilino, pero no hay correo del inquilino: no le va a llegar el recibo por correo", grupo: "donde paga el inquilino y no hay su correo", campo: "inq_correo" });
     };
 
     if (!existente) {
@@ -1157,7 +1188,7 @@ export function analizar(
   for (const d of sinElegir) d.pendiente = true;
   for (const d of sinElegir)
     for (const n of d.filas ?? [])
-      filaDe(n)?.notas.push({ nivel: "ambar", texto: "falta elegir en «Personas para revisar» si es la misma persona. La carga espera esa respuesta" });
+      filaDe(n)?.notas.push({ nivel: "ambar", texto: "falta elegir en «Personas para revisar» si es la misma persona. La carga espera esa respuesta", grupo: "que esperan una respuesta en «Personas para revisar»", persona: true });
 
   // Personas a mandar: las de las filas que se cargan.
   const usadasFinal = new Set<string>();

@@ -15,10 +15,13 @@ export function Recibo({
   unidad,
   recibo,
   falla,
+  soloUsd = false,
 }: {
   unidad: Unidad;
   recibo: RegistroRecibo | null;
   falla: string | null;
+  /** La organización cobra solo en dólares (ronda 7, bloque 4): sin bolívares. */
+  soloUsd?: boolean;
 }) {
   // Este estado va arriba de todo: un hook detrás de un return solo se
   // ejecuta a veces, y React tumba la pantalla entera cuando la cuenta le
@@ -98,7 +101,7 @@ export function Recibo({
         </div>
         {/* Se usa la tasa viva. Solo si la base no la dio se cae a la del
             recibo, y entonces se dice de cuándo es (index.html:1368-1384). */}
-        {tasaMostrada !== null && favor === 0 && (
+        {tasaMostrada !== null && favor === 0 && !soloUsd && (
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 12, color: "var(--tenue)" }}>Si paga hoy</div>
             <div className="mono" style={{ fontSize: 15, fontWeight: 600 }}>
@@ -201,11 +204,13 @@ export function Recibo({
         </div>
       </div>
 
+      {!soloUsd && (
       <p style={{ fontSize: 12.5, color: "var(--tenue)", lineHeight: 1.6, marginBottom: 0, marginTop: 14 }}>
         El monto en bolívares es referencial y cambia todos los días: su cuota está en dólares y se
         convierte con la tasa del Banco Central del día en que usted pague. Si paga mañana, el monto
         en bolívares será otro.
       </p>
+      )}
     </Card>
   );
 }

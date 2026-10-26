@@ -12,6 +12,7 @@ import { nombreDe, normalizarTel, vigente } from "@/lib/admin/personas";
 import { csvDeCortes, descargarCSV, listadoDeCortesEnPapel } from "@/lib/admin/papel-cortes";
 import { imprimirDocumento } from "@/lib/recibo-papel";
 import { reciboAdminEnPapel } from "@/lib/admin/papel-recibos";
+import type { CuentaPago } from "@/lib/datos-pago";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { PeriodoAdmin, ReciboAdmin, TasaViva, Unidad, Vinculo } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
@@ -50,6 +51,8 @@ export function Cortes({
   unidades,
   periodos,
   tasa,
+  cuentas,
+  soloUsd,
   periodoInicial,
 }: {
   orgId: string;
@@ -59,6 +62,10 @@ export function Cortes({
   unidades: Unidad[];
   periodos: PeriodoAdmin[];
   tasa: TasaViva | null;
+  /** Los datos para pagar del edificio (ronda 7). */
+  cuentas: CuentaPago[];
+  /** La organización cobra solo en dólares (ronda 7, bloque 4). */
+  soloUsd: boolean;
   /** `?periodo=` de la dirección: el mes que estaba elegido antes de imprimir. */
   periodoInicial?: string;
 }) {
@@ -270,7 +277,7 @@ export function Cortes({
       .replace(/{tasa}/g, periodo?.tasa_bcv ? nf(2).format(periodo.tasa_bcv) : "—");
   }
 
-  const datosPapel = { edificio, organizacion, unidades, etiqueta: periodo?.etiqueta, tasa };
+  const datosPapel = { edificio, organizacion, unidades, etiqueta: periodo?.etiqueta, tasa, cuentas, soloUsd };
   const armar = (r: ReciboAdmin) => reciboAdminEnPapel(r, datosPapel);
   /* Imprimir va por una dirección propia bajo /admin, en la misma pestaña y
      con «Volver» (ronda 4, caso 53). Antes, una ventana en blanco. La ruta

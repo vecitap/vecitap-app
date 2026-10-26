@@ -82,6 +82,38 @@ export type Database = {
           },
         ]
       }
+      ajustes_cobro: {
+        Row: {
+          actualizado_en: string
+          actualizado_por: string | null
+          org_id: string
+          redondeo: string
+          solo_usd: boolean
+        }
+        Insert: {
+          actualizado_en?: string
+          actualizado_por?: string | null
+          org_id: string
+          redondeo?: string
+          solo_usd?: boolean
+        }
+        Update: {
+          actualizado_en?: string
+          actualizado_por?: string | null
+          org_id?: string
+          redondeo?: string
+          solo_usd?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ajustes_cobro_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ajustes_correo: {
         Row: {
           activo: boolean
@@ -333,6 +365,7 @@ export type Database = {
       cola_correo: {
         Row: {
           asunto: string
+          copia: string | null
           destino: string
           encolado_en: string
           enviado_en: string | null
@@ -340,6 +373,8 @@ export type Database = {
           html: string
           id: string
           intentos: number
+          mandado_en: string | null
+          mensaje_id: string | null
           org_id: string
           proveedor_id: string | null
           recibo_id: string | null
@@ -352,6 +387,7 @@ export type Database = {
         }
         Insert: {
           asunto: string
+          copia?: string | null
           destino: string
           encolado_en?: string
           enviado_en?: string | null
@@ -359,6 +395,8 @@ export type Database = {
           html: string
           id?: string
           intentos?: number
+          mandado_en?: string | null
+          mensaje_id?: string | null
           org_id: string
           proveedor_id?: string | null
           recibo_id?: string | null
@@ -371,6 +409,7 @@ export type Database = {
         }
         Update: {
           asunto?: string
+          copia?: string | null
           destino?: string
           encolado_en?: string
           enviado_en?: string | null
@@ -378,6 +417,8 @@ export type Database = {
           html?: string
           id?: string
           intentos?: number
+          mandado_en?: string | null
+          mensaje_id?: string | null
           org_id?: string
           proveedor_id?: string | null
           recibo_id?: string | null
@@ -389,6 +430,13 @@ export type Database = {
           unidad_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cola_correo_mensaje_id_fkey"
+            columns: ["mensaje_id"]
+            isOneToOne: false
+            referencedRelation: "mensajes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cola_correo_org_id_fkey"
             columns: ["org_id"]
@@ -495,6 +543,7 @@ export type Database = {
           activo: boolean
           bolsillo: string
           creado_en: string
+          cuotas: number | null
           edificio_id: string | null
           id: string
           iva: number
@@ -508,6 +557,7 @@ export type Database = {
           activo?: boolean
           bolsillo: string
           creado_en?: string
+          cuotas?: number | null
           edificio_id?: string | null
           id?: string
           iva?: number
@@ -521,6 +571,7 @@ export type Database = {
           activo?: boolean
           bolsillo?: string
           creado_en?: string
+          cuotas?: number | null
           edificio_id?: string | null
           id?: string
           iva?: number
@@ -648,6 +699,66 @@ export type Database = {
             columns: ["unidad_id"]
             isOneToOne: false
             referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      datos_pago: {
+        Row: {
+          banco: string | null
+          creado_en: string
+          cuenta: string | null
+          destino: string
+          documento: string | null
+          edificio_id: string
+          id: string
+          nota: string | null
+          orden: number
+          org_id: string
+          tipo: string
+          titular: string | null
+        }
+        Insert: {
+          banco?: string | null
+          creado_en?: string
+          cuenta?: string | null
+          destino?: string
+          documento?: string | null
+          edificio_id: string
+          id?: string
+          nota?: string | null
+          orden?: number
+          org_id: string
+          tipo?: string
+          titular?: string | null
+        }
+        Update: {
+          banco?: string | null
+          creado_en?: string
+          cuenta?: string | null
+          destino?: string
+          documento?: string | null
+          edificio_id?: string
+          id?: string
+          nota?: string | null
+          orden?: number
+          org_id?: string
+          tipo?: string
+          titular?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "datos_pago_edificio_id_fkey"
+            columns: ["edificio_id"]
+            isOneToOne: false
+            referencedRelation: "edificios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "datos_pago_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
             referencedColumns: ["id"]
           },
         ]
@@ -878,6 +989,29 @@ export type Database = {
           },
         ]
       }
+      invitaciones_codigo: {
+        Row: {
+          codigo: string
+          invitacion_id: string
+        }
+        Insert: {
+          codigo: string
+          invitacion_id: string
+        }
+        Update: {
+          codigo?: string
+          invitacion_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitaciones_codigo_invitacion_id_fkey"
+            columns: ["invitacion_id"]
+            isOneToOne: true
+            referencedRelation: "invitaciones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitaciones_visita: {
         Row: {
           codigo: string
@@ -1025,6 +1159,57 @@ export type Database = {
             columns: ["unidad_id"]
             isOneToOne: false
             referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mensajes: {
+        Row: {
+          asunto: string
+          cantidad: number
+          creado_en: string
+          creado_por: string | null
+          destinatarios: string
+          edificio_id: string
+          id: string
+          org_id: string
+          texto: string
+        }
+        Insert: {
+          asunto: string
+          cantidad?: number
+          creado_en?: string
+          creado_por?: string | null
+          destinatarios: string
+          edificio_id: string
+          id?: string
+          org_id: string
+          texto: string
+        }
+        Update: {
+          asunto?: string
+          cantidad?: number
+          creado_en?: string
+          creado_por?: string | null
+          destinatarios?: string
+          edificio_id?: string
+          id?: string
+          org_id?: string
+          texto?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mensajes_edificio_id_fkey"
+            columns: ["edificio_id"]
+            isOneToOne: false
+            referencedRelation: "edificios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mensajes_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
             referencedColumns: ["id"]
           },
         ]
@@ -1296,6 +1481,7 @@ export type Database = {
           documento_origen: string | null
           estado: string
           fecha: string
+          grupo_id: string | null
           id: string
           metodo: string | null
           moneda: string
@@ -1321,6 +1507,7 @@ export type Database = {
           documento_origen?: string | null
           estado?: string
           fecha?: string
+          grupo_id?: string | null
           id?: string
           metodo?: string | null
           moneda?: string
@@ -1346,6 +1533,7 @@ export type Database = {
           documento_origen?: string | null
           estado?: string
           fecha?: string
+          grupo_id?: string | null
           id?: string
           metodo?: string | null
           moneda?: string
@@ -2173,11 +2361,26 @@ export type Database = {
         }
         Returns: string
       }
+      acceso_a_unidad: {
+        Args: { p_correo: string; p_unidad: string }
+        Returns: boolean
+      }
       aceptar_invitacion: { Args: { p_token: string }; Returns: string }
       administra_algo: { Args: never; Returns: boolean }
       anular_invitacion_visita: {
         Args: { p_invitacion: string }
         Returns: undefined
+      }
+      asegurar_invitaciones_recibo: {
+        Args: { p_recibo: string }
+        Returns: number
+      }
+      avance_extraordinarias: {
+        Args: { p_edificio: string }
+        Returns: {
+          concepto_id: string
+          emitidas: number
+        }[]
       }
       cargar_tasa: {
         Args: { p_fecha: string; p_tasa: number }
@@ -2220,6 +2423,10 @@ export type Database = {
           recibos_emitidos: number
           total_facturado: number
         }[]
+      }
+      codigo_invitacion_vigente: {
+        Args: { p_correo: string; p_unidad: string }
+        Returns: string
       }
       completar_tasa: {
         Args: { p_fecha: string; p_tasa: number }
@@ -2296,6 +2503,34 @@ export type Database = {
         Returns: string
       }
       cuota_mensual: { Args: { p_org: string }; Returns: number }
+      datos_pago_de: {
+        Args: { p_unidad: string }
+        Returns: {
+          banco: string
+          cuenta: string
+          destino: string
+          documento: string
+          monto: number
+          nota: string
+          orden: number
+          tipo: string
+          titular: string
+        }[]
+      }
+      datos_pago_html: {
+        Args: {
+          p_con_bs: boolean
+          p_cond: number
+          p_edificio: string
+          p_hon: number
+          p_tasa: number
+        }
+        Returns: string
+      }
+      datos_pago_texto: {
+        Args: { p_cond: number; p_edificio: string; p_hon: number }
+        Returns: string
+      }
       descartar_periodo: { Args: { p_periodo: string }; Returns: undefined }
       despachar_ahora: { Args: never; Returns: Json }
       despachar_correos: { Args: { p_tanda?: number }; Returns: Json }
@@ -2307,6 +2542,14 @@ export type Database = {
           nombre: string
           rol: string
           telefono: string
+        }[]
+      }
+      destinatarios_mensaje: {
+        Args: { p_edificio: string; p_filtro: string }
+        Returns: {
+          copia: string
+          correo: string
+          nombre: string
         }[]
       }
       dia_local: { Args: { p_instante: string }; Returns: string }
@@ -2350,6 +2593,15 @@ export type Database = {
           ya_estaban: number
         }[]
       }
+      enviar_mensaje: {
+        Args: {
+          p_asunto: string
+          p_edificio: string
+          p_filtro: string
+          p_texto: string
+        }
+        Returns: Json
+      }
       es_operador: { Args: never; Returns: boolean }
       esc_html: { Args: { t: string }; Returns: string }
       estadisticas_periodo: {
@@ -2377,6 +2629,10 @@ export type Database = {
           unidades: number
           unidades_con_deuda: number
         }[]
+      }
+      estado_financiero: {
+        Args: { p_desde: string; p_edificio: string; p_hasta: string }
+        Returns: Json
       }
       exigir_modulo: {
         Args: { p_clave: string; p_edificio?: string; p_org: string }
@@ -2543,6 +2799,20 @@ export type Database = {
           largo: number
         }[]
       }
+      historial_mensajes: {
+        Args: { p_edificio: string }
+        Returns: {
+          asunto: string
+          cantidad: number
+          creado_en: string
+          destinatarios: string
+          enviados: number
+          fallidos: number
+          id: string
+          pendientes: number
+          texto: string
+        }[]
+      }
       historial_unidad: {
         Args: { p_unidad: string }
         Returns: {
@@ -2561,6 +2831,15 @@ export type Database = {
         Returns: Json
       }
       inicio_dia_local: { Args: { p_dia: string }; Returns: string }
+      invitacion_para_recibo: {
+        Args: {
+          p_correo: string
+          p_org: string
+          p_rol: string
+          p_unidad: string
+        }
+        Returns: boolean
+      }
       invitaciones_de: {
         Args: { p_org: string }
         Returns: {
@@ -2744,10 +3023,11 @@ export type Database = {
         }[]
       }
       pagos_posible_duplicado: {
-        Args: { p_org: string; p_referencia: string }
+        Args: { p_grupo?: string; p_org: string; p_referencia: string }
         Returns: {
           banco: string
           fecha: string
+          grupo_id: string
           id: string
           monto_usd: number
           unidad_id: string
@@ -2919,6 +3199,10 @@ export type Database = {
           membresia_id: string
           ultima_anotacion: string
         }[]
+      }
+      vista_previa_mensaje: {
+        Args: { p_edificio: string; p_filtro: string }
+        Returns: Json
       }
     }
     Enums: {

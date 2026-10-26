@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Cortes } from "@/components/admin/Cortes";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { tasaDelDia } from "@/lib/tasa";
+import { ajustesCobroDe } from "@/lib/cobro";
 import type { PeriodoAdmin, Unidad } from "@/lib/admin/tipos";
 
 /**
@@ -22,7 +23,7 @@ export default async function PaginaCortes({
   const { periodo: periodoInicial } = await searchParams;
   const supabase = await crearClienteServidor();
 
-  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: unidades, error: eU }, { data: periodos, error: eP }] =
+  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: unidades, error: eU }, { data: periodos, error: eP }, { data: cuentas }, cobro] =
     await Promise.all([
       supabase.from("organizaciones").select("nombre,logo_url").eq("id", orgId).single(),
       supabase.from("edificios").select("nombre,rif").eq("id", edificioId).single(),
@@ -39,6 +40,9 @@ export default async function PaginaCortes({
         .eq("edificio_id", edificioId)
         .order("anio", { ascending: false })
         .order("mes", { ascending: false }),
+      // Ronda 7: los datos para pagar, para la vista previa del recibo.
+      supabase.from("datos_pago").select("id,destino,tipo,banco,titular,documento,cuenta,nota,orden").eq("edificio_id", edificioId).order("orden"),
+      ajustesCobroDe(orgId),
     ]);
 
   if (eO || eE) notFound();
@@ -58,6 +62,8 @@ export default async function PaginaCortes({
       unidades={unidadesFilas}
       periodos={periodosFilas}
       tasa={tasa}
+      cuentas={cuentas ?? []}
+      soloUsd={cobro.soloUsd}
       periodoInicial={typeof periodoInicial === "string" ? periodoInicial : undefined}
     />
   );

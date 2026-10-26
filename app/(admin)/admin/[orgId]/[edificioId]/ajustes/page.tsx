@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Ajustes } from "@/components/admin/Ajustes";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { tieneRolOrganizacion } from "@/lib/admin/acceso";
+import { ajustesCobroDe } from "@/lib/cobro";
 
 // Constante de módulo: tieneRolOrganizacion() memoiza por referencia.
 const ROLES_EDITAR_ORG = ["propietario_cuenta"] as const;
@@ -23,7 +24,7 @@ export default async function PaginaAjustes({
   const { orgId, edificioId } = await params;
   const supabase = await crearClienteServidor();
 
-  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: cats, error: eC }, { data: puedeEditarOrg }] = await Promise.all([
+  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: cats, error: eC }, { data: puedeEditarOrg }, { data: cuentas }, { data: bancos }, ajustesCobro] = await Promise.all([
     supabase.from("organizaciones").select("nombre,rif,logo_url").eq("id", orgId).single(),
     supabase.from("edificios").select("*").eq("id", edificioId).single(),
     supabase
@@ -34,6 +35,10 @@ export default async function PaginaAjustes({
     // Lo mismo que pide la política org_editar (bloque C): solo para decidir
     // si la tarjeta "Datos de la administradora" se puede editar.
     tieneRolOrganizacion(orgId, ROLES_EDITAR_ORG),
+    // Ronda 7, bloque 2: los datos para pagar del edificio.
+    supabase.from("datos_pago").select("id,destino,tipo,banco,titular,documento,cuenta,nota,orden").eq("edificio_id", edificioId).order("orden"),
+    supabase.from("bancos").select("codigo,nombre").eq("activo", true).order("orden"),
+    ajustesCobroDe(orgId),
   ]);
 
   if (eO || eE) notFound();
@@ -51,6 +56,9 @@ export default async function PaginaAjustes({
       edificio={edificio!}
       categorias={categorias}
       puedeEditarOrg={puedeEditarOrg === true}
+      cuentas={cuentas ?? []}
+      bancos={bancos ?? []}
+      ajustesCobro={ajustesCobro}
     />
   );
 }

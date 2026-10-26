@@ -4,6 +4,8 @@ import { paraPantalla, reciboEnPapel } from "@/lib/recibo-papel";
 import { ultimoReciboDe } from "@/lib/residente/recibo";
 import { usuarioActual } from "@/lib/supabase/cache";
 import { esUuid } from "@/lib/validacion";
+import { crearClienteServidor } from "@/lib/supabase/server";
+import { ajustesCobroDe } from "@/lib/cobro";
 
 /**
  * "Descargar o imprimir mi recibo" (ronda 4, caso 53). Antes el botón abría
@@ -28,7 +30,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ uni
   const user = await usuarioActual();
   if (!user) return NextResponse.redirect(new URL(`/entrar?volver=${encodeURIComponent(volver)}`, _req.url));
 
-  const r = await ultimoReciboDe(unidadId);
+  const supabase = await crearClienteServidor();
+  const [r, { data: cuentas }] = await Promise.all([
+    ultimoReciboDe(unidadId),
+    // Ronda 7: los datos para pagar de su edificio (la función solo responde por sus unidades).
+    supabase.rpc("datos_pago_de", { p_unidad: unidadId }),
+  ]);
   if (!r.unidad) return new NextResponse("No encontrado", { status: 404 });
   // Sin recibo (o sin poder traerlo): "Mi recibo" ya explica qué pasó.
   if (!r.recibo) return NextResponse.redirect(new URL(volver, _req.url));
@@ -41,6 +48,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ uni
     // La tasa viva viaja al papel: el documento se genera ahora, no el día
     // en que se emitió el recibo (index.html:1453-1455).
     tasaHoy: r.recibo.tasaHoy,
+    cuentas: cuentas ?? [],
+    soloUsd: (await ajustesCobroDe(r.unidad.org_id)).soloUsd,
     recibo: r.recibo,
   });
 

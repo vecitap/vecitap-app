@@ -392,7 +392,8 @@ export function Accesos({
                 </Button>
               </div>
               <p style={{ fontSize: 12.5, color: "var(--tenue)", marginBottom: 0, marginTop: 12 }}>
-                Vence a los 7 días y se usa una sola vez.
+                Vence a los 7 días y se usa una sola vez. Si antes sale en el correo del recibo, ese código sigue
+                sirviendo 45 días más.
               </p>
             </div>
           )}

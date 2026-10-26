@@ -1,5 +1,6 @@
 import { nf, usd } from "@/lib/formato";
 import { bolivaresExactos } from "@/lib/residente/monto-exacto";
+import { datosPagoEnPapel, repartoRecibo, type CuentaPago } from "@/lib/datos-pago";
 import type { CategoriaRecibo, ConceptoRecibo } from "@/lib/residente/tipos";
 
 /**
@@ -40,6 +41,9 @@ export type ReciboPapel = {
   anterior?: number | null;
   a_favor?: number | null;
   mora?: number | null;
+  /** Para repartir el total entre las cuentas de condominio y de honorarios. */
+  honorario?: number | null;
+  anterior_hon?: number | null;
   tasa_bcv?: number | null;
   conceptos?: ConceptoRecibo[] | unknown;
   detalle?: CategoriaRecibo[] | unknown;
@@ -62,6 +66,10 @@ export type DatosPapelRecibo = {
    * ella, cae a `recibo.tasa_bcv` y lo dice ("· del recibo").
    */
   tasaHoy?: { valor: number; fecha?: string | null } | null;
+  /** Las cuentas del edificio (`datos_pago`, ronda 7). Vacío o sin la clave: el papel no las muestra. */
+  cuentas?: CuentaPago[];
+  /** La organización cobra solo en dólares (ronda 7, bloque 4): el papel no muestra bolívares. */
+  soloUsd?: boolean;
   recibo: ReciboPapel;
 };
 
@@ -155,6 +163,7 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
 
   const bloqueTasa = (() => {
     if (favor > 0) return `<div><span class="et">Este mes</span><div class="cifra-s">No tiene que pagar</div></div>`;
+    if (d.soloUsd) return "";
     const viva = Number(d.tasaHoy?.valor) > 0;
     const t = viva ? Number(d.tasaHoy!.valor) : Number(r.tasa_bcv);
     if (!(t > 0)) return "";
@@ -246,6 +255,16 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
   table.dt td.pa{ font-weight:600 }
   .rf{ color:#64748B; font-size:7.4pt }
 
+  /* ── Datos para pagar (ronda 7) ── */
+  .dp{ margin-bottom:13px; break-inside:avoid; page-break-inside:avoid }
+  .dp-cols{ display:flex; gap:14px; flex-wrap:wrap }
+  .dp-g{ flex:1 1 220px; border:1px solid #CBD5E1; border-radius:7px; padding:6px 9px }
+  .dp-t{ font-size:8.6pt; font-weight:700; margin-bottom:2px }
+  .dp-c{ font-size:8.3pt; line-height:1.45; padding:3px 0; border-top:1px solid #DDE3EC }
+  .dp-c:first-of-type{ border-top:0 }
+  .dp-n{ font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-weight:600 }
+  .dp-o{ color:#64748B }
+
   /* ── Pie ── */
   .pie{ margin-top:14px; padding-top:8px; border-top:1px solid #CBD5E1;
         display:flex; justify-content:space-between; align-items:flex-end; gap:18px }
@@ -280,6 +299,16 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
   <table class="res">${resumen}</table>
 
   ${
+    favor === 0 && d.cuentas?.length
+      ? datosPagoEnPapel(
+          d.cuentas,
+          repartoRecibo(r, d.cuentas),
+          d.soloUsd ? null : Number(d.tasaHoy?.valor) > 0 ? Number(d.tasaHoy!.valor) : Number(r.tasa_bcv) || null
+        )
+      : ""
+  }
+
+  ${
     desglose
       ? `<h2>En qué se gastó este mes</h2>
   <p class="ayuda">A la izquierda el gasto completo del edificio; a la derecha la parte que
@@ -289,9 +318,13 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
   }
 
   <div class="pie">
-    <p>Lo que se debe está en dólares. La cifra en bolívares vale para el día
+    <p>${
+      d.soloUsd
+        ? "Lo que se debe está en dólares y se paga en dólares."
+        : `Lo que se debe está en dólares. La cifra en bolívares vale para el día
        que dice arriba: si paga otro día, la conversión se hace con la tasa del Banco
-       Central de ese día y el monto en bolívares será distinto.${
+       Central de ese día y el monto en bolívares será distinto.`
+    }${
          d.organizacion ? " Emitido por " + esc(d.organizacion) + "." : ""
        }</p>
     <div class="marca">

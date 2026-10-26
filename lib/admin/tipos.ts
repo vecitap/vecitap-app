@@ -55,7 +55,7 @@ export type SaldoActual = Pick<
 
 export type ConceptoCobro = Pick<
   Database["public"]["Tables"]["conceptos_cobro"]["Row"],
-  "id" | "nombre" | "bolsillo" | "modo" | "monto" | "iva" | "orden" | "activo" | "edificio_id"
+  "id" | "nombre" | "bolsillo" | "modo" | "monto" | "iva" | "orden" | "activo" | "edificio_id" | "cuotas"
 >;
 
 export type PeriodoAdmin = Pick<
@@ -116,6 +116,7 @@ export type PagoAdmin = Pick<
   | "estado"
   | "periodo_cierre_id"
   | "nota"
+  | "grupo_id"
 >;
 
 /** `bancos` activos, como los pide admin.html:3327. */

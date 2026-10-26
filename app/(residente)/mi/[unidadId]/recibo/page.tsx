@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Recibo } from "@/components/residente/Recibo";
 import { ultimoReciboDe } from "@/lib/residente/recibo";
+import { ajustesCobroDe } from "@/lib/cobro";
 
 /**
  * "Mi recibo". La carga vive en lib/residente/recibo.ts porque la comparte
@@ -18,5 +19,6 @@ export default async function PaginaRecibo({
   const r = await ultimoReciboDe(unidadId);
   if (!r.unidad) notFound();
 
-  return <Recibo unidad={r.unidad} recibo={r.recibo} falla={r.falla} />;
+  const { soloUsd } = await ajustesCobroDe(r.unidad.org_id);
+  return <Recibo unidad={r.unidad} recibo={r.recibo} falla={r.falla} soloUsd={soloUsd} />;
 }

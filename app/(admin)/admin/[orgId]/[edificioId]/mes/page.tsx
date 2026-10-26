@@ -19,7 +19,7 @@ export default async function PaginaCierreMes({
     { data: tasaFila },
   ] = await Promise.all([
     supabase.from("unidades").select("id,codigo").eq("edificio_id", edificioId).eq("activa", true).order("codigo"),
-    supabase.from("conceptos_cobro").select("id,nombre,bolsillo,modo,monto,iva,orden,activo,edificio_id").or(`edificio_id.eq.${edificioId},edificio_id.is.null`),
+    supabase.from("conceptos_cobro").select("id,nombre,bolsillo,modo,monto,iva,orden,activo,edificio_id,cuotas").or(`edificio_id.eq.${edificioId},edificio_id.is.null`),
     supabase
       .from("periodos")
       .select("id,anio,mes,etiqueta,estado,tasa_bcv,presupuesto,total_gastos,cerrado_en,enviado_en")

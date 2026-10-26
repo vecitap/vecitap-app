@@ -8,6 +8,8 @@ import {
   ChartColumn,
   KeyRound,
   ListChecks,
+  Mail,
+  FileSpreadsheet,
   LogOut,
   House,
   Moon,
@@ -56,7 +58,11 @@ const SECCIONES: { seg: string; etiqueta: string; icono: LucideIcon; modulo?: st
   { seg: "pagos", etiqueta: "Pagos recibidos", icono: Wallet },
   { seg: "mes", etiqueta: "Gastos del mes", icono: ReceiptText },
   { seg: "cortes", etiqueta: "Cortes de cuenta", icono: Send, modulo: "cortes" },
+  // Ronda 7 (bloque 7): mensajes masivos por correo.
+  { seg: "mensajes", etiqueta: "Mensajes", icono: Mail, modulo: "correo" },
   { seg: "estadisticas", etiqueta: "Estadísticas", icono: ChartColumn, modulo: "estadisticas" },
+  // Ronda 7 (bloque 8): estado financiero descargable.
+  { seg: "estado", etiqueta: "Estado financiero", icono: FileSpreadsheet },
   { seg: "accesos", etiqueta: "Accesos", icono: KeyRound },
   { seg: "cobros", etiqueta: "Cobros", icono: ListChecks },
 ];

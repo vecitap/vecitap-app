@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Aviso, Button, Card, Confirmar, Select, Textarea } from "@/components/ui";
+import { Aviso, Button, Card, Confirmar, Input, Select, Textarea } from "@/components/ui";
 import { leerHojas } from "@/lib/admin/archivos-tabla";
 import {
   CAMPOS,
@@ -22,6 +22,7 @@ import {
   type Nota,
   type PersonaOrg,
 } from "@/lib/admin/cargar-datos/analisis";
+import { agruparAvisos, contarFilas, type GrupoAviso } from "@/lib/admin/cargar-datos/avisos";
 import { TIPOS_UNIDAD, type TipoUnidad, type UnidadConPaga } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
 import { nf } from "@/lib/formato";
@@ -50,6 +51,12 @@ const COLUMNAS_PREVIA: Exclude<Campo, "ignorar" | "codigo">[] = [
   "inq_corte",
   "nota",
 ];
+
+/**
+ * Los datos con que se juntan las personas (ronda 7): en una fila que espera
+ * «¿es la misma persona?», se ofrecen para corregir los que la fila trae.
+ */
+const CONTACTO: Campo[] = ["telefono", "correo", "correo_respaldo", "documento", "inq_telefono", "inq_correo", "inq_correo_respaldo", "inq_documento"];
 
 /** La plantilla de Gustavo, tal cual (public/; solo trae datos de ejemplo). */
 const PLANTILLA = "/Vecitap-plantilla-carga.xlsx";
@@ -118,6 +125,15 @@ export function CargarDatos({
   const [confirmar, setConfirmar] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [hecho, setHecho] = useState<Hecho | null>(null);
+  /**
+   * Correcciones hechas en la previa (ronda 7, caso 79): celda del archivo
+   * (`fila:columna`, índices de `crudas`) → valor nuevo. Se aplican sobre las
+   * filas leídas y todo vuelve a pasar por `analizar()`, la misma función que
+   * lee el archivo: no hay reglas aparte para lo corregido, y la pregunta
+   * «¿es la misma persona?» se vuelve a hacer sola. No se guarda nada hasta
+   * confirmar la carga.
+   */
+  const [ediciones, setEdiciones] = useState<Record<string, string>>({});
 
   // Lo que ya existe en la administradora: personas (para no duplicarlas) y
   // si el edificio tiene meses cerrados (el saldo inicial ya no se usa).
@@ -165,6 +181,7 @@ export function CargarDatos({
     setLectura({ nombre, crudas, encabezados, propuestas });
     setColumnas(propuestas.map((p) => p.campo));
     setDec(SIN_DECISIONES);
+    setEdiciones({});
     setHecho(null);
   }
 
@@ -186,10 +203,43 @@ export function CargarDatos({
     setLeyendo(false);
   }
 
+  // Las filas del archivo con las correcciones de la previa encima.
+  const crudas = useMemo(() => {
+    if (!lectura) return null;
+    if (!Object.keys(ediciones).length) return lectura.crudas;
+    const copia = lectura.crudas.map((f) => [...f]);
+    for (const [k, v] of Object.entries(ediciones)) {
+      const [i, j] = k.split(":").map(Number);
+      if (!copia[i]) continue;
+      while (copia[i].length <= j) copia[i].push("");
+      copia[i][j] = v;
+    }
+    return copia;
+  }, [lectura, ediciones]);
+
   const resultado = useMemo(() => {
-    if (!lectura || !personas || hayCierres === null || !notas) return null;
-    return analizar(lectura.crudas, lectura.encabezados, columnas, { unidades, personas, hayCierres, notas }, dec);
-  }, [lectura, columnas, personas, hayCierres, notas, unidades, dec]);
+    if (!lectura || !crudas || !personas || hayCierres === null || !notas) return null;
+    return analizar(crudas, lectura.encabezados, columnas, { unidades, personas, hayCierres, notas }, dec);
+  }, [lectura, crudas, columnas, personas, hayCierres, notas, unidades, dec]);
+
+  const grupos = useMemo(() => (resultado ? agruparAvisos(resultado.filas) : []), [resultado]);
+  const semaforo = useMemo(() => (resultado ? contarFilas(resultado.filas) : null), [resultado]);
+
+  /** La celda de una fila (número de Excel) y un campo, con las correcciones encima. */
+  const celdaDe = (fila: number, campo: Campo) => {
+    const j = columnas.indexOf(campo);
+    return j < 0 || !crudas ? "" : String(crudas[fila - 1]?.[j] ?? "");
+  };
+  const fueCorregida = (fila: number, campo: Campo) => {
+    const j = columnas.indexOf(campo);
+    return j >= 0 && `${fila - 1}:${j}` in ediciones;
+  };
+  function corregir(fila: number, campo: Campo, valor: string) {
+    const j = columnas.indexOf(campo);
+    if (j < 0) return;
+    setEdiciones((e) => ({ ...e, [`${fila - 1}:${j}`]: valor.trim() }));
+  }
+  const corregidas = Object.keys(ediciones).length;
 
   const sinCodigo = lectura && !columnas.includes("codigo");
   const aCargar = resultado ? resultado.carga.filas.length : 0;
@@ -269,7 +319,13 @@ export function CargarDatos({
           type="file"
           accept=".xlsx,.xls,.csv"
           disabled={leyendo}
-          onChange={(e) => leerArchivo(e.target.files?.[0])}
+          onChange={(e) => {
+            leerArchivo(e.target.files?.[0]);
+            // Validación de la ronda 7: sin esto, después de «Descartar» volver
+            // a elegir el mismo archivo no hacía nada (el navegador no avisa de
+            // un cambio si el archivo es el mismo).
+            e.target.value = "";
+          }}
           className="control"
           style={{ padding: 10, marginTop: 14 }}
         />
@@ -355,6 +411,15 @@ export function CargarDatos({
         <>
           <Card>
             <h3 style={{ margin: 0, fontSize: 14 }}>2. Qué va a pasar</h3>
+            {semaforo && (
+              <p style={{ margin: "8px 0 0", fontSize: 14, fontWeight: 600, lineHeight: 1.5 }}>
+                <span style={{ color: "var(--tinta)" }}>{semaforo.bien} {semaforo.bien === 1 ? "fila bien" : "filas bien"}</span>
+                {" · "}
+                <span style={{ color: "var(--ambar)" }}>{semaforo.ambar} con avisos</span>
+                {" · "}
+                <span style={{ color: "var(--rojo)" }}>{semaforo.rojo} con errores</span>
+              </p>
+            )}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "10px 0 4px" }}>
               <Chip color="var(--tinta)">{resultado.resumen.nuevas} unidades nuevas</Chip>
               {resultado.resumen.actualizar > 0 && <Chip color="var(--azul)">{resultado.resumen.actualizar} se actualizan</Chip>}
@@ -402,28 +467,31 @@ export function CargarDatos({
             )}
           </Card>
 
-          {resultado.filas.some((f) => f.estado === "no") && (
+          {grupos.length > 0 && (
             <Card>
-              <h3 style={{ margin: 0, fontSize: 14, color: "var(--rojo)" }}>Filas que no se cargan</h3>
-              <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6 }}>
-                {resultado.filas
-                  .filter((f) => f.estado === "no" || dec.estacionamiento[f.fila])
-                  .map((f) => (
-                    <li key={f.fila}>
-                      Fila {f.fila} · <span className="mono">{f.codigo || "—"}</span>: {f.motivo ?? "se carga con alícuota 0"}
-                      {(f.sinAlicuota || dec.estacionamiento[f.fila]) && (
-                        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--tinta-2)" }}>
-                          <input
-                            type="checkbox"
-                            checked={!!dec.estacionamiento[f.fila]}
-                            onChange={(e) => setDec({ ...dec, estacionamiento: { ...dec.estacionamiento, [f.fila]: e.target.checked } })}
-                          />
-                          Cargarla como estacionamiento con alícuota 0
-                        </label>
-                      )}
-                    </li>
-                  ))}
-              </ul>
+              <h3 style={{ margin: 0, fontSize: 14 }}>Avisos</h3>
+              <p style={{ margin: "3px 0 6px", fontSize: 12.5, color: "var(--tenue)", lineHeight: 1.5 }}>
+                Toque «ver más» para ver las filas. Lo que se puede corregir se corrige aquí mismo, sin volver a subir el
+                archivo: la previa se revisa otra vez sola.
+                {corregidas > 0 && (
+                  <b style={{ color: "var(--tinta)" }}>
+                    {" "}
+                    {corregidas === 1 ? "1 corrección hecha" : `${corregidas} correcciones hechas`}: se guardan solo al confirmar la carga.
+                  </b>
+                )}
+              </p>
+              {grupos.map((g) => (
+                <GrupoAvisos
+                  key={g.clave}
+                  grupo={g}
+                  columnas={columnas}
+                  celdaDe={celdaDe}
+                  fueCorregida={fueCorregida}
+                  corregir={corregir}
+                  estacionamiento={dec.estacionamiento}
+                  elegirEstacionamiento={(fila, si) => setDec({ ...dec, estacionamiento: { ...dec.estacionamiento, [fila]: si } })}
+                />
+              ))}
             </Card>
           )}
 
@@ -544,6 +612,7 @@ export function CargarDatos({
                         return (
                           <td key={c} style={{ background: v?.nota?.nivel === "ambar" ? "var(--ambar-bg)" : undefined, fontSize: 13 }}>
                             <span className={c === "alicuota" || c.startsWith("saldo") || c.includes("telefono") || c.includes("documento") ? "mono" : undefined}>{v?.valor || <span style={{ color: "var(--tenue)" }}>—</span>}</span>
+                            {fueCorregida(f.fila, c) && <div style={{ fontSize: 11, fontWeight: 600, color: "var(--tinta-2)" }}>corregido en la previa</div>}
                             <NotaCelda nota={v?.nota} />
                           </td>
                         );
@@ -570,6 +639,7 @@ export function CargarDatos({
                 onClick={() => {
                   setLectura(null);
                   setPegado("");
+                  setEdiciones({});
                 }}
               >
                 Descartar
@@ -604,6 +674,133 @@ export function CargarDatos({
           onNo={() => setConfirmar(false)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Un tipo de aviso en una línea («12 filas sin correo del propietario») con
+ * «ver más» para las filas. Cada fila trae, si se puede, el campo para
+ * corregirla ahí mismo (ronda 7, caso 79). Pensado para el teléfono: una
+ * columna, sin tabla.
+ */
+function GrupoAvisos({
+  grupo,
+  columnas,
+  celdaDe,
+  fueCorregida,
+  corregir,
+  estacionamiento,
+  elegirEstacionamiento,
+}: {
+  grupo: GrupoAviso;
+  columnas: Campo[];
+  celdaDe: (fila: number, campo: Campo) => string;
+  fueCorregida: (fila: number, campo: Campo) => boolean;
+  corregir: (fila: number, campo: Campo, valor: string) => void;
+  estacionamiento: Record<number, boolean>;
+  elegirEstacionamiento: (fila: number, si: boolean) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const n = grupo.items.length;
+  const color = grupo.nivel === "rojo" ? "var(--rojo)" : "var(--ambar)";
+  return (
+    <div style={{ borderTop: "1px solid var(--linea)", padding: "9px 0" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13.5, color, fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" }}>
+          {n} {n === 1 ? "fila" : "filas"} {grupo.titulo}
+        </span>
+        <button
+          type="button"
+          onClick={() => setAbierto(!abierto)}
+          aria-expanded={abierto}
+          style={{ background: "none", border: "none", padding: 0, color: "var(--tinta-2)", fontSize: 12.5, textDecoration: "underline", cursor: "pointer" }}
+        >
+          {abierto ? "ver menos" : "ver más"}
+        </button>
+      </div>
+      {abierto && (
+        <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+          {grupo.items.map((it) => (
+            <div key={`${it.fila}:${it.campo ?? ""}`} style={{ background: "var(--fondo)", borderRadius: "var(--radio-chico)", padding: "8px 10px", fontSize: 13 }}>
+              <div style={{ overflowWrap: "anywhere" }}>
+                <span style={{ color: "var(--tenue)" }}>Fila {it.fila} ·</span> <b className="mono">{it.codigo || "—"}</b> — {it.texto}
+              </div>
+              {it.campo && it.campo !== "ignorar" && (
+                columnas.includes(it.campo) ? (
+                  <CorregirCelda
+                    key={celdaDe(it.fila, it.campo)}
+                    campo={it.campo}
+                    valor={celdaDe(it.fila, it.campo)}
+                    corregida={fueCorregida(it.fila, it.campo)}
+                    onCorregir={(v) => corregir(it.fila, it.campo!, v)}
+                  />
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--tenue)", marginTop: 4 }}>
+                    El archivo no trae la columna «{CAMPOS[it.campo]}»: elíjala arriba si está con otro nombre.
+                  </div>
+                )
+              )}
+              {it.persona &&
+                CONTACTO.filter((c) => columnas.includes(c) && celdaDe(it.fila, c)).map((c) => (
+                  <CorregirCelda
+                    key={`${c}:${celdaDe(it.fila, c)}`}
+                    campo={c}
+                    valor={celdaDe(it.fila, c)}
+                    corregida={fueCorregida(it.fila, c)}
+                    onCorregir={(v) => corregir(it.fila, c, v)}
+                  />
+                ))}
+              {(it.sinAlicuota || estacionamiento[it.fila]) && (
+                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--tinta-2)", marginTop: 6 }}>
+                  <input type="checkbox" checked={!!estacionamiento[it.fila]} onChange={(e) => elegirEstacionamiento(it.fila, e.target.checked)} />
+                  Cargarla como estacionamiento con alícuota 0
+                </label>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * El campo para corregir una celda. Se aplica al tocar «Corregir» (o Enter),
+ * no con cada letra: si no, el aviso desaparecería a mitad de lo que se está
+ * escribiendo.
+ */
+function CorregirCelda({ campo, valor, corregida, onCorregir }: { campo: Campo; valor: string; corregida: boolean; onCorregir: (v: string) => void }) {
+  const [borrador, setBorrador] = useState(valor);
+  const opciones = campo === "paga" ? ["Propietario", "Inquilino"] : campo === "corte" || campo === "inq_corte" ? ["Sí", "No"] : null;
+  const cambiado = borrador.trim() !== valor.trim();
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 12, color: "var(--tenue)" }}>{CAMPOS[campo]}:</span>
+      {opciones ? (
+        <Select value={borrador} onChange={(e) => setBorrador(e.target.value)} style={{ padding: "6px 8px", fontSize: 13, flex: "1 1 140px", minWidth: 0 }}>
+          {!opciones.includes(borrador) && <option value={borrador}>{borrador || "(vacío)"}</option>}
+          {opciones.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </Select>
+      ) : (
+        <Input
+          value={borrador}
+          onChange={(e) => setBorrador(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && cambiado) onCorregir(borrador);
+          }}
+          inputMode={campo.includes("correo") ? "email" : campo.includes("telefono") ? "tel" : campo === "alicuota" || campo.startsWith("saldo") ? "decimal" : undefined}
+          style={{ padding: "6px 8px", fontSize: 13, flex: "1 1 160px", minWidth: 0 }}
+        />
+      )}
+      <Button type="button" mini variante="secundario" disabled={!cambiado} onClick={() => onCorregir(borrador)}>
+        Corregir
+      </Button>
+      {corregida && !cambiado && <span style={{ fontSize: 11.5, color: "var(--tinta-2)", fontWeight: 600 }}>corregido</span>}
     </div>
   );
 }

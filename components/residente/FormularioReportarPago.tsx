@@ -46,6 +46,8 @@ type EstadoFormulario = {
   telefono: string;
   documento: string;
   correo: string;
+  /** A qué cuenta pagó (ronda 7): solo se pregunta si el edificio tiene cuenta de honorarios. */
+  destino: "condominio" | "honorarios";
 };
 
 const VACIO: EstadoFormulario = {
@@ -58,6 +60,7 @@ const VACIO: EstadoFormulario = {
   telefono: "",
   documento: "",
   correo: "",
+  destino: "condominio",
 };
 
 /**
@@ -81,8 +84,11 @@ export function FormularioReportarPago({
   unidadId,
   usuarioId,
   bancos,
-  deudaUsd,
+  deudaUsd: deudaTotal,
   favorDelRecibo,
+  reparto = null,
+  soloUsd = false,
+  unidadesGrupo = [],
 }: {
   orgId: string;
   unidadId: string;
@@ -96,9 +102,25 @@ export function FormularioReportarPago({
    * 0 si el recibo tiene algo que pagar.
    */
   favorDelRecibo: number;
+  /**
+   * Ronda 7 (bloque 2): si el edificio tiene una cuenta de honorarios aparte,
+   * cuánto de la deuda va a cada cuenta (`datos_pago_de()`). Con él, el
+   * formulario pregunta a qué cuenta pagó y el pago se abona a esa parte
+   * (`pagos.destino`). null = una sola cuenta, todo a condominio, como antes.
+   */
+  reparto?: { condominio: number; honorarios: number } | null;
+  /** La organización cobra solo en dólares (ronda 7, bloque 4): solo se aceptan dólares. */
+  soloUsd?: boolean;
+  /**
+   * Ronda 7 (bloque 9): las unidades de este edificio que paga quien mira
+   * (esta primero), con su saldo. Con dos o más, el formulario ofrece repartir
+   * una sola transferencia entre ellas: una fila de `pagos` por unidad, con el
+   * mismo `grupo_id`, en una sola llamada.
+   */
+  unidadesGrupo?: { unidad_id: string; codigo: string; saldo: number | null }[];
 }) {
   const router = useRouter();
-  const [f, setF] = useState<EstadoFormulario>(VACIO);
+  const [f, setF] = useState<EstadoFormulario>(soloUsd ? { ...VACIO, moneda: "USD", metodo: "Zelle" } : VACIO);
   const [tasa, setTasa] = useState<Tasa | null>(null);
   const [errorTasa, setErrorTasa] = useState<string | null>(null);
   const [archivo, setArchivo] = useState<File | null>(null);
@@ -107,13 +129,32 @@ export function FormularioReportarPago({
   const [enviando, setEnviando] = useState(false);
   const [copiado, setCopiado] = useState<"si" | "no" | null>(null);
   const entrada = useRef<HTMLInputElement>(null);
+  // Con dos cuentas, la deuda que se muestra es la de la cuenta elegida.
+  const deudaUsd = reparto ? reparto[f.destino] : deudaTotal;
+
+  // Ronda 7 (bloque 9): una transferencia para varias unidades.
+  const [agrupar, setAgrupar] = useState(false);
+  const [marcadas, setMarcadas] = useState<Record<string, boolean>>({});
+  const [partes, setPartes] = useState<Record<string, string>>({});
+  const puedeAgrupar = unidadesGrupo.length >= 2;
+  /** Lo que se propone por omisión: el saldo de cada unidad (en Bs, a la tasa de la fecha del pago). */
+  const propuesta = (saldo: number | null) => {
+    if (saldo === null || saldo <= 0.009) return 0;
+    if (f.moneda === "VES") return tasa ? bolivaresExactos(saldo, tasa.tasa) : 0;
+    return Math.round(saldo * 100) / 100;
+  };
+  const marcada = (u: { unidad_id: string; saldo: number | null }) =>
+    marcadas[u.unidad_id] ?? (u.unidad_id === unidadId || (u.saldo ?? 0) > 0.009);
+  const parteDe = (u: { unidad_id: string; saldo: number | null }) => partes[u.unidad_id] ?? paraCampo(propuesta(u.saldo));
+  const elegidas = unidadesGrupo.filter(marcada);
+  const sumaPartes = elegidas.reduce((s, u) => s + (num(parteDe(u)) ?? 0), 0);
 
   // Lo exacto a transferir para quedar al día (ronda 4, caso 54): la deuda de
   // esta unidad por la tasa de la FECHA DEL PAGO, la misma con la que la base
   // va a convertir. Cambia sola al cambiar la fecha. Solo en bolívares y solo
   // si hay deuda (con saldo a favor o al día no hay nada que transferir).
   const exacto =
-    f.moneda === "VES" && tasa && deudaUsd !== null && deudaUsd > 0.009 ? bolivaresExactos(deudaUsd, tasa.tasa) : null;
+    !agrupar && f.moneda === "VES" && tasa && deudaUsd !== null && deudaUsd > 0.009 ? bolivaresExactos(deudaUsd, tasa.tasa) : null;
 
   async function copiar(valor: number) {
     try {
@@ -193,6 +234,12 @@ export function FormularioReportarPago({
     if (pide.correo && !f.correo.trim()) errs.correo = "Falta el correo desde el que envió el Zelle.";
     if (pide.referencia && !f.referencia.trim())
       errs.referencia = "Falta la referencia. Sin ella su pago es muy difícil de ubicar.";
+    if (agrupar) {
+      if (elegidas.length < 2) errs.grupo = "Marque al menos dos unidades, o quite «paga varias de mis unidades».";
+      else if (elegidas.some((u) => !((num(parteDe(u)) ?? 0) > 0))) errs.grupo = "Cada unidad marcada necesita su monto.";
+      else if (monto !== null && Math.abs(sumaPartes - monto) > 0.005)
+        errs.grupo = `Lo que reparte suma ${nf(2).format(sumaPartes)} y la transferencia es de ${nf(2).format(monto)}: tienen que ser iguales.`;
+    }
     return errs;
   }
 
@@ -211,30 +258,33 @@ export function FormularioReportarPago({
     const supabase = crearClienteNavegador();
     const monto = num(f.monto) as number;
 
-    const { data: pago, error } = await supabase
-      .from("pagos")
-      .insert({
-        org_id: orgId,
-        unidad_id: unidadId,
-        fecha: f.fecha,
-        monto,
-        moneda: f.moneda,
-        monto_usd: 0,
-        metodo: f.metodo,
-        destino: "condominio",
-        referencia: f.referencia.trim() || null,
-        banco_codigo: pide.banco ? f.banco || null : null,
-        telefono_origen: pide.telefono ? f.telefono.trim() : null,
-        documento_origen: pide.documento ? f.documento.trim() : null,
-        correo_origen: pide.correo ? f.correo.trim() : null,
-        estado: "reportado",
-      })
-      .select("id")
-      .single();
+    const comun = {
+      org_id: orgId,
+      fecha: f.fecha,
+      moneda: f.moneda,
+      monto_usd: 0,
+      metodo: f.metodo,
+      destino: reparto ? f.destino : "condominio",
+      referencia: f.referencia.trim() || null,
+      banco_codigo: pide.banco ? f.banco || null : null,
+      telefono_origen: pide.telefono ? f.telefono.trim() : null,
+      documento_origen: pide.documento ? f.documento.trim() : null,
+      correo_origen: pide.correo ? f.correo.trim() : null,
+      estado: "reportado",
+    };
+    // Ronda 7 (bloque 9): agrupado, una fila por unidad con el mismo grupo_id,
+    // en un solo INSERT (entran todas o ninguna). El comprobante va con la
+    // primera: es una sola transferencia.
+    const grupo = agrupar ? crypto.randomUUID() : null;
+    const filas = agrupar
+      ? elegidas.map((u) => ({ ...comun, unidad_id: u.unidad_id, monto: num(parteDe(u)) as number, grupo_id: grupo }))
+      : [{ ...comun, unidad_id: unidadId, monto }];
+    const { data: insertados, error } = await supabase.from("pagos").insert(filas).select("id");
+    const pago = insertados?.[0];
 
-    if (error) {
+    if (error || !pago) {
       setEnviando(false);
-      setErrorGeneral(mensajeDeError(error));
+      setErrorGeneral(mensajeDeError(error ?? "No se pudo reportar el pago."));
       return;
     }
 
@@ -314,12 +364,28 @@ export function FormularioReportarPago({
           <InputFecha className="mono" sinFuturo value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
         </Campo>
 
-        <Campo etiqueta="Moneda">
-          <Select value={f.moneda} onChange={(e) => setF({ ...f, moneda: e.target.value as "VES" | "USD" })}>
-            <option value="VES">Bolívares</option>
-            <option value="USD">Dólares</option>
-          </Select>
-        </Campo>
+        {reparto && (
+          <Campo
+            etiqueta="¿A qué cuenta pagó?"
+            ayuda={`Su administración tiene una cuenta para el condominio y otra para los honorarios. Condominio: ${usd(reparto.condominio)} · Honorarios: ${usd(reparto.honorarios)}. Si pagó las dos, reporte un pago por cada una.`}
+          >
+            <Select value={f.destino} onChange={(e) => setF({ ...f, destino: e.target.value as EstadoFormulario["destino"] })}>
+              <option value="condominio">Condominio</option>
+              <option value="honorarios">Honorarios de administración</option>
+            </Select>
+          </Campo>
+        )}
+
+        {soloUsd ? (
+          <p style={{ fontSize: 13, color: "var(--tinta-2)", margin: "0 0 12px" }}>Su administración cobra solo en dólares.</p>
+        ) : (
+          <Campo etiqueta="Moneda">
+            <Select value={f.moneda} onChange={(e) => setF({ ...f, moneda: e.target.value as "VES" | "USD" })}>
+              <option value="VES">Bolívares</option>
+              <option value="USD">Dólares</option>
+            </Select>
+          </Campo>
+        )}
 
         {exacto !== null && tasa && (
           <div
@@ -370,7 +436,7 @@ export function FormularioReportarPago({
         )}
 
         <Campo
-          etiqueta={f.moneda === "VES" ? "Monto en bolívares" : "Monto en dólares"}
+          etiqueta={(agrupar ? "Total de la transferencia" : "Monto") + (f.moneda === "VES" ? " en bolívares" : " en dólares")}
           ayuda="Puede escribirlo con coma: 3.450,75"
           error={errores.monto}
         >
@@ -413,6 +479,52 @@ export function FormularioReportarPago({
           </div>
         )}
         {errores.tasa && <p className="campo-error" style={{ marginTop: -8, marginBottom: 12 }}>{errores.tasa}</p>}
+
+        {puedeAgrupar && (
+          <div style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 10, border: "1px solid var(--linea)", background: agrupar ? "var(--fondo)" : undefined }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>
+              <input type="checkbox" checked={agrupar} onChange={(e) => setAgrupar(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18 }} />
+              <span>
+                <b>Esta transferencia paga varias de mis unidades</b>
+                <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)" }}>
+                  Reparta el total entre sus unidades. Se propone lo que debe cada una; puede cambiarlo.
+                </span>
+              </span>
+            </label>
+            {agrupar && (
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {unidadesGrupo.map((u) => (
+                  <div key={u.unidad_id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 120px", fontSize: 14 }}>
+                      <input type="checkbox" checked={marcada(u)} onChange={(e) => setMarcadas({ ...marcadas, [u.unidad_id]: e.target.checked })} />
+                      <b className="mono">{u.codigo}</b>
+                      {u.saldo !== null && <span style={{ fontSize: 12, color: "var(--tenue)" }}>debe {usd(Math.max(u.saldo, 0))}</span>}
+                    </label>
+                    <Input
+                      className="mono"
+                      inputMode="decimal"
+                      disabled={!marcada(u)}
+                      value={marcada(u) ? parteDe(u) : ""}
+                      onChange={(e) => setPartes({ ...partes, [u.unidad_id]: e.target.value })}
+                      onBlur={() => setPartes({ ...partes, [u.unidad_id]: montoAlSalir(parteDe(u)) })}
+                      style={{ flex: "1 1 120px", width: "auto" }}
+                      aria-label={`Monto para ${u.codigo}`}
+                    />
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
+                  <span>
+                    Suma: <b className="mono">{f.moneda === "VES" ? bs(sumaPartes) : usd(sumaPartes)}</b>
+                  </span>
+                  <Button type="button" mini variante="secundario" onClick={() => setF({ ...f, monto: paraCampo(sumaPartes) })}>
+                    Usar la suma como monto
+                  </Button>
+                </div>
+                {errores.grupo && <p className="campo-error" style={{ margin: 0 }}>{errores.grupo}</p>}
+              </div>
+            )}
+          </div>
+        )}
 
         <Campo etiqueta="Cómo pagó">
           <Select value={f.metodo} onChange={(e) => setF({ ...f, metodo: e.target.value })}>

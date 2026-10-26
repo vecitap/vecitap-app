@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { EncabezadoResidente } from "@/components/residente/EncabezadoResidente";
 import { SelectorUnidad } from "@/components/residente/SelectorUnidad";
 import { TarjetaSaldo } from "@/components/residente/TarjetaSaldo";
+import { DatosParaPagar } from "@/components/residente/DatosParaPagar";
+import { crearClienteServidor } from "@/lib/supabase/server";
 import { PestanasResidente } from "@/components/residente/PestanasResidente";
 import { ResumenUnidades } from "@/components/residente/ResumenUnidades";
 import { misUnidadesSesion } from "@/lib/residente/datos";
@@ -42,7 +44,14 @@ export default async function LayoutUnidad({
   // mis_cuotas() solo hace falta si alguna unidad la paga el inquilino y
   // quien mira es el propietario (ronda 2, casos 35 y 37): las demás
   // muestran montos y no la usan.
-  const cuotas = unidades.some(soloEstado) ? await misCuotasSesion() : new Map();
+  const sinMontoAntes = soloEstado(unidad);
+  // Ronda 7 (bloque 2): los datos para pagar de su edificio, con cuánto va a
+  // cada cuenta. No a quien solo ve el estado (lo paga su inquilino).
+  const supabase = await crearClienteServidor();
+  const [cuotas, { data: cuentas }] = await Promise.all([
+    unidades.some(soloEstado) ? misCuotasSesion() : Promise.resolve(new Map()),
+    sinMontoAntes ? Promise.resolve({ data: [] }) : supabase.rpc("datos_pago_de", { p_unidad: unidadId }),
+  ]);
   const resumen = resumenUnidades(unidades, cuotas);
   const sinMonto = soloEstado(unidad);
   const saldoUnidad = unidad.saldo === null ? null : Number(unidad.saldo);
@@ -73,6 +82,8 @@ export default async function LayoutUnidad({
         </div>
 
         <TarjetaSaldo unidad={unidad} estado={sinMonto ? estadoSinMonto(saldoUnidad, cuotas.get(unidad.unidad_id)) : undefined} />
+
+        {!sinMonto && <DatosParaPagar filas={(cuentas ?? []).map((c) => ({ ...c, monto: c.monto === null ? null : Number(c.monto) }))} />}
 
         <PestanasResidente unidadId={unidadId} edificioId={unidad.edificio_id} reportar={!sinMonto} />
 

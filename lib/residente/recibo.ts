@@ -37,7 +37,7 @@ export async function ultimoReciboDe(unidadId: string): Promise<UltimoRecibo> {
     supabase
       .from("recibos")
       .select(
-        "numero,total,cuota,directos,anterior,a_favor,mora,honorario,servicio,conceptos,detalle,tasa_bcv,vence_el,alicuota,periodos!inner(anio,mes,etiqueta,estado)"
+        "numero,total,cuota,directos,anterior,a_favor,mora,honorario,anterior_hon,servicio,conceptos,detalle,tasa_bcv,vence_el,alicuota,periodos!inner(anio,mes,etiqueta,estado)"
       )
       .eq("unidad_id", unidadId)
       .eq("periodos.estado", "cerrado")

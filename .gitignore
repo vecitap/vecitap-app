@@ -43,6 +43,7 @@ supabase/.temp/
 # capturas de scripts de validación temporales (Playwright) — no es
 # artefacto del producto, ver scripts/validacion-bloque0.mjs
 scripts/capturas-bloque0/
+scripts/capturas-ronda7/
 
 # typescript
 *.tsbuildinfo

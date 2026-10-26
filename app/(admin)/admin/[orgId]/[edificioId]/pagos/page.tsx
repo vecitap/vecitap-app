@@ -33,7 +33,7 @@ export default async function PaginaPagos({
     supabase
       .from("pagos")
       .select(
-        "id,unidad_id,fecha,monto,moneda,tasa_aplicada,monto_usd,metodo,destino,referencia,banco,banco_codigo,telefono_origen,documento_origen,correo_origen,reportado_por,estado,periodo_cierre_id,nota"
+        "id,unidad_id,fecha,monto,moneda,tasa_aplicada,monto_usd,metodo,destino,referencia,banco,banco_codigo,telefono_origen,documento_origen,correo_origen,reportado_por,estado,periodo_cierre_id,nota,grupo_id"
       )
       .in("unidad_id", ids)
       .order("fecha", { ascending: false })

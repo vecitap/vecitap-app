@@ -2,6 +2,7 @@ import { fechaCorta } from "@/lib/formato";
 import { nombreDe, vigente } from "@/lib/admin/personas";
 import { reciboEnPapel } from "@/lib/recibo-papel";
 import type { ReciboAdmin, TasaViva, Unidad } from "@/lib/admin/tipos";
+import type { CuentaPago } from "@/lib/datos-pago";
 
 export type DatosRecibosAdmin = {
   edificio: { nombre: string; rif: string | null };
@@ -10,6 +11,10 @@ export type DatosRecibosAdmin = {
   etiqueta: string | null | undefined;
   /** La tasa del BCV de hoy (la de arriba de la pantalla), no la congelada del período. */
   tasa: TasaViva | null;
+  /** Las cuentas del edificio para pagar (`datos_pago`, ronda 7). */
+  cuentas?: CuentaPago[];
+  /** La organización cobra solo en dólares (ronda 7, bloque 4). */
+  soloUsd?: boolean;
 };
 
 /**
@@ -31,6 +36,8 @@ export function reciboAdminEnPapel(r: ReciboAdmin, d: DatosRecibosAdmin): string
     propietario: nombreDe(p) || nombreDe(q),
     vence: fechaCorta(r.vence_el),
     tasaHoy: d.tasa && d.tasa.valor > 0 ? { valor: d.tasa.valor, fecha: d.tasa.actualizada } : null,
+    cuentas: d.cuentas,
+    soloUsd: d.soloUsd,
     recibo: { ...r, etiqueta: d.etiqueta },
   });
 }

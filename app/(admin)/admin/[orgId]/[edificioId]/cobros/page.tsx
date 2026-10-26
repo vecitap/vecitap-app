@@ -11,13 +11,18 @@ export default async function PaginaCobros({
   const { orgId, edificioId } = await params;
   const supabase = await crearClienteServidor();
 
-  const { data: conceptos, error } = await supabase
-    .from("conceptos_cobro")
-    .select("id,nombre,bolsillo,modo,monto,iva,orden,activo,edificio_id")
-    .or(`edificio_id.eq.${edificioId},edificio_id.is.null`)
-    .order("orden");
+  const [{ data: conceptos, error }, { data: avance }] = await Promise.all([
+    supabase
+      .from("conceptos_cobro")
+      .select("id,nombre,bolsillo,modo,monto,iva,orden,activo,edificio_id,cuotas")
+      .or(`edificio_id.eq.${edificioId},edificio_id.is.null`)
+      .order("orden"),
+    // Ronda 7 (bloque 5): cuántas cuotas van de cada extraordinaria.
+    supabase.rpc("avance_extraordinarias", { p_edificio: edificioId }),
+  ]);
   if (error) throw error;
 
   const conceptosFilas: ConceptoCobro[] = conceptos ?? [];
-  return <Cobros orgId={orgId} edificioId={edificioId} conceptos={conceptosFilas} />;
+  const avancePorId = Object.fromEntries((avance ?? []).map((a) => [a.concepto_id, a.emitidas]));
+  return <Cobros orgId={orgId} edificioId={edificioId} conceptos={conceptosFilas} avance={avancePorId} />;
 }

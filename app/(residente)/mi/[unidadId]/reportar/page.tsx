@@ -6,6 +6,7 @@ import { ultimoReciboDe } from "@/lib/residente/recibo";
 import { favorQueQueda } from "@/lib/recibo-papel";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { usuarioActual } from "@/lib/supabase/cache";
+import { ajustesCobroDe } from "@/lib/cobro";
 
 export default async function PaginaReportar({
   params,
@@ -30,12 +31,23 @@ export default async function PaginaReportar({
   // inquilino): el bloqueo es solo de pantalla, decisión del 08-oct.
   if (soloEstado(unidad)) redirect(`/mi/${unidadId}/recibo`);
 
-  const [{ data: bancos }, ultimo] = await Promise.all([
+  const [{ data: bancos }, ultimo, { data: cuentas }, cobro] = await Promise.all([
     supabase.from("bancos").select("codigo,nombre,corto").eq("activo", true).order("orden"),
     // El último recibo cerrado, el mismo de «Mi recibo»: si ese recibo dice
     // «Este mes no tiene que pagar», esta pantalla lo avisa (ronda 5).
     ultimoReciboDe(unidadId),
+    // Ronda 7: si el edificio cobra los honorarios en otra cuenta, el
+    // formulario pregunta a cuál pagó.
+    supabase.rpc("datos_pago_de", { p_unidad: unidadId }),
+    ajustesCobroDe(unidad.org_id),
   ]);
+  const hon = (cuentas ?? []).find((c) => c.destino === "honorarios");
+  // Lo de condominio es el resto del saldo (puede no haber cuenta de
+  // condominio cargada, y aun así esa parte se debe).
+  const reparto =
+    hon && hon.monto !== null && unidad.saldo !== null
+      ? { condominio: Math.max(Number(unidad.saldo), 0) - Number(hon.monto), honorarios: Number(hon.monto) }
+      : null;
   const recibo = ultimo.unidad ? ultimo.recibo : null;
 
   return (
@@ -48,6 +60,15 @@ export default async function PaginaReportar({
       // (ronda 4, caso 54). null = la base no muestra el saldo.
       deudaUsd={unidad.saldo === null ? null : Number(unidad.saldo)}
       favorDelRecibo={recibo ? favorQueQueda(recibo) : 0}
+      reparto={reparto}
+      soloUsd={cobro.soloUsd}
+      // Ronda 7 (bloque 9): las otras unidades de este mismo edificio que paga
+      // quien mira, para repartir una sola transferencia. La de esta página va
+      // primero.
+      unidadesGrupo={(unidades ?? [])
+        .filter((u) => u.edificio_id === unidad.edificio_id && !soloEstado(u))
+        .sort((a, b) => (a.unidad_id === unidad.unidad_id ? -1 : b.unidad_id === unidad.unidad_id ? 1 : a.codigo.localeCompare(b.codigo)))
+        .map((u) => ({ unidad_id: u.unidad_id, codigo: u.codigo, saldo: u.saldo === null ? null : Number(u.saldo) }))}
     />
   );
 }
