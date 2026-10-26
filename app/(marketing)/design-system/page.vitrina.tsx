@@ -43,7 +43,7 @@ export default function VitrinaDiseno() {
       <Card>
         <h2 style={{ marginTop: 0 }}>Estados</h2>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Badge tono="verde">Activa</Badge>
+          <Badge tono="neutro">Activa</Badge>
           <Badge tono="ambar">Pago vencido</Badge>
           <Badge tono="rojo">Suspendida</Badge>
           <Badge tono="azul">Sin suscripción</Badge>
@@ -87,7 +87,7 @@ export default function VitrinaDiseno() {
               <td>PB-1</td>
               <td>María Pérez</td>
               <td>
-                <Badge tono="verde">Al día</Badge>
+                <Badge tono="neutro">Al día</Badge>
               </td>
             </tr>
             <tr>

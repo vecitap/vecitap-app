@@ -25,6 +25,7 @@ export default async function PaginaFicha({
     { data: historial, error: e5 },
     { data: pendientes, error: e6 },
     { data: tasaFila },
+    { data: notaFila, error: e7 },
   ] = await Promise.all([
     supabase
       .from("unidades")
@@ -49,10 +50,12 @@ export default async function PaginaFicha({
       .eq("estado", "reportado")
       .order("fecha"),
     supabase.rpc("tasa_atrasada"),
+    // La nota de la unidad: solo la administración la ve (RLS de notas_unidad, M4).
+    supabase.from("notas_unidad").select("nota").eq("unidad_id", unidadId).maybeSingle(),
   ]);
   const tasa = (Array.isArray(tasaFila) ? tasaFila[0] : tasaFila) ?? null;
 
-  if (e1 || e3 || e4 || e5 || e6) throw e1 || e3 || e4 || e5 || e6;
+  if (e1 || e3 || e4 || e5 || e6 || e7) throw e1 || e3 || e4 || e5 || e6 || e7;
   if (!unidad) notFound();
   // Sin fila en saldos_actuales (por ejemplo, una unidad inactiva sin
   // movimientos): no es un 404, la Ficha muestra el total en cero.
@@ -71,6 +74,7 @@ export default async function PaginaFicha({
       historial={historial ?? []}
       pendientes={pendientes ?? []}
       tasa={tasa?.tasa ? Number(tasa.tasa) : null}
+      nota={notaFila?.nota ?? ""}
     />
   );
 }

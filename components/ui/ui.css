@@ -67,7 +67,7 @@
 
 /* "Guardado ✓" / el error, al lado del botón (EstadoGuardado.tsx). */
 .estado-guardado { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
-.estado-guardado-ok { color: var(--verde); }
+.estado-guardado-ok { color: var(--tinta-2); }
 .estado-guardado-error { color: var(--rojo); font-weight: 500; }
 
 .btn-secundario {
@@ -127,7 +127,6 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.badge-verde  { color: var(--verde); background: var(--verde-bg); }
 .badge-ambar  { color: var(--ambar); background: var(--ambar-bg); }
 .badge-rojo   { color: var(--rojo);  background: var(--rojo-bg); }
 .badge-azul   { color: var(--azul);  background: var(--azul-bg); }

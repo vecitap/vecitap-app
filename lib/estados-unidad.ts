@@ -10,7 +10,7 @@ import type { TonoBadge } from "@/components/ui";
 export type EstadoUnidad = "al_dia" | "debe" | "a_favor";
 
 const TONOS: Record<EstadoUnidad, TonoBadge> = {
-  al_dia: "verde",
+  al_dia: "neutro",
   debe: "rojo",
   a_favor: "favor",
 };

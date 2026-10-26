@@ -267,7 +267,7 @@ export function FormularioEntrar() {
 
       <form onSubmit={enviar}>
         {aviso && (
-          <p style={{ color: "var(--verde)", fontSize: 13.5, lineHeight: 1.5, marginTop: 0 }}>{aviso}</p>
+          <p style={{ color: "var(--tinta)", fontSize: 13.5, lineHeight: 1.5, marginTop: 0 }}>✓ {aviso}</p>
         )}
 
         {modo === "clave-nueva" ? (

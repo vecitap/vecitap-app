@@ -86,7 +86,7 @@ export default async function PaginaInicio({
               Por cobrar
             </div>
           </div>
-          <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: porCobrar > 0 ? "var(--rojo)" : "var(--verde)" }}>
+          <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: porCobrar > 0 ? "var(--rojo)" : "var(--tinta)" }}>
             {usd(porCobrar)}
           </div>
           <div style={{ fontSize: 11.5, color: "var(--tenue)", marginTop: 4 }}>
@@ -151,7 +151,7 @@ export default async function PaginaInicio({
       {periodoAbierto && usaPresupuesto && !periodoAbierto.presupuesto && (
         <Aviso tono="ambar" titulo="Falta el presupuesto del mes">
           Este edificio cobra repartiendo un presupuesto, no el gasto ejecutado. Escriba el monto
-          en Cierre del mes antes de cerrar.
+          en «Gastos del mes» antes de cerrar.
         </Aviso>
       )}
 

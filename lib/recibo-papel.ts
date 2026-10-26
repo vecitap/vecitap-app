@@ -220,7 +220,7 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
                   font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
   table.res tr.tot td{ font-weight:700; font-size:11pt; border-bottom:0;
                        border-top:1.5px solid #0A1128; padding-top:7px }
-  table.res tr.nota-fav td{ border-bottom:0; padding-top:0; color:#4D7C0F; font-weight:600 }
+  table.res tr.nota-fav td{ border-bottom:0; padding-top:0; color:#15803D; font-weight:600 }
 
   /* ── Desglose a dos columnas ── */
   h2{ font-size:8.5pt; text-transform:uppercase; letter-spacing:.1em;

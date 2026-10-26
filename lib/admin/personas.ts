@@ -17,6 +17,28 @@ export function vigente(vinculos: Vinculo[] | undefined, tipo: "propietario" | "
  */
 export const TRATAMIENTO_INICIAL = /^(sr|sra|srta|sres|sras|dr|dra|ing|lic|abg)(?:\.\s*|\s+)(?=\S)/i;
 
+/**
+ * La lista de tratamientos de la ficha, de Nueva unidad y del importador; la
+ * misma de la plantilla de carga de Gustavo (25-oct). "" es «Sin
+ * tratamiento» y se guarda null.
+ */
+export const TRATAMIENTOS = ["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", "Ing.", "Lic.", ""] as const;
+
+export const etiquetaTratamiento = (t: string) => t || "Sin tratamiento";
+
+/**
+ * Una celda de tratamiento de la planilla: "Sr.", "sra", "SRES.", "Sin
+ * tratamiento". `undefined` si está vacía (el archivo no trae tratamiento);
+ * `null` si dice «Sin tratamiento»; "malo" si no es de la lista.
+ */
+export function leerTratamiento(celda: string): string | null | undefined | "malo" {
+  const t = normaliza(celda);
+  if (!t) return undefined;
+  if (t === "NO" || /^(SIN|NINGUN)/.test(t)) return null;
+  const hit = TRATAMIENTOS.find((x) => x && normaliza(x) === t);
+  return hit ?? "malo";
+}
+
 export function nombreDe(v: Vinculo | null): string {
   if (!v?.personas) return "";
   const nombre = v.personas.nombre ?? "";

@@ -119,8 +119,8 @@ export function PanelModulos({
                     borderRadius: 999,
                     padding: "5px 14px",
                     border: f.activo ? "1px solid transparent" : "1px solid var(--linea-fuerte)",
-                    background: f.activo ? "var(--verde-bg)" : "transparent",
-                    color: f.activo ? "var(--verde)" : "var(--tenue)",
+                    background: f.activo ? "var(--lienzo-alt)" : "transparent",
+                    color: f.activo ? "var(--tinta)" : "var(--tenue)",
                   }}
                 >
                   {f.activo ? "Habilitado" : "Apagado"}
@@ -142,7 +142,7 @@ export function PanelModulos({
               >
                 <div style={{ fontSize: 12.5 }}>
                   <b>{f.edificio}</b> · {f.nombre} ·{" "}
-                  <span style={{ color: f.activo ? "var(--verde)" : "var(--rojo)", fontWeight: 700 }}>{f.activo ? "habilitado" : "apagado"}</span>
+                  <span style={{ color: f.activo ? "var(--tinta)" : "var(--rojo)", fontWeight: 700 }}>{f.activo ? "habilitado" : "apagado"}</span>
                 </div>
                 <Button type="button" variante="secundario" mini onClick={() => soltar(f.clave, f.edificio_id)}>
                   Quitar la excepción

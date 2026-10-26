@@ -20,8 +20,11 @@ GitHub Pages.
 
 Todo en `dev`, **sin commit** (Gustavo está probando la ronda 4 en el Preview
 de `dev`). `npx tsc --noEmit`, `npm run lint` y `npm run build` en verde el
-25-oct, después de los ajustes de las dos revisiones (24-oct y 25-oct).
-Desvíos frente a `main`: casos 56 a 58 de `docs/casos-de-uso-mejorados.md`.
+25-oct, después de los ajustes de las dos revisiones (24-oct y 25-oct), y de
+nuevo el 25-oct por la noche con la plantilla oficial y M4 (ver «Plantilla
+oficial y respuestas de Gustavo», abajo).
+Desvíos frente a `main`: casos 56 a 58 de `docs/casos-de-uso-mejorados.md`
+(y 59 a 69, en sus subsecciones).
 
 **M3 (`importar_unidades`): revisada por Nicolás el 24-oct y aprobada con
 ajustes.** Se corrigió el mismo archivo (no tenía commit ni estaba en
@@ -247,12 +250,19 @@ correo y teléfono) y siguen con «Sí» por omisión.
 
 ### Para Gustavo: los 10 casos «mismo correo o teléfono, otro nombre»
 
+> **Cambió el 25-oct por la noche (regla confirmada por Gustavo):** ahora
+> **las 10** salen sin respuesta por omisión y la carga espera hasta que se
+> contesten. La columna ⚠ de abajo es la de antes (solo por teléfono y con
+> otro correo); queda porque esas dos además muestran los dos correos. La
+> última columna es la de la administradora de pruebas **antes** de D10. Ver
+> «Plantilla oficial y respuestas de Gustavo».
+
 Para que los compare con su planilla real. Si se contesta «Sí, es la misma
 persona», la fila usa la ficha de la última columna, que es la que hoy está
 en la administradora de pruebas. «¿Son la misma persona?» es la pregunta.
 **⚠ = sin respuesta por omisión** (solo por teléfono y con otro correo, ver
-arriba): hay que elegir, y la carga espera. Las demás tienen «Sí» por
-omisión.
+arriba): hay que elegir, y la carga espera. Las demás tenían «Sí» por
+omisión hasta el 25-oct por la noche.
 
 | # | Unidad | Nombre en el archivo | Se junta con (fila del archivo) | Por | Ficha que se usa con «Sí» |
 |---|---|---|---|---|---|
@@ -284,11 +294,16 @@ administradora» (por omisión, **ficha nueva**): 02A «Boso. Tumegotef…».
 | Migración | Verificación en pruebas |
 |---|---|
 | `20261018130000_unidades_tipo_correo_respaldo.sql` (M2), aplicada el 18-oct | `unidades.tipo` text NOT NULL default 'apartamento', con la lista cerrada (un 'bodega' → 23514). `personas.correo_respaldo` text NULL. Las 164 unidades existentes quedaron como apartamento |
+| `20261025120000_importar_unidades_plantilla.sql` (M4): aplicada el 25-oct; **reaplicada el 26-oct**; **revisada y aprobada por Nicolás el 26-oct** (va en el commit) con la nota de la unidad y «s.n.»/«&» (primero su rollback, después el archivo, tal cual) | `prosecdef=false`, `search_path=public`, EXECUTE solo `authenticated`. **`notas_unidad`:** RLS activo, una política `*` para `authenticated` con `puede_operar(org_id)`; `authenticated` solo con select/insert/update/delete (los privilegios por omisión del esquema le daban también TRUNCATE, que no pasa por RLS: se quitan); `anon`, nada. Las ocho verificaciones del archivo, en transacciones deshechas, como la administradora de Gustavo (`set local role authenticated`): sin sesión → «Sin permiso…»; **tratamiento**: 'Sres.' manda; null → NULL; sin la clave, «…C.A.», «Junta…», «…, s.n.», «Rerozo, Ropopar & Vumulinog» y «Sonia Sn Prueba» → NULL, «Juan Pérez» → 'Sr.'; 'Dra.', 'Ing.' y «Firma & Hijos» con 'Sres.' tal cual; **cédula** completada en una ficha vacía sin pisar el teléfono; **saldo de administración** 25 al crear, 10 al actualizar, con meses cerrados → error; **recibe corte** false al crear y false → true al actualizar (`vinculos_actualizados` 1); **nota**: se guarda recortada de espacios, con el `org_id` de la unidad aunque se mande otro y quién la escribió; otra nota la reemplaza (`notas_guardadas` 1), la misma no cuenta (0), null no la toca, 1.001 caracteres → error y nada se guarda; **el residente** (`+propietario`, con una nota en 02A): 0 filas, insert → RLS, TRUNCATE → «permission denied», su fila de `unidades`, `mis_unidades()` y `saldos_actuales` sin la nota; `anon` → «permission denied». Además, **la carga exacta de la pantalla para `Vecitap-plantilla-casos.xlsx`**: 12 unidades, 14 personas, 15 vínculos, 4 notas, P12 sin tratamiento («Srta.» fuera de la lista). **El rollback**, aplicado de verdad el 26-oct antes de reaplicar: borró la tabla y dejó la función de M3 (sin `saldo_inicial_hon`), una sola, con los mismos permisos. En la base no quedó nada de las pruebas |
 | `20261018140000_importar_unidades.sql` (M3), reaplicada el 25-oct con los ajustes | `prosecdef=false`, `search_path=public`, EXECUTE solo `authenticated`. Las verificaciones del archivo, en una transacción deshecha, como la administradora con `set local role authenticated` (RLS de verdad): sin sesión → «Sin permiso…»; tres unidades con el mismo propietario → **una** persona, 4 vínculos, paga = inquilino donde se pidió; todo o nada (otro propietario → error y la otra unidad no queda); persona existente → `personas_completadas` 1, completa el correo y **no** pisa teléfono ni nombre; **la misma otra vez → `personas_completadas` 0**; **tratamiento**: «Inversiones Uno, C.A.», «Beganu, s.a.», «Comercial SRL», «M. A. Burefo, c.a.» y «Junta de Condominio…» (con 'Sr.' mandado) → NULL; «Rosa Casanova», «Boso. … (ZACA)» y «… s.n.» → 'Sr.'; «Gil» con 'Dra.' → 'Dra.'; saldo con meses cerrados → error; un residente → «No se encontró el edificio» |
 
 Con sus rollbacks en `supabase/rollbacks/`. **Producción no se tocó.**
 Producción necesita, en orden: las del tramo 1 y las rondas 2 a 4 (ver
-«Ronda 4»), y estas dos (20261018130000, 20261018140000).
+«Ronda 4»), y estas tres (20261018130000, 20261018140000, 20261025120000).
+Leído en producción el 25-oct: todavía no tiene `unidades.tipo`,
+`personas.correo_respaldo` ni `importar_unidades` (M2 y M3 sin aplicar); sí
+tiene `unidades.saldo_inicial_hon`, `personas.documento` y
+`vinculos.enviar_corte`, que M4 usa.
 
 ### Corrida contra la planilla anonimizada (25-oct)
 
@@ -309,6 +324,11 @@ repo (ninguna entra al repo):
 | `pegado-cuenta-de-prueba.txt` | encabezado + 77X, propietario «Otro Nombre Prueba» con el correo de la cuenta `+propietario` de Gustavo | D21 |
 | `piloto-mismo-telefono.csv` | 88A «Ana Prueba Telefono» y 88B «Beto Prueba Telefono»: el mismo teléfono (0414-5559999), otros nombres y otros correos | D23 |
 | `pegado-mismo-telefono-ficha.txt` | encabezado + 88C «Carla Prueba Telefono», con el teléfono de Ana y Beto y otro correo | D23 |
+| `Vecitap-plantilla-carga.xlsx` | la plantilla de Gustavo, **tal cual** (la misma de `public/`) | D31, D32 |
+| `Vecitap-plantilla-llena.xlsx` | la plantilla con las 54 filas de `piloto-orga-anonimo.csv` en la hoja «Unidades». Sin inventar datos: TIPO solo donde el código lo dice (PB. L-B y Mz. L-B «Local», «Estacionamiento»), QUIEN PAGA «Propietario», saldos y alícuotas como números; tratamiento, cédula, saldo de administración y «recibe corte» vacíos (la planilla no los trae). Estilos y listas de la plantilla intactos | D33–D35 |
+| `Vecitap-plantilla-casos.xlsx` | 12 unidades **inventadas** (P01–P12, «… Prueba Plantilla», correos `delivered+pl-…@resend.dev`), una por regla nueva: tratamientos, cédulas, saldo de administración, «recibe corte», inquilino, NOTA y valores fuera de la lista | D36, D37 |
+| `Vecitap-plantilla-casos-cambios.xlsx` | lo mismo, con cuatro cambios: P01 saldo de administración 30; P03 otra nota; P08 la propietaria recibe el corte y el inquilino no | D38 |
+| `pegado-sn-y.txt` | encabezado + 97S «Firma Prueba Plantilla, s.n.» y 97T «Prueba Plantilla & Hijos», sin tratamiento | D45 |
 
 - **Los tres archivos dan exactamente la misma carga** (comparada campo por
   campo): 54 filas, 53 se cargan, 1 no (el Estacionamiento, sin alícuota). Las
@@ -350,10 +370,10 @@ repo (ninguna entra al repo):
   Edificio Prueba Carga. Si en D8 se elige «Es Sr. Boso…: usar su ficha», las
   6 unidades quedan con una ficha de las suyas y tampoco ve nada nuevo (ver
   «La regla de ficha con cuenta activa», arriba); lo prueba D21.
-- **«¿Es la misma persona?» por omisión «Sí»**, salvo cuando coincide solo
-  el teléfono y el correo es otro (tercera revisión). Con esta planilla son 10
-  preguntas que afectan a 12 filas; 2 de ellas (05C y 05D) sin respuesta por
-  omisión (lista arriba, «Para Gustavo»).
+- **«¿Es la misma persona?»: desde el 25-oct por la noche, sin respuesta por
+  omisión cuando el nombre es otro** (antes, «Sí» salvo solo por teléfono con
+  otro correo). Con esta planilla son 10 preguntas, y la carga espera las 10.
+  Ver «Plantilla oficial y respuestas de Gustavo».
 - **Fuera de la regla del tratamiento:** «s.n.» («Lebelavobotun Facotab,
   s.n.») y los nombres de firma sin sigla («Rerozo, Ropopar & Vumulinog»)
   siguen recibiendo «Sr.». La regla acepta «CA»/«SA» sin puntos si están
@@ -365,18 +385,39 @@ repo (ninguna entra al repo):
   pide**; no está en ningún plan.
 - **Plan de arranque del piloto** (anotado el 25-oct; nada de esto está hecho,
   y en producción lo ejecuta Nicolás, con respaldo antes):
-  1. **Borrar «Edificio Arauca»** después de confirmar con Gustavo que no tiene
-     datos reales. En producción (lectura del 25-oct) es la administradora
-     «Edificio arauca», con un edificio, «Edificio Arauca II», de 2 unidades,
-     sin accesos de residentes, sin pagos y sin meses cerrados.
-  2. **Vaciar GRUPO ING3 y recargarlo con el importador**, con respaldo antes,
-     **solo si** ningún propietario real entró y no hay pagos. Lectura del
-     25-oct: un edificio («Edifico Adminitradora Uniòn», así escrito), 53
-     unidades, 0 accesos de residentes, 0 invitaciones pendientes, 0 pagos,
-     0 meses cerrados. Hay que volver a mirarlo el día que se haga.
+  1. **Borrar «Edificio Arauca»: confirmado por Gustavo** (25-oct, noche). En
+     producción (lectura del 25-oct) es la administradora «Edificio arauca»,
+     con un edificio, «Edificio Arauca II», de 2 unidades, sin accesos de
+     residentes, sin pagos y sin meses cerrados.
+  2. **Vaciar GRUPO ING3 y recargarlo con el importador** (con la plantilla
+     oficial), con respaldo antes, **solo si** ningún propietario real entró y
+     no hay pagos. Lectura del 25-oct: un edificio, 53 unidades, 0 accesos de
+     residentes, 0 invitaciones pendientes, 0 pagos, 0 meses cerrados. Hay que
+     volver a mirarlo el día que se haga. **El edificio se llama «Edificio
+     Administradora Unión»** (Gustavo): hoy está escrito «Edifico
+     Adminitradora Uniòn»; se corrige al recargar.
   3. **Mora en 0 durante el mes en paralelo** (el mes en que el piloto corre
-     junto al sistema anterior). Hoy los dos edificios tienen
-     `interes_mora = 0`; hay que mantenerlo así hasta que termine ese mes.
+     junto al sistema anterior). **El mes lo decide el cliente; nosotros se lo
+     recomendamos** (Gustavo). Hoy los dos edificios tienen `interes_mora = 0`;
+     hay que mantenerlo así hasta que termine ese mes.
+- **Después del piloto** (anotado el 26-oct, pedidos de Gustavo; nada de esto
+  está en un plan todavía):
+  - textos cortos en la previa de «Cargar datos», con «ver más» para el
+    detalle;
+  - corregir en la previa los campos en ámbar sin volver a subir el archivo;
+  - actualizar la app instalada sin cerrarla: deslizar hacia abajo, al volver
+    a la app, y un botón «Actualizar»;
+  - una planilla de prueba con varios inquilinos y correos mezclados;
+  - mover las reglas de Cobros a Ajustes (Cobros queda al final del menú
+    hasta entonces).
+- **Plan de arranque: el correo de bienvenida** a cada administradora, con la
+  plantilla de carga adjunta (anotado el 26-oct).
+- **Después del piloto: el residente edita sus datos** (anotado el 25-oct,
+  pedido de Gustavo; no está en ningún plan todavía). El residente cambia sus
+  datos de contacto (teléfono, correo de respaldo, cédula) y la administradora
+  recibe un aviso. El cambio de titular o de correo principal es una
+  **solicitud** que la administradora aprueba (el correo principal es a donde
+  van los recibos y lo que propone Accesos).
 
 ### Ajustes después de la ronda 4 (25-oct)
 
@@ -395,9 +436,318 @@ pantalla, sin migraciones. `npx tsc --noEmit`, `npm run lint` y
 | 6 | Color propio para «a favor» | `--a-favor`: claro #4D7C0F, oscuro #84CC16. Contraste: claro 4,99:1 sobre blanco y 4,57:1 sobre su fondo; oscuro 8,98:1 y 7,01:1 (mínimo AA, 4,5:1). En el claro, sobre una fila con el mouse encima, 4,28:1. Pasado a `--a-favor` lo que seguía en verde o azul |
 | 7 | Cobros: «Monto $» o «Porcentaje %» | El título del campo sigue a «Cómo se calcula»; el de la tabla, a los cobros que hay (y si se mezclan, cada celda dice su unidad) |
 
+### Plantilla oficial y respuestas de Gustavo (25-oct, noche)
+
+Gustavo respondió las preguntas de la ronda 5 y mandó la plantilla oficial
+(`Vecitap-plantilla-carga.xlsx`: hojas «Léame primero», «Unidades» y
+«Ejemplo»). Decisiones de Nicolás del 25-oct. Desvíos: casos 66 a 69 de
+`docs/casos-de-uso-mejorados.md`. **Probado con los archivos (el mismo camino
+que la pantalla: hojas, columnas, análisis) y contra la base de pruebas (M4);
+no en el navegador.** Pruebas: D31 a D40, abajo.
+
+**Lo que se encontró al revisar la plantilla** (antes de construir):
+
+- El importador leía **la primera hoja**, que en la plantilla es «Léame
+  primero»: subida tal cual, no encontraba ninguna unidad.
+- Confundía las columnas: «PROPIETARIO TRATAMIENTO» como el nombre del
+  propietario, «PROPIETARIO NOMBRE» como el inquilino, y otras 9 columnas sin
+  usar.
+- Cada columna tiene su campo en la base, salvo NOTA: SALDO ADMINISTRACION →
+  `unidades.saldo_inicial_hon`; CEDULA O RIF → `personas.documento` (el
+  «Cédula o RIF» de la ficha); RECIBE CORTE → `vinculos.enviar_corte` (con
+  «No», esa persona no recibe el recibo por correo). M3 no recibía esas tres.
+- TIPO: los cinco valores de la lista existen en `unidades.tipo`. El signo del
+  saldo es el mismo (positivo debe, negativo a favor).
+
+**Qué se hizo:**
+
+| # | Pedido | Qué se hizo |
+|---|---|---|
+| 1 | Personas (confirmado por Gustavo) | Un dato en común (correo, teléfono o **cédula**) con otro nombre: pregunta **sin respuesta por omisión**, entre filas y contra fichas. Mismo nombre y datos: se juntan solas. Solo el nombre: distintas por omisión. Ver caso 67, con lo que queda **para aprobar** (otra cédula = otra persona; contra la administradora se prefiere la ficha con el mismo nombre; arreglo de la comparación con todas las filas) |
+| 2 | Tratamiento | Lista Sr., Sra., Sres., Dr., Dra., Ing., Lic., Sin tratamiento en la ficha, Nueva unidad y el importador (`TRATAMIENTOS`, `lib/admin/personas.ts`). El del archivo manda (también «Sin tratamiento» → null); la regla de empresas solo sin tratamiento. **M4** |
+| 3 | La plantilla en «Cargar datos» | Lee la hoja «Unidades» (vacía → aviso y nada se carga; «Ejemplo» nunca); las 21 columnas por el encabezado; NOTA «No usar esta columna» («Vecitap no guarda notas de la unidad») con su texto en la fila; avisos ámbar de lo que la plantilla pide. Además, de la decisión 2: saldo de administración, cédula, «recibe corte», correo de respaldo del inquilino, y avisos «nadie recibe el corte» y «paga el inquilino sin correo» |
+| 4 | «Descargar plantilla» | Botón en «Cargar datos» → `public/Vecitap-plantilla-carga.xlsx`, el archivo de Gustavo byte por byte (mismo SHA-256). Revisado antes de ponerlo en el repo público: solo datos de ejemplo, propiedades del archivo sin nombres (autor «openpyxl») |
+| 5 | Pendientes y plan de arranque | En «Pendientes y observaciones», arriba |
+
+**Decisión para Gustavo: la cédula entra en la regla de personas.** Es un
+agregado nuestro: dos filas con la misma cédula y otro nombre preguntan, igual
+que con el correo o el teléfono. Se compara sin guiones, puntos ni espacios
+(«V-11.111.111» = «v11111111»). Si para él la cédula no alcanza para decir que
+es la misma persona, o si en sus planillas se repite (una cédula para varias
+empresas), se quita.
+
+**Qué cambia en las pruebas ya escritas.** Gustavo ya corrió D2–D23 en el
+«Edificio Prueba Carga». Para repetirlas con la regla nueva hay que usar **un
+edificio nuevo**, y los números son contra la administradora de hoy (con lo
+que dejó D10). Están corregidos en D5, D8, D10 y D21. Las demás no cambian de
+fondo; donde el archivo trae la columna de saldo vacía, ahora la fila avisa en
+ámbar «no trae saldo de condominio: se carga en 0» (D20, D21, D23).
+
+**Garita: activarla no cambia nada de lo ya probado** (leído en pruebas, sin
+cambiar nada). El módulo es una fila en `modulos_org` que se pone desde
+Operador (`fijar_modulo`, solo el operador), y no tiene disparadores. Ninguna
+función de cuentas lo mira: `cerrar_periodo`, `saldo_unidad`, los recibos, la
+mora, los pagos y el correo del recibo no lo usan. Lo leen solo
+`modulo_activo`/`mis_modulos`, la garita (`permitir_garita`), las
+invitaciones de visita y de vigilante (`crear_invitacion_visita`, y
+`crear_invitacion` cuando es para un vigilante), y en la app: la pestaña «Mis
+visitas» del residente y, en Accesos, la opción de invitar un vigilante.
+**Para leer el QR hace falta una cuenta de vigilante de ese edificio**: la
+ruta `/garita/<edificio>` deja entrar solo a vigilantes
+(`edificios_del_vigilante()`), no a la administradora. Hoy hay dos, y son de
+otros edificios (Edificio Administradora Unión y Torre Ida). Propuesta: cuando
+se active, la administradora de Gustavo invita como vigilante del Edificio
+Gustavo a una cuenta nueva suya (por ejemplo `gustavobricenob+garita@…`).
+**Activada el 26-oct** en el Edificio Gustavo de pruebas (Nicolás, cuando
+Gustavo terminó la ronda 5): una fila en `modulos_org` para ese edificio, con
+la nota «Ronda 5: pruebas G1–G10…». El Edificio Prueba Carga sigue sin ella.
+
+**Observación (sin cambiar nada):** «recibe corte» (`enviar_corte`) solo
+decide quién recibe **el recibo**. El aviso de visita de la garita
+(`garita_avisar()`) le escribe a todos los de la unidad que tengan correo,
+reciban o no el corte. Si Gustavo espera que «No» también apague esos avisos,
+es un cambio aparte.
+
+**Pruebas de «Mis visitas»** (garita activa en el Edificio Gustavo desde el
+26-oct; con las cuentas `+propietario`, `+inquilino` y una cuenta nueva de
+vigilante, que se crea en G6):
+
+| # | Qué hacer | Qué tiene que pasar |
+|---|---|---|
+| G1 | `+propietario` → la unidad **A-1** de Residencias Sintéticas (ese edificio **no** tiene garita) | No hay pestaña «Mis visitas». Entrar a mano a `/mi/<A-1>/visitas` → «no encontrada» |
+| G2 | `+propietario` → **02A** del Edificio Gustavo | Aparece «Mis visitas». El recibo, el saldo y los pagos de 02A, iguales que antes de activar la garita |
+| G3 | `+propietario` → 02A → Mis visitas → Invitar a alguien (nombre, cédula, placa, hasta mañana) | Sale la tarjeta con el código QR y el código escrito. «Enviar por WhatsApp» abre el mensaje con el código. La invitación aparece en «Invitaciones activas» |
+| G4 | Lo mismo con `+inquilino` → 04D | Igual. Las invitaciones de 04D no aparecen en las unidades de `+propietario` |
+| G5 | Mis vehículos: agregar una placa, quitarla | Queda y se quita |
+| G6 | **Crear la cuenta de vigilante.** (1) `+admin` → Edificio Gustavo → **Accesos** → pestaña **«Vigilantes»** (solo aparece con la garita activa) → «Edificio de la garita»: Edificio Gustavo → «Correo del vigilante»: una cuenta nueva de Gustavo, por ejemplo `gustavobricenob+garita@gmail.com` → **«Generar la invitación»** → «Copiar el código» (se muestra una sola vez). (2) En **otro navegador o una ventana privada**, abrir **la dirección del Preview** seguida de `/garita` (el enlace de «Copiar el mensaje completo» sirve si empieza con la misma dirección del Preview; si empieza con vecitap.com, no usarlo y avisar: ver «Los enlaces de Accesos», arriba). La app pide entrar: **«No tengo cuenta todavía»** → «Crear mi cuenta» con el correo de (1) y una clave nueva (si pide confirmar el correo, abrir el enlace que llega a ese correo y volver a `/garita`). (3) La garita muestra «Código de invitación»: pegar el código de (1) → **«Usar la invitación»** | La cuenta entra a la garita del **Edificio Gustavo, y solo a ese**. En Accesos → Vigilantes aparece la cuenta, activa |
+| G7 | Garita → Entrada → leer con la cámara el QR de G3 (desde otro teléfono, o impreso) | Veredicto verde con el nombre y la unidad. «Registrar entrada». En «Adentro» aparece |
+| G8 | En la garita, una visita sin invitación a 02A con «Avisar». Después, `+propietario` → 02A → «Quién ha entrado» | Llega el correo «Tiene una visita en la puerta · 02A» a la ficha de 02A (a todos los de la unidad con correo: el aviso de visita **no mira «recibe corte»**, ver la pregunta para Gustavo). En «Quién ha entrado» aparecen las visitas de G7 y G8, con hora |
+| G9 | `+propietario` → anular la invitación de G3 → la garita lee el mismo QR | Veredicto rojo: no deja entrar con esa invitación |
+| G10 | Garita → salida de la visita; Bitácora | La visita sale; la bitácora muestra la entrada y la salida del día |
+
+### Cierre de la ronda 5 (26-oct)
+
+Gustavo terminó la ronda 5: **0 fallas graves de la app**. Nicolás aprobó las
+decisiones de los casos 66–69 (ficha con el mismo nombre sin preguntar; mismo
+nombre con otra cédula = otra persona; el arreglo de 12D), con un cambio: un
+tratamiento fuera de la lista se carga **sin tratamiento**, nunca «Sr.».
+Desvíos: casos 70 a 75 de `docs/casos-de-uso-mejorados.md`. `npx tsc
+--noEmit`, `npm run lint` y `npm run build` en verde. **M4 reaplicada en
+pruebas** (rollback y archivo, tal cual), con sus verificaciones. Sin commit.
+
+| # | Pedido | Qué se hizo |
+|---|---|---|
+| — | Prueba 18 de Gustavo (77X contra la ficha de Sr. Boso) | Con la regla nueva pregunta sin nada marcado. Verificado con la planilla pegada y los datos de pruebas de hoy |
+| — | Preguntas en una línea | «¿Es la misma persona? Archivo: X · Ficha: Y [Sí] [No]» (caso 75) |
+| 1 | Menú | Inicio · Propietarios · Pagos recibidos · Gastos del mes · Cortes de cuenta · Estadísticas · Accesos · Cobros. «Movimientos registrados» arriba y destacado en «Pagos recibidos». Las rutas no cambian (caso 70) |
+| 2 | Color | `--a-favor` #15803D en el claro (contraste abajo). **El menta, quitado** el 26-oct con la propuesta aprobada (caso 77, abajo) |
+| 3 | «s.n.» y «&» | Sin tratamiento cuando el archivo no trae uno. En M4 (caso 72) |
+| 4 | «Reabrir» | «Este mes ya emitió N recibos. ¿Seguro?» (caso 73). Respuestas abajo |
+| 5 | La previa | «Lo que dice su archivo» y «Se queda: …» (caso 75) |
+| 6 | Nota de la unidad | Tabla `notas_unidad` con RLS solo para la administración (el residente sí puede leer la fila de su unidad: ver abajo). Ficha e importador. En M4 (caso 74) |
+| 7 | Garita | **Activada** en el Edificio Gustavo de pruebas (`modulos_org`, solo ese edificio; Edificio Prueba Carga sigue sin ella). Pruebas G1–G10 reescritas, con los pasos para crear la cuenta de vigilante |
+
+**2. Dónde se usa hoy el menta** (`--verde`: #0E7C6B en el claro, #00D1B2 en
+el oscuro; leído en el código, sin cambiar nada):
+
+- **«Al día»:** el estado de la unidad (`lib/estados-unidad.ts` → la etiqueta
+  de Propietarios, la ficha, el mapa del edificio y su leyenda), el total en
+  cero de la ficha y de Propietarios, y en el residente la tarjeta y el resumen
+  de sus unidades («Al día»). En Inicio, «Por cobrar» cuando es 0.
+- **Mensajes de éxito** (`Aviso tono="verde"`): Accesos, Ajustes, Gastos del
+  mes, Cortes, Pagos recibidos, la ficha («Listo»), «Datos cargados», Mis
+  visitas del residente, los avisos de la garita y el aviso de Entrar
+  («revise su correo»). Y «Guardado ✓» al lado de los botones
+  (`.estado-guardado-ok`), y el aviso de la consola de Operador.
+- **Estados «bien»:** pago «Confirmado», suscripción «Activa», mes con recibos
+  «enviados», invitación «aceptada», «Se carga» y «N unidades nuevas» en
+  Cargar datos, «El mes va con superávit», los abonos en el historial de la
+  ficha, el total de «Cuadran» en la conciliación, y en Estadísticas el
+  porcentaje cobrado ≥ 80 % y la variación a la baja.
+- **Operador:** módulo «habilitado», cobro «pagado», servicio activo y los
+  puntos de estado de la consola.
+- **Aparte, con su propio color:** el veredicto «Puede pasar» de la garita, a
+  pantalla completa (`--veredicto-si`, #0E7C6B / #0E9C86), y la página de
+  venta `public/inicio.html` (#00D1B2 en puntos e íconos). No dependen de
+  `--verde`.
+
+**Propuesta — aprobada por Nicolás el 26-oct y hecha (caso 77):**
+
+- **«Al día» y los estados «bien»** (Confirmado, Activa, enviados, aceptada,
+  habilitado): en neutro, con la etiqueta gris de siempre (`tono="neutro"`,
+  `--tinta-2` sobre `--lienzo-alt`). Lo que importa se sigue viendo por
+  contraste: deuda en rojo, a favor en verde, pendiente en ámbar.
+- **Mensajes de éxito:** un tono nuevo **«ok»**: borde y texto en `--tinta`
+  (marino) sobre `--lienzo-alt`, con un ✓ adelante. «Guardado ✓» en
+  `--tinta-2`. Así un mensaje de éxito no se confunde con «a favor».
+- **Estadísticas:** cobrado ≥ 80 % y variación a la baja, en neutro; lo malo
+  sigue en ámbar y rojo.
+- **El veredicto de la garita: dejarlo verde.** Es una señal a pantalla
+  completa para alguien que mira de lejos, junto con el rojo de «No pasa»; no
+  se lee como «a favor». Si se quiere un solo verde, podría pasar al #15803D
+  (con letra blanca: 5,02:1).
+- **`public/inicio.html`:** es la página de venta, con su propia paleta;
+  fuera de este cambio salvo que se pida.
+
+**Contraste de #15803D** (WCAG AA ≥ 4,5:1 para texto): **5,02:1** sobre las
+tarjetas (blanco), **4,79:1** sobre el fondo de la página, **4,59:1** sobre su
+fondo de etiqueta (#F1F7E7); **4,30:1** sobre una fila con el mouse encima
+(`--lienzo-alt`), la misma salvedad que tenía el anterior. El #84CC16 del
+oscuro no cambió: 8,98:1 sobre las tarjetas, 9,86:1 sobre el fondo y 7,01:1
+sobre su fondo de etiqueta.
+
+**4. Qué hacen hoy «Reabrir» y «Descartar»** (leído en
+`reabrir_periodo()` y `descartar_periodo()` de pruebas):
+
+- **«Reabrir»** (solo un mes cerrado, y solo el más reciente): **borra los
+  recibos y los cortes de ese mes**, desmarca los pagos y ajustes que se habían
+  aplicado al cierre, y deja el mes abierto con sus gastos, para volver a
+  cerrarlo. Si los recibos ya se habían enviado, pide una segunda confirmación
+  («Este mes ya se envió…»). Ahora la primera dice cuántos recibos borra.
+- **«Descartar»** (solo un mes **abierto**): borra el mes y sus gastos. La base
+  lo rechaza si el mes tiene recibos emitidos o pagos amarrados a él. **Un mes
+  cerrado no se puede descartar**: hay que reabrirlo antes.
+- **¿Otra confirmación para borrar un mes con recibos?** Hoy no hace falta: no
+  se puede borrar directo un mes con recibos. El camino es reabrir (que ya
+  pregunta con el número, y dos veces si se envió) y después descartar (que ya
+  pregunta). **Aprobado y hecho (caso 78):** «Descartar», en un mes que se
+  reabrió, recuerda que ese mes había emitido recibos.
+
+**6. ¿Un residente puede leer la fila de su unidad?** **Sí** (leído en
+pruebas). La política `unidades_ver` deja leer las unidades de
+`unidades_visibles()`, que incluye `membresias.unidad_id`: un `select`
+directo devuelve todas sus columnas. La junta ve las de su edificio y el
+contador las de la organización. Por eso la nota va en una tabla aparte,
+`notas_unidad`, con RLS `puede_operar` (propietario de la cuenta y
+administrador). **Verificado con la cuenta `+propietario`**, con una nota en
+02A del Edificio Gustavo, en una transacción deshecha: no la ve (0 filas), no
+la puede escribir (RLS), no puede vaciar la tabla (sin TRUNCATE), su fila de
+`unidades` no la trae, y `mis_unidades()` y `saldos_actuales` tampoco. `anon`:
+«permission denied». Ninguna pantalla de /mi ni el recibo leen la tabla
+(revisado en el código).
+
+**7. Pregunta para Gustavo (garita):** con «recibe corte = No» la persona deja
+de recibir **el recibo**, pero **los avisos de visita** de la garita le siguen
+llegando (`garita_avisar()` le escribe a todos los de la unidad con correo).
+¿Está bien así?
+
+**Lo que no se pudo probar acá:** las pantallas, en el navegador (no hay
+claves de las cuentas de prueba en la máquina). Va en la lista de Gustavo
+(D41–D52 y G1–G10).
+
+**Segunda revisión de Nicolás (26-oct).** M4 y su rollback, **aprobados**:
+van en el commit. Decisiones: el menta, con la propuesta (hecho, caso 77);
+caso 76, aprobado; «Descartar» recuerda los recibos (hecho, caso 78).
+`tsc`, `lint` y `build` en verde.
+
+- **Decisión para Gustavo: el verde de «Puede pasar»** en la garita. Ahora es
+  #15803D en los dos temas, con letra blanca **5,02:1**. El anterior del tema
+  oscuro (#0E9C86) daba 3,43:1, debajo del mínimo. Si prefiere uno más oscuro,
+  #166534 da 7,13:1.
+- **a. Los enlaces de Accesos** (invitación de residente y mensaje para el
+  vigilante): **sin cambiar nada todavía, a la espera de Nicolás.** Los arma
+  `urlDelSitio()` (`lib/url-sitio.ts`), que toma, en este orden:
+  1. `NEXT_PUBLIC_SITE_URL`, si está definida. Por diseño se define **solo en
+     Production** de Vercel, con `https://vecitap.com`;
+  2. si no, la dirección que el navegador tiene abierta (`window.location`);
+  3. si no, `NEXT_PUBLIC_VERCEL_URL` (en el servidor), y por último localhost.
+
+  **Entonces, en un Preview el enlace debería ser el del propio Preview.** Solo
+  apunta a vecitap.com si `NEXT_PUBLIC_SITE_URL` también está marcada para
+  «Preview» en Vercel (Settings → Environment Variables). Desde acá no se
+  puede ver: no hay acceso a Vercel en esta máquina. Además, el comentario de
+  `components/admin/Accesos.tsx` dice lo contrario («tiene que llevar el
+  dominio público aunque quien lo copie esté mirando un Preview»): quedó de
+  antes y no coincide con lo que hace el código. Un riesgo más chico: si se
+  copia desde la dirección de un deploy en particular (`…-abc123….vercel.app`)
+  y no desde la de la rama, el enlace queda en ese deploy aunque después haya
+  otro. **Propuesta:**
+  1. Revisar en Vercel que `NEXT_PUBLIC_SITE_URL` esté marcada **solo** en
+     «Production». Si también está en «Preview», desmarcarla ahí. No toca
+     producción.
+  2. En `baseDelSitio()`, entre el paso 1 y el 2, usar
+     `NEXT_PUBLIC_VERCEL_BRANCH_URL` (la variable de sistema de Vercel con la
+     dirección fija de la rama, la misma para cada deploy de `dev`) cuando
+     `NEXT_PUBLIC_VERCEL_ENV === "preview"`. En producción no cambia nada:
+     el paso 1 manda antes.
+  3. Corregir el comentario de `Accesos.tsx`.
+- **b. `types/supabase.ts`, regenerado** desde vecitap-pruebas (con la
+  herramienta de Supabase, no a mano). Frente al archivo del último commit
+  cambia:
+  - **`notas_unidad`** (nueva). Trae una relación más que la que había
+    escrito a mano: además de `unidades`, la que Supabase detecta con la vista
+    `saldos_actuales` por `unidad_id`;
+  - **`PostgrestVersion`**: «14.5» → «14.17» (la versión del servidor de
+    pruebas; solo la usa `supabase-js` para los tipos);
+  - **`importar_unidades`**: **la firma no cambia** (`p_edificio`, `p_filas`,
+    `p_personas` → `Json`); solo se movió de lugar (orden alfabético);
+  - **`reemplazar_inquilino` y `reemplazar_propietario`**: cambian de orden
+    entre sí; las dos firmas son idénticas.
+
+  Nada más. El archivo conserva el formato que tenía (BOM y CRLF), así que el
+  diff es solo eso.
+
+### Para el documento de Gustavo: «Ronda 6 del tramo 2»
+
+Lo que Gustavo prueba en el Preview de `dev` después de la ronda 5. El detalle
+de cada prueba (qué hacer y qué tiene que pasar) está en la lista de abajo,
+con su número. Los archivos están en
+`C:\Users\Nicolas\Downloads\planillas-ronda5\` (Nicolás se los pasa).
+
+**Antes de empezar:** crear un edificio nuevo, **«Edificio Ronda 6»**, en la
+administradora de pruebas de Gustavo. Sin unidades y sin meses cerrados. El
+«Edificio Prueba Carga» ya tiene las cargas de la ronda 5 y no sirve para
+repetirlas.
+
+**Qué se repite y por qué.** La regla de personas cambió (un dato en común
+con otro nombre ya no tiene «Sí» por omisión), las preguntas son de una
+línea, la tabla se llama «Lo que dice su archivo» y la nota se guarda. Por
+eso se repiten, en el edificio nuevo, las de «Cargar datos» que ya hizo.
+**D5, D8 y D10 no hace falta repetirlas: D33–D35 hacen lo mismo con la
+plantilla llena, y dan los mismos números.** D21 pasa a ser D48.
+
+Los valores de D12, D17–D20, D22 y D23 son los de su fila. Lo que cambia por
+estar en un edificio nuevo, con las fichas que dejó la ronda 5, se dice en la
+columna «Ojo».
+
+| Orden | Prueba | Nueva o repetida | Dónde | Archivo | Ojo |
+|---|---|---|---|---|---|
+| 1 | D31 | nueva | cualquier edificio | se descarga desde la app (compararla con `Vecitap-plantilla-carga.xlsx`) | |
+| 2 | D32 | nueva | Edificio Ronda 6 | `Vecitap-plantilla-carga.xlsx` | |
+| 3 | D17 | repetida | Edificio Ronda 6, **antes** de cargar nada | `pegado-5-filas.txt` | Descartar al terminar |
+| 4 | D33, D34, D47 | nuevas | Edificio Ronda 6 | `Vecitap-plantilla-llena.xlsx` | |
+| 5 | D35 | nueva (en lugar de D10) | Edificio Ronda 6 | `Vecitap-plantilla-llena.xlsx` | Completa el correo de respaldo de 4 fichas del Edificio Gustavo |
+| 6 | D12 | repetida | Edificio Ronda 6 | `piloto-orga-anonimo.csv` | En «Personas para revisar» aparecen las 13 preguntas, sin frenar nada: las 53 unidades se omiten |
+| 7 | D18 | repetida | Edificio Ronda 6 | `piloto-orga-anonimo-repetido.csv` | |
+| 8 | D19 | repetida | Edificio Ronda 6 | `piloto-orga-anonimo.csv` | Volver a activar 12D al terminar |
+| 9 | D22 | repetida | Edificio Ronda 6 | `piloto-orga-anonimo-paga.csv` | «Inquilino Prueba» ya existe desde la ronda 5 sin datos en común: aparece además «se llama igual que una persona que ya está en la administradora» (por omisión, ficha nueva) |
+| 10 | D36, D37 | nuevas | Edificio Ronda 6 | `Vecitap-plantilla-casos.xlsx` | |
+| 11 | D38 | nueva | Edificio Ronda 6 | `Vecitap-plantilla-casos-cambios.xlsx` | |
+| 12 | D45 | nueva | Edificio Ronda 6 | `pegado-sn-y.txt` | |
+| 13 | D50 | nueva | Edificio Ronda 6 (cualquier ficha) | ninguno (se escribe a mano) | |
+| 14 | D23 | repetida | Edificio Ronda 6 | `piloto-mismo-telefono.csv` y `pegado-mismo-telefono-ficha.txt` | Ana, Beto y Carla ya existen desde la ronda 5: el archivo da «2 unidades nuevas · 0 personas nuevas · 2 ya existían», con la pregunta de 88B en una línea y sin respuesta; lo pegado usa la ficha de Carla sin preguntar (mismo nombre) |
+| 15 | D20 | repetida | Edificio Ronda 6 | `pegado-empresa.txt` | La empresa ya existe: usa su ficha (sin tratamiento) y no crea otra. Ámbar «no trae saldo de condominio: se carga en 0» |
+| 16 | D48 | nueva (en lugar de D21) | Edificio Ronda 6 | `pegado-cuenta-de-prueba.txt` | Descartar al terminar |
+| 17 | D51 | nueva | Edificio Ronda 6 | ninguno | Cierra un mes de prueba en el edificio nuevo, lo reabre y lo descarta |
+| 18 | D40 | nueva | Edificio Ronda 6 | `piloto-orga-anonimo.xlsx` y `pegado-5-filas.txt` | Descartar al terminar |
+| 19 | D46 | nueva | **Edificio Prueba Carga** | `piloto-orga-anonimo-D13.csv` | Descartar al terminar |
+| 20 | D39, D41, D42, D43, D52 | nuevas | Edificio Gustavo (o cualquiera) | ninguno | D43 y D52, en el tema claro y en el oscuro |
+| 21 | D44 | nueva | Edificio Gustavo | ninguno | **No reabrir**: solo leer la confirmación y cancelar |
+| 22 | D49 | nueva | Edificio Gustavo (02A) y perfil Propietario | ninguno | Borrar la nota al terminar |
+| 23 | G1–G10 | nuevas | Edificio Gustavo (garita activa desde el 26-oct) y Residencias Sintéticas (G1) | ninguno | G6 crea la cuenta de vigilante, con los pasos en la fila. Antes, leer «Los enlaces de Accesos» (punto a de la segunda revisión, arriba) |
+
+**Preguntas para Gustavo en el mismo documento:**
+
+1. La cédula entra en la regla de personas (agregado nuestro): ¿le sirve, o en
+   sus planillas una cédula se repite entre personas distintas?
+2. Con «recibe corte = No» la persona deja de recibir el recibo, pero los
+   avisos de visita de la garita le siguen llegando. ¿Está bien así?
+3. El verde de «Puede pasar» en la garita: #15803D (5,02:1 con la letra
+   blanca), ¿o uno más oscuro, #166534 (7,13:1)?
+
 ### Lista de pruebas — ronda 5 (Preview de `dev`)
 
-Perfil **Admin** (`+admin`), salvo donde se indica. Archivos: en
+Perfil **Admin** (`+admin`), salvo donde se indica. **Desde el 26-oct** «Cierre del mes» se llama **«Gastos del mes»** y «Pagos», **«Pagos recibidos»** (caso 70): la lista ya usa los nombres nuevos. Archivos: en
 `C:\Users\Nicolas\Downloads\planillas-ronda5\` (Nicolás se los pasa a
 Gustavo); cada prueba dice cuál usa. Los valores esperados salen de la
 corrida del 25-oct contra los datos de pruebas de la administradora de
@@ -413,12 +763,12 @@ Gustavo.
 | D2 | Crear un edificio nuevo, **«Edificio Prueba Carga»** → Propietarios → Cargar datos → subir `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.csv` | «Los encabezados están en la fila 1». «1. Qué es cada columna», 7 columnas, cada una «por el encabezado «…»»: CODIGO → Código de la unidad, ALICUOTA → Alícuota %, SALDO INICIAL → Saldo inicial, PROPIETARIO → Propietario, TELEFONO → Teléfono del propietario, CORREO → Correo del propietario, Correo 2 → Correo de respaldo |
 | D3 | Descartar → subir `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.xlsx`; después, lo mismo con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-numeros.xlsx` | Las mismas 7 columnas y **la misma previa** que con el CSV, número por número (en el segundo, los montos vienen como números de Excel) |
 | D4 | (con el CSV de D2) Cambiar una columna a «No usar esta columna» y volver | La previa cambia al momento. Si se quita el código: aviso rojo «Falta la columna del código», y la previa desaparece |
-| D5 | (con el CSV de D2) Mirar «2. Qué va a pasar» y «Filas que no se cargan» | **«53 unidades nuevas» · «1 no se cargan» · «14 con observaciones» · «1 personas nuevas · 28 ya existían»** (con 05C y 05D todavía sin contestar). El botón está **gris** y al lado dice «Faltan 2 respuestas en «Personas para revisar» (las marcadas en ámbar)». «54 filas leídas… sumarían **99,99993 %**», y un aviso **azul** «Las alícuotas van a sumar 99,99993 %… dentro de la tolerancia del cierre (0,01): el mes se puede cerrar». «Fila 55 · Estacionamiento: no tiene alícuota», con la casilla «Cargarla como estacionamiento con alícuota 0»: marcarla → 54 nuevas y 15 con observaciones; desmarcarla |
+| D5 | (con el CSV de D2) Mirar «2. Qué va a pasar» y «Filas que no se cargan». **Regla del 25-oct por la noche: repetir en un edificio nuevo** («Edificio Prueba Carga 2») | **«53 unidades nuevas» · «1 no se cargan» · «12 con observaciones» · «0 personas nuevas · 36 ya existían»** (todas las personas ya están en la administradora después de D10). El botón está **gris** y al lado dice «Faltan 10 respuestas en «Personas para revisar» (las marcadas en ámbar)». «54 filas leídas… sumarían **99,99993 %**», y un aviso **azul** «Las alícuotas van a sumar 99,99993 %… dentro de la tolerancia del cierre (0,01): el mes se puede cerrar». «Fila 55 · Estacionamiento: no tiene alícuota», con la casilla «Cargarla como estacionamiento con alícuota 0»: marcarla → 54 nuevas y 13 con observaciones; desmarcarla. *(Antes del 25-oct por la noche: 1 persona nueva · 28 ya existían, 14 con observaciones, faltaban 2 respuestas.)* |
 | D6 | (CSV de D2) En la previa, filas 10C, 10D, 12C, 12D | Teléfono en ámbar: en 10C y 10D «trae texto además del número: se guarda tal cual, revíselo»; en 12C y 12D «no parece un teléfono de Venezuela: se guarda tal cual». **No desaparece** |
 | D7 | (CSV de D2) Fila 02A; después, PB. L-B o 04B | 02A: «Boso. Tumegotef… figura en 6 filas (02A, 02B, 02C, 02D, 08C, 08D): se registra una sola vez» (es la única persona nueva). PB. L-B / 04B: «el propietario ya está en la administradora: se usa la ficha de Sr. …», y en PB. L-B, además, «correo de respaldo: se completa con …» |
-| D8 | (CSV de D2) «Personas para revisar» | **14 preguntas**, cada una con su razón. **10** «tiene el mismo correo (o teléfono) que…»: **8** con «Sí, es la misma persona» por omisión (la de **11C** nombra a 04D «Fiban…», por correo, **y** a 11A «Lozaf…», por teléfono) y **2 ⚠ sin respuesta por omisión, en ámbar: 05C y 05D** («Elija una opción»; «Esta no tiene respuesta por omisión…»; muestran los dos correos, `delivered+risafarag64@resend.dev` y `delivered+nabisipodalena98@resend.dev`, y dicen que con «Sí» los recibos y avisos van al segundo). **3** «se llama igual que… pero no comparten correo ni teléfono» (03A/04A, 05C/06C y 05C/06D; por omisión «Son personas distintas»; las dos de 05C cambian según lo que se conteste en 05C/05D). **1** «se llama igual que una persona que ya está en la administradora» (02A; por omisión «ficha nueva»). En la previa, **12 filas en ámbar**: 10 con «el archivo dice «…», pero la ficha que coincide por correo o teléfono es la de …: revise que sea la misma persona» (03D, 06A, 07B, 09A, 09B, 11A, 11B, 11C, 12C, 12D), y 05C y 05D con «falta elegir en «Personas para revisar»…». La lista de los 10 casos, para comparar con la planilla real, está arriba («Para Gustavo») |
+| D8 | (CSV de D2, en el edificio nuevo de D5) «Personas para revisar» | **13 preguntas**. **10** «tiene el mismo correo (o teléfono) que…», **las 10 sin respuesta por omisión, en ámbar** («Elija una opción»; «Esta no tiene respuesta por omisión…»): 03D, 05C, 05D, 06A, 07B, 09A, 09B, 11C, 12C y 12D. Cada una nombra a cada persona una vez con todos sus datos y filas (03D: «el mismo correo y teléfono que «Vonepomecen Tolip F, c.a.» (filas 12, 13: 03A, 03B)»; 11C: «el mismo correo que «Fiban…» (fila 19, 04D) y el mismo teléfono que «Lozaf Cagigorefi» (filas 44, 45: 11A, 11B)»). 05C, 05D y 11C además muestran los dos correos y a dónde irían los recibos con «Sí». **3** «se llama igual que… pero no comparten correo, teléfono ni cédula» (03A/04A, 05C/06C y 05C/06D; por omisión «Son personas distintas»). **Ninguna** contra la administradora: cada fila tiene una ficha con su mismo nombre, y esa se usa; las fichas de otro nombre que comparten el dato se nombran en la fila, sin ámbar («también comparte datos con…: es otra persona…, esa ficha no se usa»). En la previa, **12 filas en ámbar**: las 10 con «falta elegir en «Personas para revisar» si es la misma persona…», y 10C y 10D por el teléfono. *(Antes del 25-oct por la noche: 14 preguntas, 8 con «Sí» por omisión.)* |
 | D9 | (CSV de D2) Columna «Tipo» de la previa | PB. L-B y Mz. L-B: **Local** («deducido del código»). Sótano queda Apartamento. Se puede cambiar el tipo de cualquier fila |
-| D10 | **Después de cerrar la ronda 4.** Con el CSV de D2: en 05C y 05D elegir **«No, son personas distintas»** (el botón se habilita); el resto, por omisión → «Cargar 53 unidades» → leer la confirmación → «Sí, cargar» | Confirmación: «Se crean 53 unidades. Se registran 1 personas nuevas y se usan 28 fichas que ya existían. 1 filas no se cargan…». Resultado: **«Datos cargados: 53 unidades nuevas. 1 personas nuevas, 16 fichas existentes completadas.»** En Propietarios están las 53. **Ojo: esto completa el correo de respaldo de 16 fichas del Edificio Gustavo** (y el teléfono de 04D y 10A), **y eso queda después de borrar el Edificio Prueba Carga** |
+| D10 | (En el edificio nuevo de D5.) Con el CSV de D2: en las **10** preguntas en ámbar elegir **«No, son personas distintas»** (el botón se habilita con la última); el resto, por omisión → «Cargar 53 unidades» → leer la confirmación → «Sí, cargar» | Confirmación: «Se crean 53 unidades. Se registran 0 personas nuevas y se usan 36 fichas que ya existían. 1 filas no se cargan…». Resultado: **«Datos cargados: 53 unidades nuevas. 0 personas nuevas, 4 fichas existentes completadas.»** En Propietarios están las 53, cada una con la ficha de su mismo nombre. **Ojo: completa el correo de respaldo de 4 fichas del Edificio Gustavo** (03D «Beganu», 07B «Bumo», 09B «Fomicu», 11A «Lozaf»), y eso queda después de borrar el edificio. D33–D35 hacen lo mismo con la plantilla: **basta una de las dos**. *(La corrida anterior, ya hecha: 53 unidades, 1 persona nueva, 16 fichas completadas.)* |
 | D11 | Fichas de **PB. L-B**, **10C** y **02A**; después, perfil **Propietario** (`+propietario`) → /mi | PB. L-B: tipo **Local**, propietario «Sr. Firumib Fomor Minisasuf c.a.» (ficha que ya existía) con el «Correo de respaldo» completado. 10C: teléfono completo, «04245551666 Filobe ligozan». 02A: «Sr. Boso. Tumegotef…», con correo de respaldo. 05C: propietario «Sr. Livofesupi Sonopu», correo `delivered+risafarag64@resend.dev` (no el de «Bumagi…»). /mi del Propietario: **igual que antes de D10** (C23 de la ronda 4); no aparece el Edificio Prueba Carga |
 | D12 | Cargar datos **otra vez** con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.csv` | «53 ya existen y se omiten» · «1 no se cargan» · «4 con observaciones» (los teléfonos). No aparece «Unidades que ya existen» (no hay nada que cambiar). El botón dice «Cargar 0 unidades» y está gris |
 | D13 | Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-D13.csv` | «Unidades que ya existen»: 03C «alícuota 1,63352 → 1,70000» y 04B «alícuota 1,58434 → 1,60000». En la previa, 04B en ámbar: «el archivo trae otro propietario («Otro Dueño Prueba»; la ficha tiene «Sr. Mefaz Detap Betopod Padul»): no se cambia desde aquí, cámbielo desde la ficha». Marcar «Actualizar» en las dos → aviso **ámbar** «Las alícuotas van a sumar 100,08207 %, no 100 %», y la confirmación lo repite (la carga **no** se bloquea) → «Cargar 2 unidades» → «0 unidades nuevas, 2 actualizadas». Fichas: 03C con 1,70000; 04B con 1,60000 y el propietario **sigue siendo** Mefaz. «Otro Dueño Prueba» no aparece en ningún lado. **Después, devolver** 03C a 1,63352 y 04B a 1,58434 desde sus fichas |
@@ -429,16 +779,38 @@ Gustavo.
 | D18 | En Edificio Prueba Carga → Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-repetido.csv` | En «Filas que no se cargan», **las dos**: «Fila 12 · 03A» y «Fila 56 · 03A», con «el código se repite en el archivo (filas 12, 56): no se carga ninguna de esas filas. Corrija el archivo y vuelva a subirlo». «52 ya existen y se omiten · 3 no se cargan». Descartar |
 | D19 | Ficha de **12D** → desmarcar «Unidad activa» → Guardar → Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.csv` | «Fila 51 · 12D: el código es de la unidad 12D, que está dada de baja: reactívela desde su ficha si vuelve a usarse». «52 ya existen y se omiten · 2 no se cargan». Descartar y volver a marcar 12D como activa |
 | D20 | Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-empresa.txt` → «Leer lo pegado» → «Cargar 1 unidad» → «Sí, cargar» | En Propietarios, 99Z: «Inversiones Prueba Carga, C.A.», **sin «Sr.»**. En su ficha, Tratamiento «sin tratamiento». Cambiarle el teléfono → Guardar → recargar: **sigue sin tratamiento** |
-| D21 | Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-cuenta-de-prueba.txt` → «Leer lo pegado». Después: «Cargar 1 unidad» → «Sí, cargar» → perfil **Propietario** (`+propietario`) → /mi | 77X en ámbar: «el archivo dice «Otro Nombre Prueba», pero la ficha que coincide por correo o teléfono es la de Sr. Boso. Tumegotef… (…): …revise que sea la misma persona», y «hay 6 fichas con el correo o teléfono…». Entre paréntesis sale una de 02A, 02B, 02C, 02D u 08D: son fichas iguales, y cuál sale depende del orden en que llegan. Todas son de unidades de la cuenta Propietario. Se carga con esa ficha. /mi del Propietario: **no aparece 77X ni el Edificio Prueba Carga**; lo mismo que en D11. (Vincular una unidad a una ficha no da acceso: el acceso es por Accesos) |
+| D21 | Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-cuenta-de-prueba.txt` → «Leer lo pegado». Después: elegir **«Es otra persona: ficha nueva»** → «Cargar 1 unidad» → «Sí, cargar» → perfil **Propietario** (`+propietario`) → /mi | **Regla del 25-oct por la noche:** 77X en ámbar «falta elegir en «Personas para revisar»…», y la pregunta **sin respuesta por omisión**: ««Otro Nombre Prueba» (fila 2, 77X) comparte datos con fichas que ya están en la administradora: el correo de Sr. Boso. Tumegotef… (…)…», con una opción por cada ficha de Boso (con su correo) y «Es otra persona: ficha nueva». Botón gris hasta elegir. Con «ficha nueva»: «1 personas nuevas», 77X con «Otro Nombre Prueba». /mi del Propietario: **no aparece 77X ni el edificio**. (Vincular una unidad a una ficha no da acceso: el acceso es por Accesos.) *(Antes: se usaba la ficha de Boso sin preguntar, con un aviso ámbar.)* |
 | D22 | Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-paga.csv` | Columnas: además de las 7, INQUILINO → Inquilino y QUIEN PAGA → Quién paga. «Unidades que ya existen»: 06B «se registra el inquilino: Inquilino Prueba · **quién paga Propietario → Inquilino**». Marcar «Actualizar» en 06B → «Cargar 1 unidad» → «0 unidades nuevas, 1 actualizadas. 1 personas nuevas». Ficha de 06B: inquilino «Inquilino Prueba», y paga el inquilino |
 | D23 | En Edificio Prueba Carga → Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-mismo-telefono.csv`. Después, Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-mismo-telefono-ficha.txt` → «Leer lo pegado» | **Archivo:** «2 unidades nuevas». En «Personas para revisar», en ámbar y **sin respuesta**: «Fila 3 (88B): «Beto Prueba Telefono» tiene el mismo teléfono que «Ana Prueba Telefono» (fila 2, 88A)… Los correos son distintos: esta fila trae delivered+beto-telefono@resend.dev y «Ana…» trae delivered+ana-telefono@resend.dev. Si contesta «Sí», los recibos y avisos de 88B van a ir a delivered+ana-telefono@resend.dev». 88B en ámbar. Botón gris, «Falta 1 respuesta…». Elegir «No» → se habilita → «Cargar 2 unidades» → «2 personas nuevas». Fichas: 88A con el correo de Ana, 88B con el de Beto. **Pegado:** 88C en ámbar y la pregunta **sin respuesta**: ««Carla Prueba Telefono» (fila 2, 88C) tiene el teléfono de Sr. Ana Prueba Telefono (88A), pero otro correo: el archivo trae delivered+carla-telefono@resend.dev y la ficha delivered+ana-telefono@resend.dev…», con tres opciones: la ficha de Ana, la de Beto (cada una con su correo) y «Es otra persona: ficha nueva». Botón gris hasta elegir. Elegir «ficha nueva» → «Cargar 1 unidad» → «1 personas nuevas»; 88C con el correo de Carla. (Si en el archivo se contesta «Sí», 88B quedaría con la ficha de Ana y el correo de Beto como respaldo: no cargar así) |
-| D24 | **Ajustes del 25-oct.** Propietarios → Nueva unidad → escribir en «Saldo inicial de condominio» `1234.56` y pasar al campo siguiente; lo mismo con `1234,56` y con `12,3,4`. Después: ficha de una unidad → saldo inicial; Cierre del mes → presupuesto y tasa; Cobros → monto de un cobro; Pagos → monto; perfil Propietario → Reportar un pago → monto | Al salir del campo se ve **«1.234,56»** en los dos primeros casos. `12,3,4` queda como está, y al guardar aparece el aviso de siempre («…no se entiende. Use coma para los decimales…»). En todos los demás campos de monto, igual: al salir se ve con punto de miles y coma decimal. Alícuota, mora y tolerancia no cambian (no son montos) |
+| D24 | **Ajustes del 25-oct.** Propietarios → Nueva unidad → escribir en «Saldo inicial de condominio» `1234.56` y pasar al campo siguiente; lo mismo con `1234,56` y con `12,3,4`. Después: ficha de una unidad → saldo inicial; Gastos del mes → presupuesto y tasa; Cobros → monto de un cobro; Pagos recibidos → monto; perfil Propietario → Reportar un pago → monto | Al salir del campo se ve **«1.234,56»** en los dos primeros casos. `12,3,4` queda como está, y al guardar aparece el aviso de siempre («…no se entiende. Use coma para los decimales…»). En todos los demás campos de monto, igual: al salir se ve con punto de miles y coma decimal. Alícuota, mora y tolerancia no cambian (no son montos) |
 | D25 | Perfil **Propietario** (`+propietario`) → unidad **02D** del Edificio Gustavo → «Reportar un pago». Después, la **02A** | 02D: arriba, en verde oliva, **«Este mes no tiene que pagar: tiene $ 35,12 a favor»**, y debajo el formulario completo: se puede reportar igual. 02A (debe): no aparece el aviso. El monto es el mismo que dice «Mi recibo» de 02D como «Saldo a favor» |
 | D26 | Con la app **instalada en el teléfono**: Propietario → Mi recibo → Imprimir. Después, Admin → Cortes → imprimir un recibo | «← Volver» e «Imprimir o guardar PDF» a tamaño normal de teléfono (letra como la de la app, alto de un dedo); la hoja se ve reducida, entera de ancho, sin tener que moverla de lado. «← Volver» vuelve a la app. Imprimir: el papel sale igual que antes |
-| D27 | Admin → Pagos → Registrar un pago → tocar el campo «Fecha del pago» (en cualquier parte, no solo el iconito). Probarlo en el tema claro y en el oscuro, y en el teléfono. Lo mismo en Propietario → Reportar un pago | Se abre el **calendario del navegador**. En el oscuro, el calendario y el iconito se ven oscuros, con el iconito visible. Los días después de hoy no se pueden elegir. Si se escribe a mano una fecha futura y se guarda: Admin dice «La fecha del pago no puede ser futura.»; el residente, lo mismo debajo del campo |
-| D28 | En **Edificio Prueba Carga** (53 unidades; 54 si en D5 se cargó el Estacionamiento) → Cierre del mes → con un gasto o presupuesto cargado, bajar dentro de «Cómo se reparte» | El **encabezado** (UNIDAD, ALÍCUOTA, CONDOMINIO… TOTAL DEL RECIBO) queda fijo arriba de la caja mientras bajan las filas, con fondo, sin que las filas se vean por detrás. Lo mismo en la previa de «Cargar datos» |
-| D29 | Mirar saldos a favor en el tema **claro** y en el **oscuro**: Propietarios (filtro «A favor»), la ficha de 02D, Inicio («Saldos a favor»), el mapa del edificio, Cierre del mes («A favor»); y en el Propietario, la tarjeta y el recibo de 02D | Todo lo que dice «a favor» va en **verde oliva** (claro #4D7C0F, oscuro #84CC16), distinto del verde de «al día». En el mapa del edificio, 02D, 06C y 06D tienen su propio color, y el punto «con saldo a favor» de la leyenda también |
+| D27 | Admin → Pagos recibidos → Registrar un pago → tocar el campo «Fecha del pago» (en cualquier parte, no solo el iconito). Probarlo en el tema claro y en el oscuro, y en el teléfono. Lo mismo en Propietario → Reportar un pago | Se abre el **calendario del navegador**. En el oscuro, el calendario y el iconito se ven oscuros, con el iconito visible. Los días después de hoy no se pueden elegir. Si se escribe a mano una fecha futura y se guarda: Admin dice «La fecha del pago no puede ser futura.»; el residente, lo mismo debajo del campo |
+| D28 | En **Edificio Prueba Carga** (53 unidades; 54 si en D5 se cargó el Estacionamiento) → Gastos del mes → con un gasto o presupuesto cargado, bajar dentro de «Cómo se reparte» | El **encabezado** (UNIDAD, ALÍCUOTA, CONDOMINIO… TOTAL DEL RECIBO) queda fijo arriba de la caja mientras bajan las filas, con fondo, sin que las filas se vean por detrás. Lo mismo en la previa de «Cargar datos» |
+| D29 | Mirar saldos a favor en el tema **claro** y en el **oscuro**: Propietarios (filtro «A favor»), la ficha de 02D, Inicio («Saldos a favor»), el mapa del edificio, Gastos del mes («A favor»); y en el Propietario, la tarjeta y el recibo de 02D | Todo lo que dice «a favor» va en **verde oliva** (claro #4D7C0F, oscuro #84CC16), distinto del verde de «al día». En el mapa del edificio, 02D, 06C y 06D tienen su propio color, y el punto «con saldo a favor» de la leyenda también |
 | D30 | Cobros → Agregar un cobro → cambiar «Cómo se calcula» entre «% de lo que paga de condominio», «Un monto igual a cada unidad» y «Presupuesto del mes × alícuota». Mirar también el título de la columna en la tabla | El título del campo cambia: «Porcentaje %» / «Monto $» / «Monto $» con «No se usa: sale del mes». En la tabla: «Monto $» si ningún cobro es un porcentaje; si hay de los dos tipos, «Monto $ o porcentaje %» y cada celda con su «$» o «%» debajo |
+| D31 | **Plantilla oficial (25-oct, noche).** Propietarios → Cargar datos → «Descargar plantilla» | Se baja `Vecitap-plantilla-carga.xlsx`, igual al de Gustavo: hojas «Léame primero», «Unidades» (vacía, columnas azules y grises, listas desplegables) y «Ejemplo». Lo mismo en el teléfono |
+| D32 | Subir esa plantilla sin llenarla (o `C:\Users\Nicolas\Downloads\planillas-ronda5\Vecitap-plantilla-carga.xlsx`) | Aviso rojo: «La hoja «Unidades» está vacía: no se cargó nada. Llénela con una fila por unidad (la hoja «Ejemplo» solo muestra cómo) y vuelva a subir el archivo.» No aparece ninguna previa: los datos de «Ejemplo» **no** se cargan |
+| D33 | Crear un edificio nuevo, **«Edificio Plantilla»** (o usar el de D5 si no se cargó) → Cargar datos → subir `C:\Users\Nicolas\Downloads\planillas-ronda5\Vecitap-plantilla-llena.xlsx` | «Los encabezados están en la fila 1 de la hoja «Unidades» de Vecitap-plantilla-llena.xlsx». **Las 21 columnas** por el encabezado: CODIGO → Código, TIPO → Tipo de unidad, ALICUOTA % → Alícuota %, SALDO CONDOMINIO $ → Saldo inicial, SALDO ADMINISTRACION $ → Saldo de administración, QUIEN PAGA → Quién paga, PROPIETARIO TRATAMIENTO / NOMBRE / CEDULA O RIF / TELEFONO / CORREO / CORREO RESPALDO / RECIBE CORTE → Tratamiento del propietario / Propietario / Cédula o RIF del propietario / Teléfono / Correo / Correo de respaldo / El propietario recibe el corte, y lo mismo para INQUILINO. **NOTA → «Nota de la unidad»** (desde el 26-oct; antes «No usar esta columna»). No hay aviso de columnas que faltan |
+| D34 | (con el archivo de D33) «2. Qué va a pasar», «Personas para revisar» y la previa | **Lo mismo que D5 y D8 con el CSV**, número por número: 53 nuevas, 1 no se carga (Estacionamiento), 12 con observaciones, 0 personas nuevas · 36 ya existían, 10 preguntas sin respuesta por omisión y «Faltan 10 respuestas». En la previa, PB. L-B y Mz. L-B con tipo **Local** (de la columna TIPO) y la columna «Quién paga» en «Propietario» |
+| D35 | En las 10 preguntas en ámbar, «No, son personas distintas» → «Cargar 53 unidades» → «Sí, cargar» | Igual que D10: «53 unidades nuevas. 0 personas nuevas, 4 fichas existentes completadas.» (las mismas 4 fichas del Edificio Gustavo que en D10). **Saltar si ya se hizo D10** |
+| D36 | En el mismo edificio → Cargar datos → subir `C:\Users\Nicolas\Downloads\planillas-ronda5\Vecitap-plantilla-casos.xlsx` (12 unidades inventadas, P01–P12) | «12 unidades nuevas» · «6 con observaciones» · «14 personas nuevas». Botón gris, «Faltan 2 respuestas». En la previa: **P01** «Sres.», cédula J-30000001-1, saldo de administración $ 25,00; **P02** «Sin tratamiento»; **P03** tratamiento vacío; **P04** «Pedro… figura en 2 filas (P04, P05): se registra una sola vez» (la cédula escrita «V-11.111.111» y «v11111111» es la misma); **P06** y **P07** en ámbar «falta elegir…»; **P08** la propietaria con «recibe corte» No, el inquilino «Tomás» con su cédula, correo de respaldo y «recibe corte» Sí; **P09** en ámbar «paga el inquilino, pero no hay correo del inquilino…»; **P10** en ámbar «nadie de esta unidad recibe el corte…»; **P11** en ámbar «no trae saldo de condominio: se carga en 0» y «falta el correo del propietario…»; **P12** en ámbar el tipo «Bodega», el tratamiento «Srta.» («no está en la lista: se carga sin tratamiento») y «Tal vez» en recibe corte («tiene que decir Sí o No»). En P01, P03, P05 y P08, la columna «Nota de la unidad» con su texto. En «Personas para revisar», dos líneas sin nada marcado: «¿Es la misma persona? Archivo: «Luisa Prueba Plantilla» (P06) · Archivo: «Pedro Prueba Plantilla» (P04, P05) [Sí] [No]», con «Con «Sí», los recibos de P06 van a …pl-pedro…» debajo; y «¿Es la misma persona? Archivo: «Pedro Prueba Plantilla» (P07) · Archivo: «Pedro Prueba Plantilla» (P04, P05) [Sí] [No]» |
+| D37 | En P06 y P07, «No, son personas distintas» → «Cargar 12 unidades» → «Sí, cargar». Después, las fichas de P01, P02, P03, P04, P06, P08 y P12 | «12 unidades nuevas. 14 personas nuevas.» Fichas: **P01** «Sres. Comercial Prueba Plantilla, C.A.» (el tratamiento del archivo manda aunque sea una empresa), cédula J-30000001-1, saldo inicial de administración 25,00; **P02** «Inversiones…, C.A.» **sin tratamiento**; **P03** «Junta Prueba Plantilla» sin tratamiento (no traía, y es una junta); **P04** «Ing. Pedro…», cédula «V-11.111.111», y **P05 con la misma ficha**; **P06** «Lic. Luisa…»; **P08** saldo de administración 5,00, paga el inquilino, la propietaria **sin** la marca de recibir el corte y el inquilino con ella, y el correo de respaldo del inquilino; **P12** «Ana Prueba Plantilla» **sin tratamiento** (el «Srta.» no está en la lista). El resultado dice además «4 notas guardadas (solo las ve la administración)», y en las fichas de P01, P03, P05 y P08, «Nota (solo la ve la administración)» con su texto. En la ficha, la lista de tratamientos tiene Sr., Sra., Sres., Dr., Dra., Ing., Lic. y Sin tratamiento. (Cortes solo se puede mirar después de cerrar un mes: ahí, el recibo de P08 iría solo al inquilino y el de P10 a nadie) |
+| D38 | Cargar datos → subir `C:\Users\Nicolas\Downloads\planillas-ronda5\Vecitap-plantilla-casos-cambios.xlsx` | «12 ya existen y se omiten». En «Unidades que ya existen»: **P01** «saldo de administración $ 25,00 → $ 30,00»; **P03** «nota «Saldo negativo = a favor» → «Saldo negativo = a favor (revisado)»»; **P08** «propietario recibe el corte: No → Sí · inquilino recibe el corte: Sí → No». Nada más cambia (no aparece «otro propietario» en ninguna). Marcar «Actualizar» en las tres → «Cargar 3 unidades» → «0 unidades nuevas, 3 actualizadas… Se cambió «recibe el corte» en 2. 1 nota guardada…» Fichas: P01 con 30,00; P03 con la nota nueva; P08 con la propietaria recibiendo el corte y el inquilino no |
+| D39 | Propietarios → Nueva unidad → «Tratamiento»; ficha de cualquier unidad → «Tratamiento» | La lista: Sr., Sra., Sres., Dr., Dra., Ing., Lic., **Sin tratamiento** (con mayúscula). Guardar una con «Ing.» → recargar → sigue «Ing.» |
+| D40 | Cargar datos con los archivos de siempre: `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo.xlsx` (una sola hoja, sin «Unidades») y lo pegado de D17 | Se leen como antes (la primera hoja con encabezados; lo pegado igual). Sin columnas de la plantilla, aparece un aviso ámbar arriba: «Faltan columnas que la plantilla pide: «Correo del propietario»…» solo si falta alguna de las cinco (en estos archivos no falta ninguna) |
+| D41 | **Cierre de la ronda 5 (26-oct).** Mirar el menú de Admin, en la computadora y en el teléfono | En este orden: Inicio · Propietarios · **Pagos recibidos** · **Gastos del mes** · Cortes de cuenta · Estadísticas · Accesos · Cobros (al final). Cada sección abre lo mismo que antes. En Inicio, si falta el presupuesto: «…en «Gastos del mes» antes de cerrar» |
+| D42 | Pagos recibidos | Arriba, **«Movimientos registrados»**, con el título más grande y una franja naranja arriba. Debajo, los botones Registrar · Conciliar con el banco · Exoneraciones, con «Registrar un pago» abierto y visible. Registrar un pago de prueba → aparece arriba, en «Movimientos registrados» |
+| D43 | Tema **claro** y **oscuro**: Propietarios (filtros «A favor» y «Al día»), la ficha de 02D y la de una unidad al día, Inicio, el mapa del edificio; perfil Propietario → 02D y 02A | «A favor» en verde (#15803D en el claro, #84CC16 en el oscuro). **«Al día», en gris** (etiqueta gris, número en el color del texto), ya no en menta: en el mapa, las unidades al día con borde gris y su punto gris en la leyenda. **No queda menta en ninguna parte** |
+| D44 | Edificio Gustavo → Gastos del mes → «Reabrir Octubre 2026» | La confirmación empieza con **«Este mes ya emitió 53 recibos. ¿Seguro?»** y sigue con lo que borra. Elegir **«No» / cancelar: no reabrir** (el mes tiene los recibos de las pruebas) |
+| D45 | En un edificio de prueba (el de D33) → Cargar datos → pegar el contenido de `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-sn-y.txt` → «Leer lo pegado» → «Cargar 2 unidades» | En Propietarios: 97S «Firma Prueba Plantilla, s.n.» y 97T «Prueba Plantilla & Hijos», **los dos sin «Sr.»** (el archivo no trae tratamiento y el nombre es de una firma) |
+| D46 | Cargar datos con `C:\Users\Nicolas\Downloads\planillas-ronda5\piloto-orga-anonimo-D13.csv` en el **Edificio Prueba Carga** | La tabla se titula **«Lo que dice su archivo»**. En 04B, en ámbar: «el archivo trae otro propietario («Otro Dueño Prueba»): no se cambia desde aquí, cámbielo desde la ficha» y debajo, en negrita, **«Se queda: Sr. Mefaz Detap Betopod Padul»**. Descartar |
+| D47 | (con el archivo de D33, o el CSV de D5, en un edificio nuevo) «Personas para revisar» | Cada pregunta es **una línea**: «¿Es la misma persona? Archivo: «Beganu, s.a.» (03D) · Archivo: «Vonepomecen Tolip F, c.a.» (03A, 03B) [Sí] [No]». Ninguna marcada. En 05C, 05D y 11C, debajo, en chico: «Con «Sí», los recibos de 05C van a …nabisipodalena98…, no a …risafarag64…». Tocar «Sí» o «No» lo marca (botón naranja) y la previa cambia; el botón de cargar se habilita con la última respuesta |
+| D48 | **Prueba 18 de Gustavo, con la regla nueva:** Cargar datos → pegar `C:\Users\Nicolas\Downloads\planillas-ronda5\pegado-cuenta-de-prueba.txt` → «Leer lo pegado» | Una sola línea, **sin nada marcado**: «¿Es la misma persona? Archivo: «Otro Nombre Prueba» (77X) · Ficha: Sr. Boso. Tumegotef… [Sí] [No]» (las fichas iguales de Boso, en una). 77X en ámbar «falta elegir…» y el botón gris hasta contestar. Descartar |
+| D49 | Ficha de **02A** del Edificio Gustavo → Datos → «Nota (solo la ve la administración)»: escribir «Prueba de nota, ronda 5» → Guardar → recargar. Después, perfil **Propietario** (`+propietario`) → 02A: «Mi recibo», «Imprimir», «Pagos», «Mis visitas» y el resumen de /mi | En Admin, la nota sigue ahí, con el contador «N/1000 caracteres». **En el Propietario, la nota no aparece en ninguna parte** (ni en /mi, ni en el recibo en pantalla ni impreso). Al terminar, borrar la nota (dejar el campo vacío → Guardar) |
+| D50 | Ficha de cualquier unidad → «Nota…»: pegar un texto muy largo | El campo no deja pasar de 1.000 caracteres. En «Cargar datos», una NOTA más larga sale en ámbar «tiene más de 1.000 caracteres: se guardan los primeros 1.000» |
+| D51 | En el edificio de D33 (con unidades cargadas): Gastos del mes → abrir un mes con tasa → cargar un gasto → «Cerrar el mes y emitir recibos» → «Reabrir» → «Descartar este mes» | Al reabrir: «Este mes ya emitió N recibos. ¿Seguro?». Al tocar «Descartar este mes», arriba en rojo: **«Este mes ya se había cerrado y emitió recibos: se reabrió el … y esos recibos se borraron…»**. «Sí, descartar» → el mes desaparece. En un mes que nunca se cerró, ese renglón no aparece |
+| D52 | Guardar algo en cualquier pantalla (la ficha, Ajustes, un cobro); registrar un pago; entrar con un correo nuevo («revise su correo») | Los mensajes de éxito, en **marino sobre gris claro, con un ✓** adelante; «Guardado ✓» en gris oscuro. Ninguno en menta. En la garita (G7), «Puede pasar» en verde #15803D, con letra blanca legible |
 
 ## Ronda 4 del tramo 2 (18-oct) — bloques 1, 2 y 4 construidos; el importador va en la ronda 5
 

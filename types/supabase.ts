@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -1168,6 +1168,52 @@ export type Database = {
             columns: ["pago_id"]
             isOneToOne: false
             referencedRelation: "pagos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notas_unidad: {
+        Row: {
+          actualizada_en: string
+          actualizada_por: string | null
+          nota: string
+          org_id: string
+          unidad_id: string
+        }
+        Insert: {
+          actualizada_en?: string
+          actualizada_por?: string | null
+          nota: string
+          org_id: string
+          unidad_id: string
+        }
+        Update: {
+          actualizada_en?: string
+          actualizada_por?: string | null
+          nota?: string
+          org_id?: string
+          unidad_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notas_unidad_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_unidad_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: true
+            referencedRelation: "saldos_actuales"
+            referencedColumns: ["unidad_id"]
+          },
+          {
+            foreignKeyName: "notas_unidad_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: true
+            referencedRelation: "unidades"
             referencedColumns: ["id"]
           },
         ]
@@ -2497,10 +2543,6 @@ export type Database = {
           largo: number
         }[]
       }
-      importar_unidades: {
-        Args: { p_edificio: string; p_filas: Json; p_personas: Json }
-        Returns: Json
-      }
       historial_unidad: {
         Args: { p_unidad: string }
         Returns: {
@@ -2514,6 +2556,10 @@ export type Database = {
         }[]
       }
       hoy_local: { Args: never; Returns: string }
+      importar_unidades: {
+        Args: { p_edificio: string; p_filas: Json; p_personas: Json }
+        Returns: Json
+      }
       inicio_dia_local: { Args: { p_dia: string }; Returns: string }
       invitaciones_de: {
         Args: { p_org: string }
@@ -2725,7 +2771,7 @@ export type Database = {
         Args: { p_confirmar?: boolean; p_periodo: string }
         Returns: undefined
       }
-      reemplazar_propietario: {
+      reemplazar_inquilino: {
         Args: {
           p_correo: string
           p_documento: string
@@ -2737,7 +2783,7 @@ export type Database = {
         }
         Returns: number
       }
-      reemplazar_inquilino: {
+      reemplazar_propietario: {
         Args: {
           p_correo: string
           p_documento: string

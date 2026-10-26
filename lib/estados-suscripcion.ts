@@ -17,7 +17,7 @@ export type EstadoSuscripcion =
 
 const CONFIG: Record<EstadoSuscripcion, { etiqueta: string; tono: TonoBadge }> = {
   prueba: { etiqueta: "En prueba", tono: "tenue" },
-  activa: { etiqueta: "Activa", tono: "verde" },
+  activa: { etiqueta: "Activa", tono: "neutro" },
   vencida: { etiqueta: "Pago vencido", tono: "ambar" },
   suspendida: { etiqueta: "Suspendida", tono: "rojo" },
   cancelada: { etiqueta: "Cancelada", tono: "tenue" },

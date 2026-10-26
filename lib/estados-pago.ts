@@ -9,7 +9,7 @@ export type EstadoPago = "reportado" | "conciliado" | "anulado";
 
 const CONFIG: Record<EstadoPago, { etiqueta: string; tono: TonoBadge }> = {
   reportado: { etiqueta: "Esperando revisión", tono: "ambar" },
-  conciliado: { etiqueta: "Confirmado", tono: "verde" },
+  conciliado: { etiqueta: "Confirmado", tono: "neutro" },
   anulado: { etiqueta: "Rechazado", tono: "rojo" },
 };
 

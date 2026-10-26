@@ -6,8 +6,7 @@ import { Button, Campo, Input, Select } from "@/components/ui";
 import { montoAlSalir, num0, numeroMalEscrito } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { TIPOS_UNIDAD } from "@/lib/admin/tipos";
-
-const TRATAMIENTOS = ["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""];
+import { TRATAMIENTOS, etiquetaTratamiento } from "@/lib/admin/personas";
 
 /** Portado de AltaUnidad() en app.html:1567-1648. */
 export function AltaUnidad({
@@ -162,7 +161,7 @@ export function AltaUnidad({
             <Select value={f.prefijo} onChange={(e) => set("prefijo", e.target.value)}>
               {TRATAMIENTOS.map((p) => (
                 <option key={p} value={p}>
-                  {p || "sin tratamiento"}
+                  {etiquetaTratamiento(p)}
                 </option>
               ))}
             </Select>

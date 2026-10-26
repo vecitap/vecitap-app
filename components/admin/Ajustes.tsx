@@ -204,7 +204,7 @@ export function Ajustes({
 
   return (
     <div style={{ display: "grid", gap: 20, maxWidth: 860 }}>
-      {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "verde"}>{mensaje.texto}</Aviso>}
+      {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>}
 
       <DatosAdministradora
         // Sin key: lo que se ve ya es lo guardado, y remontar la tarjeta

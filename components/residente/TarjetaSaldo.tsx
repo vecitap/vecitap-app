@@ -47,7 +47,7 @@ export function TarjetaSaldo({ unidad, estado }: { unidad: Unidad; estado?: { te
           {estado ? (
             <>
               <div style={{ fontSize: 12, color: "var(--tenue)" }}>Lo paga su inquilino</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: estado.debe ? "var(--rojo)" : "var(--verde)" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: estado.debe ? "var(--rojo)" : "var(--tinta)" }}>
                 {estado.texto}
               </div>
             </>
@@ -62,7 +62,7 @@ export function TarjetaSaldo({ unidad, estado }: { unidad: Unidad; estado?: { te
               </div>
               <div
                 className="mono"
-                style={{ fontSize: 26, fontWeight: 700, color: saldo > 0 ? "var(--rojo)" : saldo < 0 ? "var(--a-favor)" : "var(--verde)" }}
+                style={{ fontSize: 26, fontWeight: 700, color: saldo > 0 ? "var(--rojo)" : saldo < 0 ? "var(--a-favor)" : "var(--tinta)" }}
               >
                 {usd(Math.abs(saldo))}
               </div>

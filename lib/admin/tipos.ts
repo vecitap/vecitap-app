@@ -36,6 +36,9 @@ export const TIPOS_UNIDAD = {
 } as const;
 export type TipoUnidad = keyof typeof TIPOS_UNIDAD;
 
+/** Largo máximo de la nota de una unidad (el mismo límite de `notas_unidad`, M4). */
+export const LARGO_NOTA = 1000;
+
 /**
  * Unidad con `paga` ("¿quién paga el condominio?"). Aparte de `Unidad` a
  * propósito: solo la piden las pantallas que la usan (la lista de

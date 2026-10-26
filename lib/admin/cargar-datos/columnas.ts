@@ -16,30 +16,48 @@ export type Campo =
   | "codigo"
   | "alicuota"
   | "saldo"
+  | "saldo_hon"
   | "tipo"
+  | "tratamiento"
   | "propietario"
+  | "documento"
   | "telefono"
   | "correo"
   | "correo_respaldo"
+  | "corte"
+  | "inq_tratamiento"
   | "inquilino"
+  | "inq_documento"
   | "inq_telefono"
   | "inq_correo"
+  | "inq_correo_respaldo"
+  | "inq_corte"
   | "paga"
+  | "nota"
   | "ignorar";
 
 export const CAMPOS: Record<Campo, string> = {
   codigo: "Código de la unidad",
   alicuota: "Alícuota %",
   saldo: "Saldo inicial",
+  saldo_hon: "Saldo de administración",
   tipo: "Tipo de unidad",
+  tratamiento: "Tratamiento del propietario",
   propietario: "Propietario",
+  documento: "Cédula o RIF del propietario",
   telefono: "Teléfono del propietario",
   correo: "Correo del propietario",
   correo_respaldo: "Correo de respaldo",
+  corte: "El propietario recibe el corte",
+  inq_tratamiento: "Tratamiento del inquilino",
   inquilino: "Inquilino",
+  inq_documento: "Cédula o RIF del inquilino",
   inq_telefono: "Teléfono del inquilino",
   inq_correo: "Correo del inquilino",
+  inq_correo_respaldo: "Correo de respaldo del inquilino",
+  inq_corte: "El inquilino recibe el corte",
   paga: "Quién paga",
+  nota: "Nota de la unidad",
   ignorar: "No usar esta columna",
 };
 
@@ -86,25 +104,49 @@ const P_CORREO = ["correo", "correos", "email", "mail", "emails"];
 const P_INQUILINO = ["inquilino", "inquilinos", "arrendatario", "ocupante"];
 const P_RESPALDO = ["2", "respaldo", "alternativo", "alterno", "otro", "secundario"];
 const P_PAGA = ["paga", "pagador", "responsable"];
+const P_TRATAMIENTO = ["tratamiento", "tratamientos", "prefijo"];
+const P_DOCUMENTO = ["cedula", "cedulas", "rif", "ci", "documento", "identificacion"];
+const P_CORTE = ["corte", "cortes"];
+const P_HONORARIOS = ["administracion", "administradora", "honorarios", "honorario", "hon", "adm", "admin"];
+const P_NOTA = ["nota", "notas", "observacion", "observaciones", "comentario", "comentarios"];
+
+/**
+ * Una columna de notas («NOTA» de la plantilla). Desde el 25-oct (decisión de
+ * Gustavo) se guarda: es la nota de la unidad, que solo ve la administración
+ * (tabla `notas_unidad`, M4).
+ */
+export function esColumnaNota(encabezado: unknown): boolean {
+  const palabras = limpiarEncabezado(encabezado).split(" ");
+  return palabras.some((p) => parecida(p, P_NOTA));
+}
 
 /** Qué campo nombra un encabezado, o null. */
 export function campoPorEncabezado(encabezado: unknown): Campo | null {
   const t = limpiarEncabezado(encabezado);
   if (!t) return null;
+  if (esColumnaNota(encabezado)) return "nota";
   const palabras = t.split(" ");
   const hay = (lista: string[]) => palabras.some((p) => parecida(p, lista));
   const esInquilino = hay(P_INQUILINO);
+  const respaldo = palabras.some((p) => P_RESPALDO.includes(p));
 
   if (hay(P_CORREO)) {
-    if (esInquilino) return "inq_correo";
-    if (palabras.some((p) => P_RESPALDO.includes(p))) return "correo_respaldo";
+    if (esInquilino) return respaldo ? "inq_correo_respaldo" : "inq_correo";
+    if (respaldo) return "correo_respaldo";
     return "correo";
   }
   if (hay(P_TELEFONO)) return esInquilino ? "inq_telefono" : "telefono";
+  // Los de la plantilla oficial («PROPIETARIO TRATAMIENTO», «INQUILINO CEDULA
+  // O RIF», «PROPIETARIO RECIBE CORTE») van antes que el nombre: si no, la
+  // palabra «propietario» o «inquilino» los tomaba por el nombre.
+  if (hay(P_TRATAMIENTO)) return esInquilino ? "inq_tratamiento" : "tratamiento";
+  if (hay(P_DOCUMENTO) || /(^| )c i( |$)/.test(t)) return esInquilino ? "inq_documento" : "documento";
+  // «recibe» solo exacta: con una letra de diferencia sería «recibo».
+  if (hay(P_CORTE) || palabras.includes("recibe")) return esInquilino ? "inq_corte" : "corte";
   if (esInquilino) return "inquilino";
   if (t.includes("quien paga") || hay(P_PAGA)) return "paga";
   if (hay(P_ALICUOTA)) return "alicuota";
-  if (hay(P_SALDO)) return "saldo";
+  if (hay(P_SALDO)) return hay(P_HONORARIOS) ? "saldo_hon" : "saldo";
   if (hay(P_TIPO)) return "tipo";
   if (hay(P_PERSONA)) return "propietario";
   if (hay(P_CODIGO)) return "codigo";
@@ -136,7 +178,45 @@ export function filaDeEncabezados(crudas: string[][]): number {
   return -1;
 }
 
-const RE_CORREO = /[^\s@]+@[^\s@]+\.[^\s@]{2,}/;
+const conDatos = (filas: string[][], desde: number) =>
+  filas.slice(desde + 1).some((f) => f.some((c) => String(c ?? "").trim() !== ""));
+
+/**
+ * Qué hoja del Excel se carga (decisión de Nicolás del 25-oct):
+ *  - la que se llama «Unidades» (la de la plantilla de Vecitap); si está
+ *    vacía, no se carga nada y se avisa;
+ *  - si el archivo no la tiene, la primera hoja con encabezados reconocibles
+ *    (o, si ninguna los tiene, la primera con datos, como siempre);
+ *  - «Ejemplo» no se carga nunca: sus datos son inventados. «Léame
+ *    primero» tampoco.
+ */
+export function elegirHoja(hojas: { nombre: string; filas: string[][] }[]): { nombre: string; filas: string[][] } | { error: string } {
+  const nombre = (h: { nombre: string }) => limpiarEncabezado(h.nombre);
+  const unidades = hojas.find((h) => nombre(h) === "unidades");
+  if (unidades) {
+    if (!conDatos(unidades.filas, filaDeEncabezados(unidades.filas))) {
+      return {
+        error:
+          "La hoja «Unidades» está vacía: no se cargó nada. Llénela con una fila por unidad (la hoja «Ejemplo» solo muestra cómo) y vuelva a subir el archivo.",
+      };
+    }
+    return unidades;
+  }
+  // Las instrucciones de la plantilla («Léame primero») tampoco son datos.
+  const validas = hojas.filter((h) => !nombre(h).includes("ejemplo") && !nombre(h).startsWith("leame"));
+  const conEncabezados = validas.find((h) => {
+    const e = filaDeEncabezados(h.filas);
+    return e >= 0 && conDatos(h.filas, e);
+  });
+  if (conEncabezados) return conEncabezados;
+  const primera = validas.find((h) => conDatos(h.filas, -1));
+  if (primera) return primera;
+  if (hojas.some((h) => conDatos(h.filas, -1)))
+    return { error: "Solo la hoja «Ejemplo» tiene datos, y esa no se carga: sus datos son de muestra. Llene la hoja «Unidades» y vuelva a subir el archivo." };
+  return { error: "El archivo no tiene datos." };
+}
+
+const RE_CORREO =/[^\s@]+@[^\s@]+\.[^\s@]{2,}/;
 
 function proporcion(valores: string[], prueba: (v: string) => boolean): number {
   return valores.length ? valores.filter(prueba).length / valores.length : 0;
@@ -168,9 +248,14 @@ function campoPorContenido(valores: string[]): { campo: Campo; razon: string } |
 const SEGUNDO: Partial<Record<Campo, Campo>> = {
   correo: "correo_respaldo",
   correo_respaldo: "inq_correo",
+  inq_correo: "inq_correo_respaldo",
   telefono: "inq_telefono",
   propietario: "inquilino",
+  tratamiento: "inq_tratamiento",
+  documento: "inq_documento",
+  corte: "inq_corte",
 };
+
 
 /**
  * La propuesta para cada columna. Cada campo se usa una sola vez: si dos
@@ -194,15 +279,18 @@ export function proponerColumnas(crudas: string[][], encabezados: number): Propu
   };
 
   // 1. Por el encabezado, si lo hay.
+  const notas = new Set<number>();
   if (encabezados >= 0) {
     crudas[encabezados].forEach((h, i) => {
+      if (esColumnaNota(h)) notas.add(i);
       const c = campoPorEncabezado(h);
       if (c) ocupar(i, c, `por el encabezado «${String(h).trim()}»`);
     });
   }
-  // 2. Por el contenido, las que quedaron sin reconocer.
+  // 2. Por el contenido, las que quedaron sin reconocer (una nota no: su
+  //    texto libre parecería nombres de personas).
   for (let i = 0; i < ancho; i++) {
-    if (propuestas[i].campo !== "ignorar") continue;
+    if (propuestas[i].campo !== "ignorar" || notas.has(i)) continue;
     const c = campoPorContenido(datos.map((f) => f[i] ?? ""));
     if (c) ocupar(i, c.campo, `por el contenido: ${c.razon}`);
   }

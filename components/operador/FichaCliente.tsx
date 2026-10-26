@@ -392,7 +392,7 @@ export function FichaCliente({
                         style={{
                           fontSize: 11.5,
                           fontWeight: 600,
-                          color: x.estado === "pagado" ? "var(--verde)" : x.estado === "anulado" ? "var(--tenue)" : "var(--ambar)",
+                          color: x.estado === "pagado" ? "var(--tinta)" : x.estado === "anulado" ? "var(--tenue)" : "var(--ambar)",
                         }}
                       >
                         {x.estado}
@@ -454,7 +454,7 @@ export function FichaCliente({
                 </Campo>
               </div>
               {servicio && (
-                <span style={{ fontSize: 12, color: servicio.activo ? "var(--verde)" : "var(--tenue)" }}>
+                <span style={{ fontSize: 12, color: servicio.activo ? "var(--tinta)" : "var(--tenue)" }}>
                   {servicio.activo ? "activo en los recibos" : "apagado"}
                 </span>
               )}

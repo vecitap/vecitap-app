@@ -17,7 +17,7 @@ type InsertarGasto = Database["public"]["Tables"]["gastos"]["Insert"];
 type Mensaje = { texto: string; tipo: "ok" | "error" };
 type Confirma =
   | { que: "cerrar" }
-  | { que: "reabrir"; id: string; etiqueta: string; enviado: boolean }
+  | { que: "reabrir"; id: string; etiqueta: string; enviado: boolean; recibos: number | null }
   | { que: "reabrir_enviado"; id: string; texto: string };
 
 const serie = (a: number, m: number) => a * 12 + m;
@@ -66,6 +66,8 @@ export function CierreMes({
   const [simulable, setSimulable] = useState(true);
   const [confirma, setConfirma] = useState<Confirma | null>(null);
   const [descartando, setDescartando] = useState(false);
+  // Cuándo se reabrió el mes abierto, si se reabrió (null = nunca se cerró).
+  const [reabiertoEl, setReabiertoEl] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
 
@@ -182,6 +184,32 @@ export function CierreMes({
     router.refresh();
   }
 
+  /**
+   * Antes de preguntar si se descarta, mira si el mes se había cerrado y se
+   * reabrió (ronda 5, caso 78): esos recibos se borraron al reabrirlo, pero
+   * ya los pudo haber visto alguien. Lo dice `auditoria` (el cambio de
+   * `periodos` de cerrado a abierto), que la administradora puede leer. Si
+   * la consulta falla, se pregunta igual, sin el recordatorio.
+   */
+  async function pedirDescartar() {
+    setDescartando(true);
+    setReabiertoEl(null);
+    if (!periodoAbierto) return;
+    const supabase = crearClienteNavegador();
+    const { data } = await supabase
+      .from("auditoria")
+      .select("creado_en")
+      .eq("entidad", "periodos")
+      .eq("entidad_id", periodoAbierto.id)
+      .filter("antes->>estado", "eq", "cerrado")
+      .filter("despues->>estado", "eq", "abierto")
+      .order("creado_en", { ascending: false })
+      .limit(1);
+    const cuando = data?.[0]?.creado_en;
+    if (cuando)
+      setReabiertoEl(new Date(cuando).toLocaleDateString("es-VE", { timeZone: "America/Caracas", day: "numeric", month: "long", year: "numeric" }));
+  }
+
   async function descartarMes() {
     if (!periodoAbierto) return;
     setOcupado(true);
@@ -256,6 +284,17 @@ export function CierreMes({
     const { error } = await supabase.from("gastos").update(campos).eq("id", id);
     if (error) return fallo(error);
     cargarGastos();
+  }
+
+  /**
+   * Antes de preguntar, cuenta los recibos que ese mes emitió (ronda 5, caso
+   * 73): reabrir los borra, y la confirmación lo dice con el número. Si el
+   * conteo falla, la confirmación sale igual, sin el número.
+   */
+  async function pedirReabrir(p: { id: string; etiqueta: string; enviado_en: string | null }) {
+    const supabase = crearClienteNavegador();
+    const { count, error } = await supabase.from("recibos").select("id", { count: "exact", head: true }).eq("periodo_id", p.id);
+    setConfirma({ que: "reabrir", id: p.id, etiqueta: p.etiqueta, enviado: !!p.enviado_en, recibos: error ? null : (count ?? 0) });
   }
 
   async function reabrir(periodoId: string, confirmado: boolean) {
@@ -349,7 +388,7 @@ export function CierreMes({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       {mensaje && (
-        <Aviso tono={mensaje.tipo === "error" ? "rojo" : "verde"}>{mensaje.texto}</Aviso>
+        <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>
       )}
 
       {!periodoAbierto ? (
@@ -428,13 +467,19 @@ export function CierreMes({
             <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--linea)" }}>
               {!descartando ? (
                 <button
-                  onClick={() => setDescartando(true)}
+                  onClick={pedirDescartar}
                   style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--tenue)", fontSize: 12.5, textDecoration: "underline" }}
                 >
                   Descartar este mes
                 </button>
               ) : (
                 <div style={{ padding: 14, borderRadius: "var(--radio-chico)", background: "var(--rojo-bg)" }}>
+                  {reabiertoEl && (
+                    <div style={{ fontSize: 13, marginBottom: 8, fontWeight: 600, color: "var(--rojo)" }}>
+                      Este mes ya se había cerrado y emitió recibos: se reabrió el {reabiertoEl} y esos
+                      recibos se borraron. Si alguien llegó a verlos, va a dejar de encontrarlos.
+                    </div>
+                  )}
                   <div style={{ fontSize: 13, marginBottom: 10 }}>
                     Se borra {periodoAbierto.etiqueta} con todos los gastos que le cargó. No se
                     puede deshacer. Los pagos ya registrados no se tocan.
@@ -460,7 +505,7 @@ export function CierreMes({
             )}
             {usaPresupuesto && !!periodoAbierto.presupuesto && periodoAbierto.presupuesto > 0 && (
               <div style={{ marginTop: 14 }}>
-                <Aviso tono={comunes > periodoAbierto.presupuesto ? "ambar" : "verde"} titulo={comunes > periodoAbierto.presupuesto ? "El mes va en déficit" : "El mes va con sobrante"}>
+                <Aviso tono={comunes > periodoAbierto.presupuesto ? "ambar" : "ok"} titulo={comunes > periodoAbierto.presupuesto ? "El mes va en déficit" : "El mes va con sobrante"}>
                   Presupuestado {usd(periodoAbierto.presupuesto)} · ejecutado {usd(comunes)} ·
                   diferencia {usd(periodoAbierto.presupuesto - comunes)}.
                 </Aviso>
@@ -639,7 +684,7 @@ export function CierreMes({
               <Button
                 type="button"
                 variante="secundario"
-                onClick={() => setConfirma({ que: "reabrir", id: cerrados[0].id, etiqueta: cerrados[0].etiqueta, enviado: !!cerrados[0].enviado_en })}
+                onClick={() => pedirReabrir(cerrados[0])}
               >
                 <RotateCcw size={15} /> Reabrir {cerrados[0].etiqueta}
               </Button>
@@ -672,7 +717,7 @@ export function CierreMes({
                     <td className="mono" style={{ textAlign: "right" }}>{p.presupuesto ? usd(p.presupuesto) : "—"}</td>
                     <td className="mono" style={{ textAlign: "right" }}>{usd(p.total_gastos)}</td>
                     <td className="mono" style={{ textAlign: "right" }}>{nf(2).format(p.tasa_bcv)}</td>
-                    <td>{p.enviado_en ? <Badge tono="verde">enviados</Badge> : <Badge tono="ambar">sin enviar</Badge>}</td>
+                    <td>{p.enviado_en ? <Badge tono="neutro">enviados</Badge> : <Badge tono="ambar">sin enviar</Badge>}</td>
                     <td style={{ width: 110 }}>
                       {i === 0 ? (
                         <Button
@@ -680,7 +725,7 @@ export function CierreMes({
                           variante="secundario"
                           mini
                           disabled={ocupado}
-                          onClick={() => setConfirma({ que: "reabrir", id: p.id, etiqueta: p.etiqueta, enviado: !!p.enviado_en })}
+                          onClick={() => pedirReabrir(p)}
                         >
                           Reabrir
                         </Button>
@@ -700,6 +745,9 @@ export function CierreMes({
         <Confirmar
           titulo={`Reabrir ${confirma.etiqueta}`}
           texto={
+            (confirma.recibos
+              ? `Este mes ya emitió ${confirma.recibos} ${confirma.recibos === 1 ? "recibo" : "recibos"}. ¿Seguro? `
+              : "") +
             "Se borran los recibos y los cortes de ese mes, y los pagos vuelven a quedar sin aplicar. Después hay que volver a cerrarlo. " +
             (confirma.enviado
               ? "OJO: los recibos de este mes YA SE ENVIARON. Los propietarios tienen en la mano un recibo que va a cambiar."

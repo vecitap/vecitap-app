@@ -1,9 +1,13 @@
 import type { ReactNode } from "react";
 
-export type TonoAviso = "verde" | "ambar" | "rojo" | "azul" | "favor";
+/**
+ * "ok": los mensajes de éxito, en marino sobre gris claro con un ✓ (ronda 5,
+ * caso 77). Antes eran "verde" (menta); el único verde de la app es «a favor».
+ */
+export type TonoAviso = "ok" | "ambar" | "rojo" | "azul" | "favor";
 
 const FONDO: Record<TonoAviso, string> = {
-  verde: "var(--verde-bg)",
+  ok: "var(--lienzo-alt)",
   ambar: "var(--ambar-bg)",
   rojo: "var(--rojo-bg)",
   azul: "var(--azul-bg)",
@@ -11,7 +15,7 @@ const FONDO: Record<TonoAviso, string> = {
 };
 
 const TEXTO: Record<TonoAviso, string> = {
-  verde: "var(--verde)",
+  ok: "var(--tinta)",
   ambar: "var(--ambar)",
   rojo: "var(--rojo)",
   azul: "var(--azul)",
@@ -38,9 +42,15 @@ export function Aviso({
       }}
     >
       {titulo && (
-        <div style={{ fontWeight: 700, fontSize: 13.5, color: TEXTO[tono], marginBottom: 3 }}>{titulo}</div>
+        <div style={{ fontWeight: 700, fontSize: 13.5, color: TEXTO[tono], marginBottom: 3 }}>
+          {tono === "ok" && <span aria-hidden="true">✓ </span>}
+          {titulo}
+        </div>
       )}
-      <div style={{ fontSize: 13, color: "var(--tinta-2)", lineHeight: 1.6 }}>{children}</div>
+      <div style={{ fontSize: 13, color: tono === "ok" && !titulo ? "var(--tinta)" : "var(--tinta-2)", lineHeight: 1.6 }}>
+        {tono === "ok" && !titulo && <span aria-hidden="true">✓ </span>}
+        {children}
+      </div>
     </div>
   );
 }

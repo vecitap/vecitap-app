@@ -152,8 +152,8 @@ export function ConsolaOperador({
             padding: "10px 14px",
             borderRadius: 8,
             fontSize: 13.5,
-            background: aviso.tipo === "error" ? "var(--rojo-bg)" : "var(--verde-bg)",
-            color: aviso.tipo === "error" ? "var(--rojo)" : "var(--verde)",
+            background: aviso.tipo === "error" ? "var(--rojo-bg)" : "var(--lienzo-alt)",
+            color: aviso.tipo === "error" ? "var(--rojo)" : "var(--tinta)",
           }}
         >
           {aviso.t}
@@ -183,7 +183,7 @@ export function ConsolaOperador({
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)", marginBottom: 3 }}>
-              <Punto color={m.cobrosPend ? "var(--ambar)" : "var(--verde)"} />
+              <Punto color={m.cobrosPend ? "var(--ambar)" : "var(--linea-fuerte)"} />
               Por cobrarle a sus clientes
             </div>
             <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: m.cobrosPend ? "var(--ambar)" : "var(--tinta)" }}>
@@ -204,7 +204,7 @@ export function ConsolaOperador({
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div style={{ minWidth: 240 }}>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)", marginBottom: 3 }}>
-              <Punto color={diasTasa === null || diasTasa > 2 ? "var(--rojo)" : diasTasa > 0 ? "var(--ambar)" : "var(--verde)"} />
+              <Punto color={diasTasa === null || diasTasa > 2 ? "var(--rojo)" : diasTasa > 0 ? "var(--ambar)" : "var(--linea-fuerte)"} />
               Tasa del Banco Central
             </div>
             {tasa ? (

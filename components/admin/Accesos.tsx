@@ -17,7 +17,7 @@ type Mensaje = { texto: string; tipo: "ok" | "error" };
 type Pestana = "invitar" | "pendientes" | "gente" | "vigilantes";
 
 const TONO_ESTADO: Record<string, TonoBadge> = {
-  aceptada: "verde",
+  aceptada: "neutro",
   vencida: "rojo",
   revocada: "rojo",
 };
@@ -248,7 +248,7 @@ export function Accesos({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       {mensaje && (
-        <Aviso tono={mensaje.tipo === "error" ? "rojo" : "verde"}>{mensaje.texto}</Aviso>
+        <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>
       )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -591,7 +591,9 @@ export function Accesos({
                         // El original manda a `garita.html`, que en main es un
                         // archivo suelto. Acá la garita es una ruta de la app.
                         `${urlDelSitio("/garita")}\n\n` +
-                        `Toque "Es mi primera vez", cree su clave con el correo ` +
+                        // «No tengo cuenta todavía» es el enlace de /entrar (el texto de
+                        // main, «Es mi primera vez», era de garita.html; ronda 5, caso 76).
+                        `Toque "No tengo cuenta todavía", cree su clave con el correo ` +
                         `${codigoVig.correo} y pegue este código:\n${codigoVig.token}`
                     )
                   }

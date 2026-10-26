@@ -164,7 +164,7 @@ export function Estadisticas({
             rotulo="Cobrado"
             valor={`${nf(1).format(r.pct_cobrado)} %`}
             pie={usd(r.cobrado)}
-            tono={num0(r.pct_cobrado) >= 80 ? "verde" : num0(r.pct_cobrado) >= 60 ? "ambar" : "rojo"}
+            tono={num0(r.pct_cobrado) >= 80 ? undefined : num0(r.pct_cobrado) >= 60 ? "ambar" : "rojo"}
           />
           <Cifra
             rotulo="Deuda al cierre"
@@ -237,7 +237,7 @@ export function Estadisticas({
               En cuotas equivalentes y sin nombres. El detalle por unidad va en el estado de cuenta.
             </p>
             {d.mora.map((t) => {
-              const tono = ["var(--tenue)", "var(--verde)", "var(--ambar)", "var(--rojo)", "var(--rojo)"][t.orden] ?? "var(--tenue)";
+              const tono = ["var(--tenue)", "var(--tinta-2)", "var(--ambar)", "var(--rojo)", "var(--rojo)"][t.orden] ?? "var(--tenue)";
               /* El tramo peor lleva además fondo: el punto de color solo no
                  distingue "tres meses" de "más de tres", y ese es justo el
                  que la junta necesita ver de lejos. */
@@ -299,7 +299,7 @@ function Cifra({
   rotulo: string;
   valor: string;
   pie?: string;
-  tono?: "verde" | "ambar" | "rojo";
+  tono?: "ambar" | "rojo";
 }) {
   return (
     <Card style={{ padding: "16px 18px" }}>
@@ -337,7 +337,7 @@ function BarraGasto({
         <span style={{ fontSize: 13.5, color: "var(--tinta)", fontWeight: 500 }}>{nombre}</span>
         <span style={{ display: "flex", alignItems: "baseline", gap: 8, whiteSpace: "nowrap" }}>
           {variacion !== null && variacion !== undefined && Math.abs(variacion) >= 0.5 && (
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: variacion > 0 ? "var(--rojo)" : "var(--verde)" }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: variacion > 0 ? "var(--rojo)" : "var(--tinta-2)" }}>
               {variacion > 0 ? "▲" : "▼"} {nf(0).format(Math.abs(variacion))} %
             </span>
           )}

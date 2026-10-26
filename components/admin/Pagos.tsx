@@ -26,7 +26,7 @@ type Filtro = "reportado" | "conciliado" | "anulado" | "todos";
 /** Fila de `tasa_de_esa_fecha(p_fecha)`. */
 type TasaDeFecha = { tasa: number; fecha: string; propia: boolean; fuente: string | null };
 
-const TONO_ESTADO: Record<string, TonoBadge> = { conciliado: "verde", anulado: "rojo" };
+const TONO_ESTADO: Record<string, TonoBadge> = { conciliado: "neutro", anulado: "rojo" };
 
 /**
  * Portado de Pagos() en admin.html:3289-3897. Tres pestañas (Registrar ·
@@ -315,7 +315,140 @@ export function Pagos({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "verde"}>{mensaje.texto}</Aviso>}
+      {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>}
+
+      {/* Ronda 5 (pedido de Gustavo): lo registrado va arriba y destacado; registrar,
+          conciliar y exonerar, abajo. */}
+      <Card style={{ padding: 0, overflow: "hidden", borderTop: "3px solid var(--acento)" }}>
+        <div style={{ padding: "18px 18px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontFamily: "var(--font-titulos)" }}>Movimientos registrados</h2>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {(
+                [
+                  ["reportado", "Reportados"],
+                  ["conciliado", "Conciliados"],
+                  ["anulado", "Anulados"],
+                  ["todos", "Todos"],
+                ] as [Filtro, string][]
+              ).map(([k, t]) => (
+                <Button
+                  key={k}
+                  type="button"
+                  mini
+                  variante={filtro === k ? "primario" : "secundario"}
+                  onClick={() => setFiltro(k)}
+                >
+                  {t}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="tabla-scroll" style={{ marginTop: 14 }}>
+          <table className="tabla apila">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Unidad</th>
+                <th>Método</th>
+                <th>Ref.</th>
+                <th>Origen</th>
+                <th>Abona a</th>
+                <th style={{ textAlign: "right" }}>USD</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.map((p) => (
+                <tr key={p.id}>
+                  <td className="mono" data-t="Fecha">
+                    {p.fecha}
+                  </td>
+                  <td className="mono cabeza" style={{ fontWeight: 600 }}>
+                    {codigo(p.unidad_id)}
+                  </td>
+                  <td data-t="Método">
+                    {p.metodo}
+                    {p.moneda === "VES" && (
+                      <div className="mono" style={{ fontSize: 11.5, color: "var(--tenue)" }}>
+                        {bs(p.monto)} a {nf(2).format(Number(p.tasa_aplicada) || 0)}
+                      </div>
+                    )}
+                  </td>
+                  <td className="mono" data-t="Referencia">
+                    {p.referencia || "—"}
+                  </td>
+                  <td style={{ fontSize: 12 }} data-t="Origen">
+                    {p.banco || <span style={{ color: "var(--tenue)" }}>—</span>}
+                    {p.telefono_origen && (
+                      <div className="mono" style={{ color: "var(--tenue)" }}>
+                        {p.telefono_origen}
+                      </div>
+                    )}
+                    {p.correo_origen && <div style={{ color: "var(--tenue)" }}>{p.correo_origen}</div>}
+                    {comps[p.id] && (
+                      <button
+                        type="button"
+                        onClick={() => verComprobante(p)}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--acento-texto)",
+                          cursor: "pointer",
+                          padding: "3px 0",
+                          fontSize: 12,
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        {comps[p.id].imagen_borrada_en ? "comprobante vencido" : "ver comprobante"}
+                      </button>
+                    )}
+                  </td>
+                  <td data-t="Abona a">
+                    {BOLSILLOS[p.destino === "honorarios" ? "administracion" : p.destino]?.t ?? p.destino}
+                  </td>
+                  <td className="mono" data-t="Monto" style={{ textAlign: "right", fontWeight: 600 }}>
+                    {usd(p.monto_usd)}
+                  </td>
+                  <td data-t="Estado">
+                    <Badge tono={TONO_ESTADO[p.estado] ?? "ambar"}>
+                      {p.estado}
+                      {p.periodo_cierre_id ? " · en cierre" : ""}
+                    </Badge>
+                  </td>
+                  <td className="acciones" style={{ width: 150 }}>
+                    {p.estado === "reportado" && (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        <Button type="button" mini onClick={() => cambiarEstado(p, "conciliado")}>
+                          Conciliar
+                        </Button>
+                        <Button type="button" mini variante="secundario" onClick={() => cambiarEstado(p, "anulado")}>
+                          Anular
+                        </Button>
+                      </div>
+                    )}
+                    {p.estado === "conciliado" && !p.periodo_cierre_id && (
+                      <Button type="button" mini variante="secundario" onClick={() => cambiarEstado(p, "anulado")}>
+                        Anular
+                      </Button>
+                    )}
+                    {p.periodo_cierre_id && (
+                      <span style={{ fontSize: 11.5, color: "var(--tenue)" }}>ya está dentro de un cierre</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {visibles.length === 0 && (
+            <div style={{ padding: 34, textAlign: "center", color: "var(--tenue)", fontSize: 14 }}>
+              No hay pagos con ese filtro.
+            </div>
+          )}
+        </div>
+      </Card>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {(
@@ -599,7 +732,7 @@ export function Pagos({
                   <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--tenue)" }}>
                     Cuadran
                   </div>
-                  <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: "var(--verde)" }}>
+                  <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: "var(--tinta)" }}>
                     {cruce.casan.length}
                   </div>
                   <div style={{ fontSize: 11.5, color: "var(--tenue)", marginTop: 4 }}>
@@ -779,137 +912,6 @@ export function Pagos({
           </div>
         </div>
       )}
-
-      <Card style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: "18px 18px 0" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Movimientos registrados</h2>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {(
-                [
-                  ["reportado", "Reportados"],
-                  ["conciliado", "Conciliados"],
-                  ["anulado", "Anulados"],
-                  ["todos", "Todos"],
-                ] as [Filtro, string][]
-              ).map(([k, t]) => (
-                <Button
-                  key={k}
-                  type="button"
-                  mini
-                  variante={filtro === k ? "primario" : "secundario"}
-                  onClick={() => setFiltro(k)}
-                >
-                  {t}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="tabla-scroll" style={{ marginTop: 14 }}>
-          <table className="tabla apila">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Unidad</th>
-                <th>Método</th>
-                <th>Ref.</th>
-                <th>Origen</th>
-                <th>Abona a</th>
-                <th style={{ textAlign: "right" }}>USD</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibles.map((p) => (
-                <tr key={p.id}>
-                  <td className="mono" data-t="Fecha">
-                    {p.fecha}
-                  </td>
-                  <td className="mono cabeza" style={{ fontWeight: 600 }}>
-                    {codigo(p.unidad_id)}
-                  </td>
-                  <td data-t="Método">
-                    {p.metodo}
-                    {p.moneda === "VES" && (
-                      <div className="mono" style={{ fontSize: 11.5, color: "var(--tenue)" }}>
-                        {bs(p.monto)} a {nf(2).format(Number(p.tasa_aplicada) || 0)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="mono" data-t="Referencia">
-                    {p.referencia || "—"}
-                  </td>
-                  <td style={{ fontSize: 12 }} data-t="Origen">
-                    {p.banco || <span style={{ color: "var(--tenue)" }}>—</span>}
-                    {p.telefono_origen && (
-                      <div className="mono" style={{ color: "var(--tenue)" }}>
-                        {p.telefono_origen}
-                      </div>
-                    )}
-                    {p.correo_origen && <div style={{ color: "var(--tenue)" }}>{p.correo_origen}</div>}
-                    {comps[p.id] && (
-                      <button
-                        type="button"
-                        onClick={() => verComprobante(p)}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--acento-texto)",
-                          cursor: "pointer",
-                          padding: "3px 0",
-                          fontSize: 12,
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        {comps[p.id].imagen_borrada_en ? "comprobante vencido" : "ver comprobante"}
-                      </button>
-                    )}
-                  </td>
-                  <td data-t="Abona a">
-                    {BOLSILLOS[p.destino === "honorarios" ? "administracion" : p.destino]?.t ?? p.destino}
-                  </td>
-                  <td className="mono" data-t="Monto" style={{ textAlign: "right", fontWeight: 600 }}>
-                    {usd(p.monto_usd)}
-                  </td>
-                  <td data-t="Estado">
-                    <Badge tono={TONO_ESTADO[p.estado] ?? "ambar"}>
-                      {p.estado}
-                      {p.periodo_cierre_id ? " · en cierre" : ""}
-                    </Badge>
-                  </td>
-                  <td className="acciones" style={{ width: 150 }}>
-                    {p.estado === "reportado" && (
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                        <Button type="button" mini onClick={() => cambiarEstado(p, "conciliado")}>
-                          Conciliar
-                        </Button>
-                        <Button type="button" mini variante="secundario" onClick={() => cambiarEstado(p, "anulado")}>
-                          Anular
-                        </Button>
-                      </div>
-                    )}
-                    {p.estado === "conciliado" && !p.periodo_cierre_id && (
-                      <Button type="button" mini variante="secundario" onClick={() => cambiarEstado(p, "anulado")}>
-                        Anular
-                      </Button>
-                    )}
-                    {p.periodo_cierre_id && (
-                      <span style={{ fontSize: 11.5, color: "var(--tenue)" }}>ya está dentro de un cierre</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {visibles.length === 0 && (
-            <div style={{ padding: 34, textAlign: "center", color: "var(--tenue)", fontSize: 14 }}>
-              No hay pagos con ese filtro.
-            </div>
-          )}
-        </div>
-      </Card>
 
       <Card>
         <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Comprobantes vencidos</h2>

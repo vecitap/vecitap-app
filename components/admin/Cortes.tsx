@@ -314,7 +314,7 @@ export function Cortes({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "verde"}>{mensaje.texto}</Aviso>}
+      {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>}
 
       <Card>
         <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Cortes de cuenta</h2>
@@ -452,8 +452,8 @@ export function Cortes({
           <div style={{ marginTop: 14, fontSize: 13, color: "var(--tinta-2)" }}>
             {periodo.enviado_en ? (
               <>
-                Marcado como <b>enviado</b> el {String(periodo.enviado_en).slice(0, 10)}. Desde el
-                cierre del mes, reabrirlo va a pedir una confirmación aparte.
+                Marcado como <b>enviado</b> el {String(periodo.enviado_en).slice(0, 10)}. Desde
+                «Gastos del mes», reabrirlo va a pedir una confirmación aparte.
               </>
             ) : (
               <>

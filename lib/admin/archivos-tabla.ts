@@ -207,6 +207,22 @@ export async function leerTabla(file: File, conVacias = false): Promise<string[]
   return XLSX.utils.sheet_to_json<string[]>(hoja, { header: 1, raw: false, defval: "", blankrows: conVacias });
 }
 
+/**
+ * Todas las hojas de un Excel, en orden, con el mismo formato de celdas que
+ * `leerTabla` (un CSV es una sola hoja sin nombre). «Cargar datos» elige
+ * cuál usar: la plantilla de Vecitap trae «Léame primero» como primera hoja.
+ */
+export async function leerHojas(file: File): Promise<{ nombre: string; filas: string[][] }[]> {
+  if (/\.csv$/i.test(file.name)) return [{ nombre: "", filas: leerCSV(await file.text(), true) }];
+
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(await file.arrayBuffer(), { cellDates: false });
+  return wb.SheetNames.map((nombre) => ({
+    nombre,
+    filas: XLSX.utils.sheet_to_json<string[]>(wb.Sheets[nombre], { header: 1, raw: false, defval: "", blankrows: true }),
+  }));
+}
+
 export type MovimientoBanco = {
   fecha: string;
   referencia: string;

@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Card, Confirmar, Select, Textarea } from "@/components/ui";
-import { leerTabla } from "@/lib/admin/archivos-tabla";
+import { leerHojas } from "@/lib/admin/archivos-tabla";
 import {
   CAMPOS,
+  elegirHoja,
   filaDeEncabezados,
   leerTextoPegado,
   proponerColumnas,
@@ -16,6 +17,7 @@ import {
   analizar,
   SIN_DECISIONES,
   type Decisiones,
+  type Dudoso,
   type FilaPrevia,
   type Nota,
   type PersonaOrg,
@@ -30,18 +32,30 @@ import type { Json } from "@/types/supabase";
 const COLUMNAS_PREVIA: Exclude<Campo, "ignorar" | "codigo">[] = [
   "alicuota",
   "saldo",
+  "saldo_hon",
+  "paga",
+  "tratamiento",
   "propietario",
+  "documento",
   "telefono",
   "correo",
   "correo_respaldo",
+  "corte",
+  "inq_tratamiento",
   "inquilino",
+  "inq_documento",
   "inq_telefono",
   "inq_correo",
-  "paga",
+  "inq_correo_respaldo",
+  "inq_corte",
+  "nota",
 ];
 
+/** La plantilla de Gustavo, tal cual (public/; solo trae datos de ejemplo). */
+const PLANTILLA = "/Vecitap-plantilla-carga.xlsx";
+
 const ESTADO: Record<FilaPrevia["estado"], { texto: string; color: string }> = {
-  nueva: { texto: "Se carga", color: "var(--verde)" },
+  nueva: { texto: "Se carga", color: "var(--tinta)" },
   actualizar: { texto: "Se actualiza", color: "var(--azul)" },
   omitir: { texto: "Se omite", color: "var(--tenue)" },
   no: { texto: "No se carga", color: "var(--rojo)" },
@@ -54,7 +68,15 @@ const ESTADO: Record<FilaPrevia["estado"], { texto: string; color: string }> = {
 const TOLERANCIA_ALICUOTAS = 0.01;
 
 type Lectura = { nombre: string; crudas: string[][]; encabezados: number; propuestas: Propuesta[] };
-type Hecho = { unidades_creadas: number; unidades_actualizadas: number; personas_nuevas: number; personas_completadas: number; vinculos_nuevos: number };
+type Hecho = {
+  unidades_creadas: number;
+  unidades_actualizadas: number;
+  personas_nuevas: number;
+  personas_completadas: number;
+  vinculos_nuevos: number;
+  vinculos_actualizados?: number;
+  notas_guardadas?: number;
+};
 
 /**
  * «Cargar datos» (ronda 5, casos 56 y 57). Reemplaza a «Importar unidades».
@@ -92,6 +114,7 @@ export function CargarDatos({
   const [error, setError] = useState<string | null>(null);
   const [personas, setPersonas] = useState<PersonaOrg[] | null>(null);
   const [hayCierres, setHayCierres] = useState<boolean | null>(null);
+  const [notas, setNotas] = useState<Record<string, string> | null>(null);
   const [confirmar, setConfirmar] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [hecho, setHecho] = useState<Hecho | null>(null);
@@ -104,17 +127,21 @@ export function CargarDatos({
     Promise.all([
       supabase
         .from("personas")
-        .select("id,prefijo,nombre,telefono,correo,correo_respaldo,vinculos(hasta,unidades(codigo))")
+        .select("id,prefijo,nombre,documento,telefono,correo,correo_respaldo,vinculos(hasta,unidades(codigo))")
         .eq("org_id", orgId),
       supabase.from("periodos").select("id", { count: "exact", head: true }).eq("edificio_id", edificioId).eq("estado", "cerrado"),
-    ]).then(([p, c]) => {
+      // Las notas de las unidades que ya existen (caso 74), para mostrar qué cambia.
+      supabase.from("notas_unidad").select("unidad_id,nota").eq("org_id", orgId),
+    ]).then(([p, c, n]) => {
       if (!vivo) return;
-      if (p.error || c.error) return setError(mensajeDeError(p.error || c.error));
+      if (p.error || c.error || n.error) return setError(mensajeDeError(p.error || c.error || n.error));
+      setNotas(Object.fromEntries((n.data ?? []).map((x) => [x.unidad_id, x.nota])));
       setPersonas(
         (p.data ?? []).map((x) => ({
           id: x.id,
           prefijo: x.prefijo,
           nombre: x.nombre,
+          documento: x.documento,
           telefono: x.telefono,
           correo: x.correo,
           correo_respaldo: x.correo_respaldo,
@@ -146,7 +173,13 @@ export function CargarDatos({
     setError(null);
     setLeyendo(true);
     try {
-      abrir(file.name, (await leerTabla(file, true)).map((f) => f.map((c) => String(c ?? "").trim())));
+      const hoja = elegirHoja(await leerHojas(file));
+      if ("error" in hoja) setError(hoja.error);
+      else
+        abrir(
+          hoja.nombre ? `la hoja «${hoja.nombre}» de ${file.name}` : file.name,
+          hoja.filas.map((f) => f.map((c) => String(c ?? "").trim()))
+        );
     } catch (e) {
       setError(mensajeDeError(e));
     }
@@ -154,9 +187,9 @@ export function CargarDatos({
   }
 
   const resultado = useMemo(() => {
-    if (!lectura || !personas || hayCierres === null) return null;
-    return analizar(lectura.crudas, lectura.encabezados, columnas, { unidades, personas, hayCierres }, dec);
-  }, [lectura, columnas, personas, hayCierres, unidades, dec]);
+    if (!lectura || !personas || hayCierres === null || !notas) return null;
+    return analizar(lectura.crudas, lectura.encabezados, columnas, { unidades, personas, hayCierres, notas }, dec);
+  }, [lectura, columnas, personas, hayCierres, notas, unidades, dec]);
 
   const sinCodigo = lectura && !columnas.includes("codigo");
   const aCargar = resultado ? resultado.carga.filas.length : 0;
@@ -191,11 +224,13 @@ export function CargarDatos({
   if (hecho) {
     return (
       <Card>
-        <Aviso tono="verde" titulo="Datos cargados">
+        <Aviso tono="ok" titulo="Datos cargados">
           {hecho.unidades_creadas} unidades nuevas
           {hecho.unidades_actualizadas ? `, ${hecho.unidades_actualizadas} actualizadas` : ""}. {hecho.personas_nuevas} personas
           nuevas
           {hecho.personas_completadas ? `, ${hecho.personas_completadas} fichas existentes completadas` : ""}.
+          {hecho.vinculos_actualizados ? ` Se cambió «recibe el corte» en ${hecho.vinculos_actualizados}.` : ""}
+          {hecho.notas_guardadas ? ` ${hecho.notas_guardadas} ${hecho.notas_guardadas === 1 ? "nota guardada" : "notas guardadas"} (solo las ve la administración).` : ""}
         </Aviso>
         <div style={{ marginTop: 14 }}>
           <Button type="button" onClick={onVolver}>
@@ -217,10 +252,18 @@ export function CargarDatos({
               correos e inquilino, en cualquier orden. Antes de guardar va a ver qué entendió el sistema de cada
               fila. <b>Nada se guarda hasta que usted confirme.</b>
             </p>
+            <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--tenue)", maxWidth: 620, lineHeight: 1.5 }}>
+              ¿Empieza de cero? Descargue la plantilla, llene la hoja «Unidades» y súbala aquí.
+            </p>
           </div>
-          <Button type="button" variante="secundario" mini onClick={onVolver}>
-            Volver
-          </Button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <a href={PLANTILLA} download className="btn btn-secundario btn-mini" style={{ textDecoration: "none" }}>
+              Descargar plantilla
+            </a>
+            <Button type="button" variante="secundario" mini onClick={onVolver}>
+              Volver
+            </Button>
+          </div>
         </div>
         <input
           type="file"
@@ -313,7 +356,7 @@ export function CargarDatos({
           <Card>
             <h3 style={{ margin: 0, fontSize: 14 }}>2. Qué va a pasar</h3>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "10px 0 4px" }}>
-              <Chip color="var(--verde)">{resultado.resumen.nuevas} unidades nuevas</Chip>
+              <Chip color="var(--tinta)">{resultado.resumen.nuevas} unidades nuevas</Chip>
               {resultado.resumen.actualizar > 0 && <Chip color="var(--azul)">{resultado.resumen.actualizar} se actualizan</Chip>}
               {resultado.resumen.omitir > 0 && <Chip color="var(--tenue)">{resultado.resumen.omitir} ya existen y se omiten</Chip>}
               {resultado.resumen.noSeCargan > 0 && <Chip color="var(--rojo)">{resultado.resumen.noSeCargan} no se cargan</Chip>}
@@ -339,6 +382,14 @@ export function CargarDatos({
                     No es 100 exacto, pero está dentro de la tolerancia del cierre ({TOLERANCIA_ALICUOTAS.toLocaleString("es-VE")}): el mes se puede cerrar.
                   </Aviso>
                 )}
+              </div>
+            )}
+            {resultado.resumen.faltanColumnas.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <Aviso tono="ambar" titulo="Faltan columnas que la plantilla pide">
+                  El archivo no trae {resultado.resumen.faltanColumnas.map((c) => `«${c}»`).join(", ")}. Puede cargar igual; si la
+                  columna está en el archivo con otro nombre, elíjala arriba en «Qué es cada columna».
+                </Aviso>
               </div>
             )}
             {resultado.resumen.saldoIgnorado && (
@@ -426,48 +477,22 @@ export function CargarDatos({
             <Card>
               <h3 style={{ margin: 0, fontSize: 14, color: "var(--ambar)" }}>Personas para revisar</h3>
               <p style={{ margin: "3px 0 10px", fontSize: 12.5, color: "var(--tenue)" }}>
-                Se juntan solas cuando coinciden el correo o el teléfono. Estas no son seguras: elija.
+                Se juntan solas cuando tienen el mismo nombre y comparten el correo, el teléfono o la cédula. Estas no
+                son seguras: elija. Las que comparten un dato pero tienen otro nombre no tienen respuesta por omisión.
               </p>
               {resultado.dudosos.map((d) => (
-                <div
+                <PreguntaPersona
                   key={d.clave}
-                  style={{
-                    padding: "8px 0",
-                    borderTop: "1px solid var(--linea)",
-                    fontSize: 13.5,
-                    ...(d.pendiente ? { background: "var(--ambar-bg)", paddingLeft: 8, paddingRight: 8 } : {}),
-                  }}
-                >
-                  <div style={{ marginBottom: 6 }}>{d.texto}</div>
-                  {d.pendiente && (
-                    <div style={{ marginBottom: 6, fontSize: 12.5, fontWeight: 600, color: "var(--ambar)" }}>
-                      Esta no tiene respuesta por omisión: elija una para poder cargar.
-                    </div>
-                  )}
-                  <Select
-                    value={d.valor}
-                    onChange={(e) => setDec({ ...dec, personas: { ...dec.personas, [d.clave]: e.target.value } })}
-                    style={{ padding: "6px 8px", fontSize: 13, maxWidth: 520 }}
-                  >
-                    {!d.valor && (
-                      <option value="" disabled>
-                        Elija una opción
-                      </option>
-                    )}
-                    {d.opciones.map((o) => (
-                      <option key={o.valor} value={o.valor}>
-                        {o.etiqueta}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
+                  d={d}
+                  elegir={(valor) => setDec({ ...dec, personas: { ...dec.personas, [d.clave]: valor } })}
+                />
               ))}
             </Card>
           )}
 
           <Card style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ padding: "16px 18px 6px" }}>
-              <h3 style={{ margin: 0, fontSize: 14 }}>3. La previa, fila por fila</h3>
+              <h3 style={{ margin: 0, fontSize: 14 }}>3. Lo que dice su archivo</h3>
               <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--tenue)" }}>
                 En ámbar, lo dudoso, con la razón debajo. El tipo de unidad se puede cambiar aquí.
               </p>
@@ -518,7 +543,7 @@ export function CargarDatos({
                         const v = f.campos[c];
                         return (
                           <td key={c} style={{ background: v?.nota?.nivel === "ambar" ? "var(--ambar-bg)" : undefined, fontSize: 13 }}>
-                            <span className={c === "alicuota" || c === "saldo" || c.includes("telefono") ? "mono" : undefined}>{v?.valor || <span style={{ color: "var(--tenue)" }}>—</span>}</span>
+                            <span className={c === "alicuota" || c.startsWith("saldo") || c.includes("telefono") || c.includes("documento") ? "mono" : undefined}>{v?.valor || <span style={{ color: "var(--tenue)" }}>—</span>}</span>
                             <NotaCelda nota={v?.nota} />
                           </td>
                         );
@@ -592,5 +617,57 @@ function Chip({ color, children }: { color: string; children: ReactNode }) {
 function NotaCelda({ nota }: { nota?: Nota }) {
   if (!nota) return null;
   const color = nota.nivel === "rojo" ? "var(--rojo)" : nota.nivel === "ambar" ? "var(--ambar)" : "var(--tenue)";
-  return <div style={{ fontSize: 11.5, color, lineHeight: 1.4, marginTop: 2 }}>{nota.texto}</div>;
+  return (
+    <div style={{ fontSize: 11.5, color, lineHeight: 1.4, marginTop: 2 }}>
+      {nota.texto}
+      {/* Lo que queda cuando algo del archivo no se aplica (caso 75). */}
+      {nota.queda && <div style={{ color: "var(--tinta)", fontWeight: 600 }}>Se queda: {nota.queda}</div>}
+    </div>
+  );
+}
+
+/**
+ * «¿Es la misma persona? Archivo: X · Ficha: Y [Sí] [No]» (pedido de Gustavo,
+ * caso 75). Una línea por candidata; con varias, «Sí» en la que es y un «No»
+ * al final para «ninguna».
+ */
+function PreguntaPersona({ d, elegir }: { d: Dudoso; elegir: (valor: string) => void }) {
+  const varias = d.lineas.length > 1;
+  const boton = (texto: string, valor: string) => (
+    <Button type="button" mini variante={d.valor === valor ? "primario" : "secundario"} aria-pressed={d.valor === valor} onClick={() => elegir(valor)}>
+      {texto}
+    </Button>
+  );
+  return (
+    <div
+      style={{
+        padding: "8px 0",
+        borderTop: "1px solid var(--linea)",
+        fontSize: 13.5,
+        display: "grid",
+        gap: 6,
+        ...(d.pendiente ? { background: "var(--ambar-bg)", paddingLeft: 8, paddingRight: 8 } : {}),
+      }}
+    >
+      {d.lineas.map((l) => (
+        <div key={l.valor} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+            ¿Es la misma persona? <span style={{ color: "var(--tenue)" }}>Archivo:</span> {d.archivo}{" "}
+            <span style={{ color: "var(--tenue)" }}>· {l.contra}:</span> {l.etiqueta}
+            {l.aviso && <span style={{ display: "block", fontSize: 12, color: "var(--ambar)" }}>{l.aviso}</span>}
+          </span>
+          <span style={{ display: "flex", gap: 6 }}>
+            {boton("Sí", l.valor)}
+            {!varias && boton("No", d.valorNo)}
+          </span>
+        </div>
+      ))}
+      {varias && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>{boton("No, ninguna: es otra persona", d.valorNo)}</div>
+      )}
+      {d.pendiente && (
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ambar)" }}>Sin respuesta por omisión: elija para poder cargar.</div>
+      )}
+    </div>
+  );
 }

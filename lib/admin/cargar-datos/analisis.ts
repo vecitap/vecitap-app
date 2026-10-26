@@ -1,9 +1,9 @@
 import { montoEstricto } from "@/lib/admin/archivos-tabla";
-import { nombreDe, normaliza, normalizarTel, separarTratamiento, TRATAMIENTO_INICIAL, vigente } from "@/lib/admin/personas";
-import { TIPOS_UNIDAD, type TipoUnidad, type Unidad } from "@/lib/admin/tipos";
+import { leerTratamiento, nombreDe, normaliza, normalizarTel, separarTratamiento, TRATAMIENTO_INICIAL, vigente } from "@/lib/admin/personas";
+import { LARGO_NOTA, TIPOS_UNIDAD, type TipoUnidad, type Unidad } from "@/lib/admin/tipos";
 import { nf, num, usd } from "@/lib/formato";
 import { leerPagaPegado, type Paga } from "@/lib/paga";
-import { correosDe, type Campo } from "./columnas";
+import { CAMPOS, correosDe, type Campo } from "./columnas";
 
 /**
  * «Cargar datos» (ronda 5): de las filas del archivo y las columnas elegidas
@@ -19,20 +19,26 @@ import { correosDe, type Campo } from "./columnas";
  *  - El importador no cambia de propietario ni de inquilino (eso va por la
  *    ficha). Tampoco pisa datos de una persona que ya existe: solo completa
  *    lo vacío.
- *  - Personas: se juntan por correo, correo de respaldo o teléfono. Si solo
- *    coincide el nombre, es dudoso y por omisión son personas distintas.
+ *  - Personas (confirmado por Gustavo el 25-oct): mismo nombre y un dato en
+ *    común (correo, correo de respaldo, teléfono o cédula) se juntan solas.
+ *    Un dato en común con OTRO nombre es una pregunta sin respuesta por
+ *    omisión, y la carga espera; vale entre filas del archivo y contra una
+ *    ficha que ya existe. Si solo coincide el nombre, es dudoso y por
+ *    omisión son personas distintas.
  *  - Una fila sin alícuota no se carga por omisión; se puede cargar como
  *    estacionamiento con alícuota 0 (decisión provisional, para Gustavo).
  */
 
 export type Nivel = "rojo" | "ambar" | "info";
-export type Nota = { nivel: Nivel; texto: string };
+/** `queda`: lo que se queda cuando algo del archivo no se aplica («Se queda: Sr. Mefaz…»). */
+export type Nota = { nivel: Nivel; texto: string; queda?: string };
 
 /** Una persona que ya existe en la administradora. */
 export type PersonaOrg = {
   id: string;
   prefijo: string | null;
   nombre: string;
+  documento: string | null;
   telefono: string | null;
   correo: string | null;
   correo_respaldo: string | null;
@@ -44,7 +50,10 @@ export type Contexto = {
   unidades: (Unidad & { paga?: string })[];
   personas: PersonaOrg[];
   hayCierres: boolean;
+  /** Nota de cada unidad que ya existe (`notas_unidad`), por id de unidad. */
+  notas?: Record<string, string>;
 };
+
 
 export type Decisiones = {
   /** Unidad existente (código normalizado) → actualizar en vez de omitir. */
@@ -76,9 +85,29 @@ export type FilaPrevia = {
   notas: Nota[];
 };
 
+/**
+ * La pregunta en una línea corta (ronda 5, pedido de Gustavo):
+ * «¿Es la misma persona? Archivo: X · Ficha: Y [Sí] [No]». Una línea por
+ * cada candidata; «Sí» elige esa, «No» elige `valorNo`.
+ */
+export type LineaDudoso = {
+  /** «Archivo» si la otra es una fila del archivo; «Ficha» si ya existe. */
+  contra: "Archivo" | "Ficha";
+  etiqueta: string;
+  /** Lo que se elige con «Sí». */
+  valor: string;
+  /** Debajo, en chico: a dónde irían los recibos con «Sí», si cambia. */
+  aviso?: string;
+};
+
 export type Dudoso = {
   clave: string;
   texto: string;
+  /** Quién es, en el archivo («Beganu, s.a.» (03D)). */
+  archivo: string;
+  lineas: LineaDudoso[];
+  /** Lo que se elige con «No» (en todas las líneas). */
+  valorNo: string;
   opciones: { valor: string; etiqueta: string }[];
   /** "" = todavía sin responder (solo las `obligatoria`). */
   valor: string;
@@ -93,8 +122,14 @@ export type Dudoso = {
 export type PersonaCarga = {
   ref: string;
   persona_id?: string;
-  prefijo?: string;
+  /**
+   * El tratamiento que trae el archivo. `null` = «Sin tratamiento»; sin la
+   * clave, el archivo no trae ninguno y la base aplica la regla de empresas o
+   * «Sr.» (M4, 20261025120000_importar_unidades_plantilla.sql).
+   */
+  prefijo?: string | null;
   nombre: string;
+  documento?: string;
   telefono?: string;
   correo?: string;
   correo_respaldo?: string;
@@ -107,9 +142,15 @@ export type FilaCarga = {
   tipo: TipoUnidad;
   alicuota: number | null;
   saldo_inicial: number | null;
+  saldo_inicial_hon: number | null;
+  /** Nota de la unidad (null = no tocar). */
+  nota?: string | null;
   paga: Paga | null;
   propietario?: string;
   inquilino?: string;
+  /** «Recibe corte» del archivo (null = no trae: un vínculo nuevo queda en «sí»). */
+  propietario_corte?: boolean | null;
+  inquilino_corte?: boolean | null;
 };
 
 export type Resultado = {
@@ -128,6 +169,8 @@ export type Resultado = {
     saldoIgnorado: boolean;
     /** Preguntas sin respuesta por omisión que faltan: la carga espera. */
     porElegir: number;
+    /** Columnas que la plantilla pide y el archivo no trae (aviso, no bloquea). */
+    faltanColumnas: string[];
   };
   carga: { personas: PersonaCarga[]; filas: FilaCarga[] };
 };
@@ -179,6 +222,21 @@ function tipoDeCelda(celda: string): TipoUnidad | null {
   return null;
 }
 
+/** «Sí»/«No» de «recibe corte». null si está vacía; "malo" si no se entiende. */
+function leerSiNo(celda: string): boolean | null | "malo" {
+  const t = normaliza(celda);
+  if (!t) return null;
+  if (["SI", "S", "X", "YES", "TRUE", "1", "VERDADERO"].includes(t)) return true;
+  if (["NO", "N", "FALSE", "0", "FALSO"].includes(t)) return false;
+  return "malo";
+}
+
+/**
+ * La cédula o el RIF para comparar: sin guiones, puntos ni espacios, y sin
+ * importar mayúsculas («V-12.345.678» = «v12345678»). Se guarda como viene.
+ */
+export const cedulaClave = (t: string | null | undefined) => normaliza(t);
+
 const nombreClave = (n: string) => normaliza(separarTratamiento(n).nombre);
 /** "Inversiones Uno" e "Inversiones Uno, C.A." son el mismo nombre escrito distinto. */
 const mismoNombre = (a: string, b: string) => {
@@ -197,11 +255,15 @@ type Candidato = {
   codigo: string;
   rol: Rol;
   nombre: string;
-  prefijo?: string;
+  /** undefined = el archivo no trae tratamiento; null = «Sin tratamiento». */
+  prefijo?: string | null;
+  documento: string;
+  docNorm: string;
   telefono: string;
   telNorm: string | null;
   correo: string;
   respaldo: string;
+  corte: boolean | null;
 };
 
 class Conjuntos {
@@ -225,13 +287,15 @@ type Grupo = {
   clave: string; // id del primer candidato
   candidatos: Candidato[];
   nombre: string;
-  prefijo?: string;
+  prefijo?: string | null;
+  documento: string;
   telefono: string;
   telNorm: string | null;
   correo: string;
   respaldo: string;
   personaId: string | null;
-  completa: string[];
+  /** Lo que se completa en la ficha (sin `queda`) o no se cambia (con lo que se queda). */
+  completa: { texto: string; queda?: string }[];
 };
 
 /* ───────────────────────── análisis ───────────────────────── */
@@ -259,7 +323,17 @@ export function analizar(
   }
   const filas: FilaPrevia[] = [];
   const candidatos: Candidato[] = [];
-  const datosFila = new Map<number, { alicuota: number | null; saldo: number | null; paga: Paga | null; tipoColumna: TipoUnidad | null }>();
+  const datosFila = new Map<
+    number,
+    {
+      alicuota: number | null;
+      saldo: number | null;
+      saldoHon: number | null;
+      nota: string;
+      paga: Paga | null;
+      tipoColumna: TipoUnidad | null;
+    }
+  >();
 
   const esTotales = (f: string[], codigo: string) => /^(sub)?total|^suma\b|^totales/i.test(codigo) || (!codigo && /total/i.test(f.join(" ")));
   // Código repetido en el archivo (revisión de M3, 24-oct): no se carga
@@ -355,6 +429,35 @@ export function analizar(
           : undefined,
     };
 
+    // Saldo de administración (honorarios): la misma regla que el de condominio.
+    const hCelda = celda(f, "saldo_hon");
+    const saldoHon = leerSaldo(hCelda);
+    if (saldoHon.malo && base.estado !== "no") {
+      base.estado = "no";
+      base.motivo = `el saldo de administración «${hCelda}» no se entiende`;
+    }
+    if (col("saldo_hon") >= 0) {
+      campos.saldo_hon = {
+        valor: saldoHon.valor === null ? "" : usd(saldoHon.valor),
+        nota:
+          saldoHon.valor !== null && ctx.hayCierres
+            ? { nivel: "info", texto: "no se aplica: el edificio ya tiene meses cerrados" }
+            : undefined,
+      };
+    }
+
+    // Nota de la unidad (decisión de Gustavo del 25-oct): se guarda, solo la
+    // ve la administración. Más larga que el límite: se recorta, con aviso.
+    let nota = celda(f, "nota").replace(/\s+/g, " ").trim();
+    if (col("nota") >= 0) {
+      const larga = nota.length > LARGO_NOTA;
+      if (larga) nota = nota.slice(0, LARGO_NOTA);
+      campos.nota = {
+        valor: nota,
+        nota: larga ? { nivel: "ambar", texto: `tiene más de ${nf(0).format(LARGO_NOTA)} caracteres: se guardan los primeros ${nf(0).format(LARGO_NOTA)}` } : undefined,
+      };
+    }
+
     // Quién paga
     const pCelda = celda(f, "paga");
     const paga = col("paga") < 0 ? null : leerPagaPegado(pCelda);
@@ -364,7 +467,7 @@ export function analizar(
     }
     if (col("paga") >= 0) campos.paga = { valor: paga === "inquilino" ? "Inquilino" : "Propietario" };
 
-    datosFila.set(fila, { alicuota, saldo: saldo.valor, paga: col("paga") >= 0 && pCelda ? paga : null, tipoColumna });
+    datosFila.set(fila, { alicuota, saldo: saldo.valor, saldoHon: saldoHon.valor, nota, paga: col("paga") >= 0 && pCelda ? paga : null, tipoColumna });
 
     // Personas de la fila
     for (const rol of ["propietario", "inquilino"] as const) {
@@ -372,8 +475,15 @@ export function analizar(
       const nombreCrudo = celda(f, rol);
       const telCrudo = celda(f, `${pre}telefono` as Campo);
       const correoCrudo = celda(f, `${pre}correo` as Campo);
-      const respaldoCrudo = rol === "propietario" ? celda(f, "correo_respaldo") : "";
+      const respaldoCrudo = celda(f, rol === "propietario" ? "correo_respaldo" : "inq_correo_respaldo");
       const etiqueta = rol === "propietario" ? "del propietario" : "del inquilino";
+      const kTrat = `${pre}tratamiento` as "tratamiento" | "inq_tratamiento";
+      const kDoc = `${pre}documento` as "documento" | "inq_documento";
+      const kCorte = `${pre}corte` as "corte" | "inq_corte";
+      const kResp = rol === "propietario" ? "correo_respaldo" : "inq_correo_respaldo";
+      const tratCrudo = celda(f, kTrat);
+      const docCrudo = celda(f, kDoc);
+      const corteCrudo = celda(f, kCorte);
 
       const c1 = correosDe(correoCrudo);
       const c2 = correosDe(respaldoCrudo);
@@ -400,19 +510,47 @@ export function analizar(
         valor: correo,
         nota: malos.length ? { nivel: "ambar", texto: `«${malos.join(" ")}» no es un correo válido: no se guarda` } : undefined,
       };
-      if (rol === "propietario") {
-        campos.correo_respaldo = {
+      if (col(kResp) >= 0 || col(kCor) >= 0) {
+        campos[kResp] = {
           valor: respaldo,
           nota: todos.length > 2 ? { nivel: "ambar", texto: `hay más de dos correos: «${todos.slice(2).join(" ")}» no se guarda` } : undefined,
         };
       }
 
-      const { prefijo, nombre } = separarTratamiento(nombreCrudo);
+      // Tratamiento: el de su columna manda, incluido «Sin tratamiento»
+      // (decisión del 25-oct). Si la columna está vacía, el que traiga el
+      // nombre («Sr. Pérez»); si tampoco, la base aplica la regla de empresas
+      // o «Sr.».
+      const sep = separarTratamiento(nombreCrudo);
+      const nombre = sep.nombre;
+      const deColumna = leerTratamiento(tratCrudo);
+      let prefijo: string | null | undefined = sep.prefijo;
+      if (deColumna === "malo") {
+        // Decisión de Nicolás del 25-oct: nunca «Sr.» por omisión en este caso.
+        prefijo = null;
+        campos[kTrat] = { valor: tratCrudo, nota: { nivel: "ambar", texto: "no está en la lista: se carga sin tratamiento" } };
+      } else if (deColumna !== undefined) {
+        prefijo = deColumna;
+        campos[kTrat] = { valor: deColumna ?? "Sin tratamiento" };
+      } else if (col(kTrat) >= 0) {
+        campos[kTrat] = { valor: "" };
+      }
+
+      if (docCrudo || col(kDoc) >= 0) campos[kDoc] = { valor: docCrudo };
+
+      const corte = leerSiNo(corteCrudo);
+      if (corte === "malo") {
+        campos[kCorte] = { valor: corteCrudo, nota: { nivel: "ambar", texto: "tiene que decir Sí o No: no se usa" } };
+      } else if (col(kCorte) >= 0) {
+        campos[kCorte] = { valor: corte === null ? "" : corte ? "Sí" : "No" };
+      }
+
       campos[rol] = { valor: nombreCrudo };
       if (!nombre) {
-        if (telCrudo || correo) {
-          notas.push({ nivel: "ambar", texto: `hay teléfono o correo ${etiqueta} pero no su nombre: no se guarda` });
+        if (telCrudo || correo || docCrudo) {
+          notas.push({ nivel: "ambar", texto: `hay teléfono, correo o cédula ${etiqueta} pero no su nombre: no se guarda` });
           if (campos[kTel]) campos[kTel]!.nota = { nivel: "ambar", texto: "sin nombre: no se guarda" };
+          if (docCrudo) campos[kDoc] = { valor: docCrudo, nota: { nivel: "ambar", texto: "sin nombre: no se guarda" } };
           campos[kCor] = { valor: correo, nota: correo ? { nivel: "ambar", texto: "sin nombre: no se guarda" } : campos[kCor]!.nota };
         }
         continue;
@@ -424,10 +562,13 @@ export function analizar(
         rol,
         nombre,
         prefijo,
+        documento: docCrudo,
+        docNorm: cedulaClave(docCrudo),
         telefono: telCrudo,
         telNorm,
         correo,
         respaldo,
+        corte: corte === "malo" ? null : corte,
       });
     }
   });
@@ -437,54 +578,94 @@ export function analizar(
   const conj = new Conjuntos();
   const separados = new Set<string>();
   // Primero, sin separar nada, para encontrar los "mismo contacto, otro nombre".
-  const porLlave = new Map<string, Candidato>();
+  const porLlave = new Map<string, Candidato[]>();
   const llaves = (c: Candidato) =>
-    [c.correo && `c:${c.correo}`, c.respaldo && `c:${c.respaldo}`, c.telNorm && `t:${c.telNorm}`].filter(Boolean) as string[];
+    [c.correo && `c:${c.correo}`, c.respaldo && `c:${c.respaldo}`, c.telNorm && `t:${c.telNorm}`, c.docNorm && `d:${c.docNorm}`].filter(
+      Boolean
+    ) as string[];
+  const dato = (k: string) => (k.startsWith("t:") ? "teléfono" : k.startsWith("d:") ? "cédula" : "correo");
+  // Otra persona, aunque compartan un dato: otro nombre, o el mismo nombre
+  // con otra cédula (padre e hijo que se llaman igual).
+  const otraCedula = (a: Candidato, b: Candidato) => !!a.docNorm && !!b.docNorm && a.docNorm !== b.docNorm;
+  const distinta = (a: Candidato, b: Candidato) => !mismoNombre(a.nombre, b.nombre) || otraCedula(a, b);
   // Una sola pregunta por fila, pero con TODAS sus coincidencias: contestar
   // «Sí» la junta con cada una (11C del piloto coincide por correo con 04D y
   // por teléfono con 11A/11B).
   for (const c of candidatos) {
     conj.raiz(c.id);
+    // Contra TODAS las filas anteriores con ese dato, no solo la primera: si
+    // no, 12D (mismo nombre y correo que 12C) solo se comparaba con 10A, de
+    // otro nombre, y quedaba separada de 12C mientras no se contestara.
     const iguales: { k: string; otro: Candidato }[] = [];
     for (const k of llaves(c)) {
-      const otro = porLlave.get(k);
-      if (!otro) porLlave.set(k, c);
-      else if (otro.id !== c.id) iguales.push({ k, otro });
+      const antes = porLlave.get(k) ?? [];
+      for (const otro of antes) if (otro.id !== c.id) iguales.push({ k, otro });
+      porLlave.set(k, [...antes, c]);
     }
-    const otroNombre = iguales.filter((m) => !mismoNombre(m.otro.nombre, c.nombre));
+    const otroNombre = iguales.filter((m) => distinta(m.otro, c));
     if (otroNombre.length) {
       const clave = `sep:${c.id}`;
-      const con = otroNombre
-        .map((m) => `el mismo ${m.k.startsWith("t:") ? "teléfono" : "correo"} que «${m.otro.nombre}» (fila ${m.otro.fila}, ${m.otro.codigo})`)
-        .filter((x, i, a) => a.indexOf(x) === i);
-      // Revisión del 25-oct: si coincide SOLO el teléfono y los correos son
-      // otros, un «Sí» equivocado manda los recibos y avisos de esta unidad
-      // al correo de la otra persona (destinatarios_de usa el de la ficha) y
-      // Accesos lo propone al invitar. Ahí no hay respuesta por omisión.
+      // Una frase por persona (el nombre y la cédula), con todos sus datos en
+      // común y todas sus filas: «el mismo correo y teléfono que «X» (filas
+      // 12 y 13: 03A, 03B)».
+      const porPersona = new Map<string, { otro: Candidato; datos: Set<string>; filas: Candidato[] }>();
+      for (const m of otroNombre) {
+        const k = `${nombreClave(m.otro.nombre)}|${m.otro.docNorm}`;
+        const p = porPersona.get(k) ?? { otro: m.otro, datos: new Set<string>(), filas: [] };
+        p.datos.add(dato(m.k));
+        if (!p.filas.includes(m.otro)) p.filas.push(m.otro);
+        porPersona.set(k, p);
+      }
+      const con = [...porPersona.values()].map(({ otro, datos, filas: fs }) => {
+        const d = [...datos];
+        const que = d.length === 1 && d[0] === "cédula" ? "la misma cédula" : `el mismo ${d.join(" y ")}`;
+        const donde =
+          fs.length === 1 ? `fila ${fs[0].fila}, ${fs[0].codigo}` : `filas ${fs.map((x) => x.fila).join(", ")}: ${fs.map((x) => x.codigo).join(", ")}`;
+        return (
+          `${que} que «${otro.nombre}» (${donde})` +
+          (mismoNombre(otro.nombre, c.nombre) ? `, pero otra cédula (${c.documento} y ${otro.documento})` : "")
+        );
+      });
+      // Un «Sí» equivocado manda los recibos y avisos de esta unidad al
+      // correo de la otra persona (destinatarios_de usa el de la ficha) y
+      // Accesos lo propone al invitar. Por eso (Gustavo, 25-oct) ninguna de
+      // estas tiene respuesta por omisión: la carga espera que se elija.
       const otroCorreo = otroNombre.find((m) => m.otro.correo && m.otro.correo !== c.correo)?.otro;
-      const choque = !!c.correo && !!otroCorreo && otroNombre.every((m) => m.k.startsWith("t:"));
-      const valor = dec.personas[clave] ?? (choque ? "" : "junta");
+      const valor = dec.personas[clave] ?? "";
       dudosos.push({
         clave,
         texto:
           `Fila ${c.fila} (${c.codigo}): «${c.nombre}» tiene ${con.join(" y ")}. ¿Es la misma persona?` +
-          (choque
-            ? ` Los correos son distintos: esta fila trae ${c.correo} y «${otroCorreo!.nombre}» (fila ${otroCorreo!.fila}) trae ${otroCorreo!.correo}. Si contesta «Sí», los recibos y avisos de ${c.codigo} van a ir a ${otroCorreo!.correo}.`
+          (c.correo && otroCorreo
+            ? ` Los correos son distintos: esta fila trae ${c.correo} y «${otroCorreo.nombre}» (fila ${otroCorreo.fila}) trae ${otroCorreo.correo}. Si contesta «Sí», los recibos y avisos de ${c.codigo} van a ir a ${otroCorreo.correo}.`
             : ""),
+        archivo: `«${c.nombre}» (${c.codigo})`,
+        // Una sola línea: «Sí» la junta con todas sus coincidencias a la vez.
+        lineas: [
+          {
+            contra: "Archivo",
+            etiqueta: [...porPersona.values()]
+              .map(({ otro, filas: fs }) => `«${otro.nombre}» (${fs.map((x) => x.codigo).join(", ")})`)
+              .join(" y "),
+            valor: "junta",
+            aviso: c.correo && otroCorreo ? `Con «Sí», los recibos de ${c.codigo} van a ${otroCorreo.correo}, no a ${c.correo}.` : undefined,
+          },
+        ],
+        valorNo: "separa",
         opciones: [
           { valor: "junta", etiqueta: "Sí, es la misma persona" },
           { valor: "separa", etiqueta: "No, son personas distintas" },
         ],
         valor,
-        obligatoria: choque,
+        obligatoria: true,
         filas: [c.fila],
       });
       // Sin respuesta todavía: en la previa, como distintas.
       if (valor !== "junta") separados.add(c.id);
     }
-    // «Distintas» la separa solo de los de OTRO nombre: con los del mismo
-    // nombre y el mismo dato sigue siendo una persona (05C y 05D del piloto).
-    for (const m of iguales) if (!separados.has(c.id) || mismoNombre(m.otro.nombre, c.nombre)) conj.unir(m.otro.id, c.id);
+    // «Distintas» la separa solo de las que son otra persona: con las del
+    // mismo nombre y el mismo dato sigue siendo una (05C y 05D del piloto).
+    for (const m of iguales) if (!separados.has(c.id) || !distinta(m.otro, c)) conj.unir(m.otro.id, c.id);
   }
 
   const armarGrupos = () => {
@@ -507,15 +688,23 @@ export function analizar(
       if (!porNombre.has(k)) porNombre.set(k, []);
       porNombre.get(k)!.push(g);
     }
+    // Dos grupos que SÍ comparten un dato ya tienen su pregunta «¿Es la misma
+    // persona?» (mismo nombre, otra cédula): esta no va.
+    const llavesDe = (g: Candidato[]) => new Set(g.flatMap(llaves));
     for (const lista of porNombre.values()) {
       for (let i = 1; i < lista.length; i++) {
         const a = lista[0][0];
         const b = lista[i][0];
+        const ka = llavesDe(lista[0]);
+        if ([...llavesDe(lista[i])].some((k) => ka.has(k))) continue;
         const clave = `unir:${a.id}|${b.id}`;
         const valor = dec.personas[clave] ?? "distintas";
         dudosos.push({
           clave,
-          texto: `«${b.nombre}» (fila ${b.fila}, ${b.codigo}) se llama igual que «${a.nombre}» (fila ${a.fila}, ${a.codigo}), pero no comparten correo ni teléfono.`,
+          texto: `«${b.nombre}» (fila ${b.fila}, ${b.codigo}) se llama igual que «${a.nombre}» (fila ${a.fila}, ${a.codigo}), pero no comparten correo, teléfono ni cédula.`,
+          archivo: `«${b.nombre}» (${lista[i].map((x) => x.codigo).join(", ")})`,
+          lineas: [{ contra: "Archivo", etiqueta: `«${a.nombre}» (${lista[0].map((x) => x.codigo).join(", ")}), sin datos en común`, valor: "misma" }],
+          valorNo: "distintas",
           opciones: [
             { valor: "distintas", etiqueta: "Son personas distintas" },
             { valor: "misma", etiqueta: "Es la misma persona" },
@@ -532,6 +721,7 @@ export function analizar(
     p,
     correos: [p.correo, p.correo_respaldo].filter(Boolean).map((x) => x!.trim().toLowerCase()),
     tel: normalizarTel(p.telefono),
+    doc: cedulaClave(p.documento),
     nombre: nombreClave(p.nombre),
   }));
   // Entre varias fichas que coinciden por correo o teléfono, primero la que se
@@ -550,7 +740,8 @@ export function analizar(
       clave: primero.id,
       candidatos: cs,
       nombre: primero.nombre,
-      prefijo: primero.prefijo,
+      prefijo: cs.find((c) => c.prefijo !== undefined)?.prefijo,
+      documento: cs.find((c) => c.documento)?.documento ?? "",
       telefono: cs.find((c) => c.telefono)?.telefono ?? "",
       telNorm: cs.find((c) => c.telNorm)?.telNorm ?? null,
       correo: correos[0] ?? "",
@@ -563,18 +754,93 @@ export function analizar(
     const misTels = new Set(cs.map((c) => c.telNorm).filter(Boolean) as string[]);
     const porCorreo = llavesOrg.filter((x) => x.correos.some((c) => misCorreos.has(c))).map((x) => x.p);
     const porTel = llavesOrg.filter((x) => x.tel && misTels.has(x.tel)).map((x) => x.p);
+    const misDocs = new Set(cs.map((c) => c.docNorm).filter(Boolean));
+    const porDoc = llavesOrg.filter((x) => x.doc && misDocs.has(x.doc)).map((x) => x.p);
     const clave = `org:${g.clave}`;
     const dondeAparece = `«${g.nombre}» (fila ${primero.fila}, ${primero.codigo})`;
-    const soloPorTel = !porCorreo.length && porTel.length ? mejor(porTel, g.nombre) : null;
+    const todas = [...porCorreo, ...porTel, ...porDoc].filter((p, i, arr) => arr.indexOf(p) === i);
+    // Una ficha que comparte un dato pero es otra persona: otro nombre, o el
+    // mismo nombre con otra cédula.
+    const gDoc = cedulaClave(g.documento);
+    const esOtra = (p: PersonaOrg) => !mismoNombre(p.nombre, g.nombre) || (!!gDoc && !!cedulaClave(p.documento) && cedulaClave(p.documento) !== gDoc);
+    const enComun = (p: PersonaOrg) =>
+      [porCorreo.includes(p) && "el correo", porTel.includes(p) && "el teléfono", porDoc.includes(p) && "la cédula"].filter(Boolean).join(", ");
+    const codigosGrupo = cs.map((c) => c.codigo).filter((x, i, a) => a.indexOf(x) === i).join(", ");
+    const archivoGrupo = `«${g.nombre}» (${codigosGrupo})`;
+    // Una línea por ficha; las fichas iguales (mismo nombre y correo, del
+    // importador viejo) en una sola, la que tiene más unidades.
+    const lineasFichas = (lista: PersonaOrg[]): LineaDudoso[] => {
+      const vistas = new Set<string>();
+      return lista
+        .filter((f) => {
+          const k = `${nombreClave(f.nombre)}|${(f.correo ?? "").trim().toLowerCase()}|${cedulaClave(f.documento)}`;
+          if (vistas.has(k)) return false;
+          vistas.add(k);
+          return true;
+        })
+        .map((f) => ({
+          contra: "Ficha" as const,
+          etiqueta: describir(f),
+          valor: f.id,
+          aviso:
+            f.correo?.trim() && f.correo.trim().toLowerCase() !== g.correo
+              ? `Con «Sí», los recibos de ${codigosGrupo} van a ${f.correo.trim()}${g.correo ? `, no a ${g.correo}` : ""}.`
+              : undefined,
+        }));
+    };
+    // Si alguna ficha con el MISMO nombre comparte el dato, se elige entre
+    // esas (es la misma persona, ya registrada) y las de otro nombre solo se
+    // nombran como información: elegir la del mismo nombre no junta a nadie
+    // con otra persona, y su correo es el de esa persona. Pasa mucho en
+    // administradoras cargadas con el importador viejo (una ficha por unidad).
+    const mismas = todas.filter((p) => !esOtra(p));
+    const otrasConDato = todas.filter(esOtra);
+    const pc = porCorreo.filter((p) => mismas.includes(p));
+    const pt = porTel.filter((p) => mismas.includes(p));
+    const soloPorTel = !pc.length && !porDoc.some((p) => mismas.includes(p)) && pt.length ? mejor(pt, g.nombre) : null;
 
     let elegida: PersonaOrg | null = null;
-    if (porCorreo.length && porTel.length && !porCorreo.some((p) => porTel.includes(p))) {
-      const a = mejor(porCorreo, g.nombre);
-      const b = mejor(porTel, g.nombre);
+    if (otrasConDato.length && !mismas.length) {
+      // Decisión de Gustavo del 25-oct: un dato en común con otro nombre no
+      // tiene respuesta por omisión, y la carga espera.
+      const orden = [...todas].sort((a, b) => Number(esOtra(a)) - Number(esOtra(b)) || b.unidades.length - a.unidades.length);
+      const valor = dec.personas[clave] ?? "";
+      const codigos = cs.map((c) => c.codigo).filter((x, i, a) => a.indexOf(x) === i).join(", ");
+      dudosos.push({
+        clave,
+        texto:
+          `${dondeAparece} comparte datos con fichas que ya están en la administradora: ` +
+          orden
+            .map(
+              (p) =>
+                `${enComun(p)} de ${describir(p)}` +
+                (mismoNombre(p.nombre, g.nombre) && esOtra(p) ? ` (mismo nombre, otra cédula: ${p.documento})` : "")
+            )
+            .join("; ") +
+          `. ¿Es alguna de ellas? Si elige una ficha, los recibos y avisos de ${codigos} van a ir al correo de esa ficha (no se cambia).`,
+        archivo: archivoGrupo,
+        lineas: lineasFichas(orden),
+        valorNo: "nueva",
+        opciones: [
+          ...orden.map((p) => ({ valor: p.id, etiqueta: `Es ${describir(p)}: usar su ficha (${p.correo || "sin correo"})` })),
+          { valor: "nueva", etiqueta: "Es otra persona: ficha nueva" },
+        ],
+        valor,
+        obligatoria: true,
+        filas: cs.map((c) => c.fila),
+      });
+      // Sin respuesta todavía: en la previa, como ficha nueva.
+      elegida = valor && valor !== "nueva" ? (ctx.personas.find((p) => p.id === valor) ?? null) : null;
+    } else if (pc.length && pt.length && !pc.some((p) => pt.includes(p))) {
+      const a = mejor(pc, g.nombre);
+      const b = mejor(pt, g.nombre);
       const valor = dec.personas[clave] ?? a.id;
       dudosos.push({
         clave,
         texto: `${dondeAparece}: su correo es el de ${describir(a)} y su teléfono el de ${describir(b)}, que en la administradora son fichas distintas. ¿Cuál es?`,
+        archivo: archivoGrupo,
+        lineas: lineasFichas([a, b]),
+        valorNo: "nueva",
         opciones: [
           { valor: a.id, etiqueta: `La ficha de ${describir(a)} (por el correo)` },
           { valor: b.id, etiqueta: `La ficha de ${describir(b)} (por el teléfono)` },
@@ -592,9 +858,12 @@ export function analizar(
       dudosos.push({
         clave,
         texto: `${dondeAparece} tiene el teléfono de ${describir(b)}, pero otro correo: el archivo trae ${g.correo} y la ficha ${b.correo}. Si es la misma ficha, los recibos y avisos de ${cs.map((c) => c.codigo).filter((x, i, a) => a.indexOf(x) === i).join(", ")} van a ir a ${b.correo}.`,
+        archivo: archivoGrupo,
+        lineas: lineasFichas([b, ...pt.filter((p) => p !== b)]),
+        valorNo: "nueva",
         opciones: [
           // Todas las que tienen ese teléfono, la del mismo nombre primero.
-          ...[b, ...porTel.filter((p) => p !== b)].map((p) => ({ valor: p.id, etiqueta: `Es ${describir(p)}: usar su ficha (${p.correo || "sin correo"})` })),
+          ...[b, ...pt.filter((p) => p !== b)].map((p) => ({ valor: p.id, etiqueta: `Es ${describir(p)}: usar su ficha (${p.correo || "sin correo"})` })),
           { valor: "nueva", etiqueta: "Es otra persona: ficha nueva" },
         ],
         valor,
@@ -603,14 +872,21 @@ export function analizar(
       });
       // Sin respuesta todavía: en la previa, como ficha nueva.
       elegida = valor && valor !== "nueva" ? (ctx.personas.find((p) => p.id === valor) ?? null) : null;
-    } else if (porCorreo.length || porTel.length) {
-      const todas = [...porCorreo, ...porTel].filter((p, i, arr) => arr.indexOf(p) === i);
-      elegida = mejor(todas, g.nombre);
-      if (todas.length > 1) {
+    } else if (mismas.length) {
+      elegida = mejor(mismas, g.nombre);
+      if (mismas.length > 1) {
         cs.forEach((c) =>
           filaDe(c.fila)?.notas.push({
             nivel: "info",
-            texto: `hay ${todas.length} fichas con el correo o teléfono de ${c.nombre}: se usa la de ${describir(elegida!)}`,
+            texto: `hay ${mismas.length} fichas con el nombre y el correo, teléfono o cédula de ${c.nombre}: se usa la de ${describir(elegida!)}`,
+          })
+        );
+      }
+      if (otrasConDato.length) {
+        cs.forEach((c) =>
+          filaDe(c.fila)?.notas.push({
+            nivel: "info",
+            texto: `también comparte datos con ${otrasConDato.map((o) => `${describir(o)} (${enComun(o)})`).join(", ")}: ${otrasConDato.length > 1 ? "son otras personas (otro nombre u otra cédula), esas fichas no se usan" : "es otra persona (otro nombre u otra cédula), esa ficha no se usa"}`,
           })
         );
       }
@@ -620,7 +896,10 @@ export function analizar(
         const valor = dec.personas[clave] ?? "nueva";
         dudosos.push({
           clave,
-          texto: `${dondeAparece} se llama igual que una persona que ya está en la administradora, pero no comparten correo ni teléfono.`,
+          texto: `${dondeAparece} se llama igual que una persona que ya está en la administradora, pero no comparten correo, teléfono ni cédula.`,
+          archivo: archivoGrupo,
+          lineas: lineasFichas(homonimos).map((l) => ({ ...l, etiqueta: `${l.etiqueta}, sin datos en común` })),
+          valorNo: "nueva",
           opciones: [
             { valor: "nueva", etiqueta: "Es otra persona: ficha nueva" },
             ...homonimos.map((p) => ({ valor: p.id, etiqueta: `Es ${describir(p)}: usar su ficha` })),
@@ -635,13 +914,18 @@ export function analizar(
       g.personaId = elegida.id;
       const dif = (campo: string, ficha: string | null, archivo: string) => {
         if (!archivo) return;
-        if (!ficha?.trim()) g.completa.push(`${campo}: se completa con ${archivo}`);
+        if (!ficha?.trim()) g.completa.push({ texto: `${campo}: se completa con ${archivo}` });
         else if (ficha.trim().toLowerCase() !== archivo.trim().toLowerCase())
-          g.completa.push(`${campo}: la ficha dice ${ficha}, el archivo ${archivo} (no se cambia)`);
+          g.completa.push({ texto: `${campo}: el archivo dice ${archivo}, no se cambia`, queda: ficha.trim() });
       };
       dif("teléfono", elegida.telefono, g.telefono);
       dif("correo", elegida.correo, g.correo);
       dif("correo de respaldo", elegida.correo_respaldo, g.respaldo);
+      if (g.documento) {
+        if (!elegida.documento?.trim()) g.completa.push({ texto: `cédula: se completa con ${g.documento}` });
+        else if (cedulaClave(elegida.documento) !== cedulaClave(g.documento))
+          g.completa.push({ texto: `cédula: el archivo dice ${g.documento}, no se cambia`, queda: elegida.documento.trim() });
+      }
     }
     return g;
   });
@@ -676,12 +960,12 @@ export function analizar(
         if (enFila && !mismoNombre(enFila.nombre, quien.nombre)) {
           f.notas.push({
             nivel: "ambar",
-            texto: `el archivo dice «${enFila.nombre}», pero la ficha que coincide por correo o teléfono es la de ${describir(quien)}: se usa esa ficha, revise que sea la misma persona`,
+            texto: `el archivo dice «${enFila.nombre}», y se eligió la ficha de ${describir(quien)}: se usa esa ficha, con su nombre`,
           });
         } else {
           f.notas.push({ nivel: "info", texto: `${rol === "propietario" ? "el propietario" : "el inquilino"} ya está en la administradora: se usa la ficha de ${describir(quien)}` });
         }
-        g.completa.forEach((t) => f.notas.push({ nivel: t.includes("no se cambia") ? "ambar" : "info", texto: t }));
+        g.completa.forEach((t) => f.notas.push({ nivel: t.queda ? "ambar" : "info", texto: t.texto, queda: t.queda }));
       } else if (g.candidatos.length > 1 && g.candidatos[0].fila === f.fila) {
         f.notas.push({
           nivel: "info",
@@ -690,19 +974,70 @@ export function analizar(
       }
     };
 
+    // «Recibe corte» de la persona de esta fila (null = la fila no lo dice).
+    const corteDe = (g: Grupo | undefined, rol: Rol) => g?.candidatos.find((c) => c.fila === f.fila && c.rol === rol)?.corte ?? null;
+
+    /**
+     * Avisos en ámbar de una fila que se carga (decisiones del 25-oct). Ninguno
+     * bloquea: solo bloquea lo que ya bloqueaba.
+     *  - Lo que la plantilla pide y la fila no trae: saldo de condominio,
+     *    nombre y correo del propietario (código y alícuota ya frenan la fila).
+     *  - Nadie de la unidad recibe el corte.
+     *  - Paga el inquilino y no hay correo del inquilino.
+     */
+    const avisos = (carga: FilaCarga) => {
+      const vProp = existente ? vigente(existente.vinculos, "propietario") : null;
+      const vInq = existente ? vigente(existente.vinculos, "inquilino") : null;
+      // El correo con que queda esa persona: el de quien ya está (el
+      // importador no cambia de persona), o el de la ficha, completado con el
+      // del archivo si estaba vacío.
+      const correoDe = (g: Grupo | undefined, v: ReturnType<typeof vigente>) => {
+        if (v && (!g || v.persona_id !== g.personaId)) return v.personas?.correo || "";
+        if (!g) return "";
+        const ficha = g.personaId ? ctx.personas.find((p) => p.id === g.personaId) : null;
+        return ficha?.correo || g.correo;
+      };
+      if (col("saldo") >= 0 && d.saldo === null && !ctx.hayCierres && carga.accion === "crear")
+        f.notas.push({ nivel: "ambar", texto: "no trae saldo de condominio: se carga en 0" });
+      if (col("propietario") >= 0 && !gProp && !vProp) f.notas.push({ nivel: "ambar", texto: "falta el nombre del propietario" });
+      else if (col("correo") >= 0 && (gProp || vProp) && !correoDe(gProp, vProp))
+        f.notas.push({ nivel: "ambar", texto: "falta el correo del propietario: no le va a llegar el recibo por correo" });
+
+      // Quién recibe el corte, como queda la unidad después de la carga.
+      // null = la unidad no tiene a nadie en ese rol.
+      const recibe = (rol: Rol, v: ReturnType<typeof vigente>): boolean | null => {
+        const delArchivo = rol === "propietario" ? carga.propietario_corte : carga.inquilino_corte;
+        if (carga[rol]) return delArchivo ?? (v ? v.enviar_corte !== false : true);
+        return v ? v.enviar_corte !== false : null;
+      };
+      const r = [recibe("propietario", vProp), recibe("inquilino", vInq)].filter((x) => x !== null);
+      if (r.length && r.every((x) => x === false))
+        f.notas.push({ nivel: "ambar", texto: "nadie de esta unidad recibe el corte: el recibo no le va a llegar a nadie por correo" });
+
+      const pagaFinal = carga.paga ?? (existente?.paga as Paga | undefined) ?? "propietario";
+      if (pagaFinal === "inquilino" && (gInq || vInq) && !correoDe(gInq, vInq))
+        f.notas.push({ nivel: "ambar", texto: "paga el inquilino, pero no hay correo del inquilino: no le va a llegar el recibo por correo" });
+    };
+
     if (!existente) {
       notasPersona(gProp, "propietario");
       notasPersona(gInq, "inquilino");
-      cargaFilas.push({
+      const carga: FilaCarga = {
         accion: "crear",
         codigo: f.codigo,
         tipo: f.tipo,
         alicuota: d.alicuota,
         saldo_inicial: ctx.hayCierres ? null : (d.saldo ?? 0),
+        saldo_inicial_hon: ctx.hayCierres ? null : (d.saldoHon ?? 0),
+        nota: d.nota || null,
         paga: d.paga,
         propietario: gProp?.clave,
         inquilino: gInq?.clave,
-      });
+        propietario_corte: gProp ? corteDe(gProp, "propietario") : null,
+        inquilino_corte: gInq ? corteDe(gInq, "inquilino") : null,
+      };
+      avisos(carga);
+      cargaFilas.push(carga);
       continue;
     }
 
@@ -721,6 +1056,7 @@ export function analizar(
       tipo: f.tipo,
       alicuota: null,
       saldo_inicial: null,
+      saldo_inicial_hon: null,
       paga: null,
     };
     if (d.alicuota !== null && Math.abs(d.alicuota - Number(existente.alicuota)) > 1e-9) {
@@ -737,18 +1073,38 @@ export function analizar(
       cambios.push(`saldo inicial ${usd(existente.saldo_inicial)} → ${usd(d.saldo)}`);
       carga.saldo_inicial = d.saldo;
     }
+    const notaHoy = (ctx.notas?.[existente.id] ?? "").trim();
+    if (d.nota && d.nota !== notaHoy) {
+      const corta = (t: string) => (t.length > 60 ? `${t.slice(0, 60)}…` : t);
+      cambios.push(notaHoy ? `nota «${corta(notaHoy)}» → «${corta(d.nota)}»` : `nota: se completa con «${corta(d.nota)}»`);
+      carga.nota = d.nota;
+    }
+    if (d.saldoHon !== null && !ctx.hayCierres && Math.abs(d.saldoHon - Number(existente.saldo_inicial_hon)) > 0.00005) {
+      cambios.push(`saldo de administración ${usd(existente.saldo_inicial_hon)} → ${usd(d.saldoHon)}`);
+      carga.saldo_inicial_hon = d.saldoHon;
+    }
     for (const [rol, g] of [
       ["propietario", gProp],
       ["inquilino", gInq],
     ] as const) {
       if (!g) continue;
       const v = vigente(existente.vinculos, rol);
+      const corte = corteDe(g, rol);
+      const kCorte = rol === "propietario" ? "propietario_corte" : "inquilino_corte";
       if (!v) {
         cambios.push(`se registra ${rol === "propietario" ? "el propietario" : "el inquilino"}: ${g.nombre}`);
         carga[rol] = g.clave;
+        carga[kCorte] = corte;
       } else if (g.personaId && v.persona_id === g.personaId) {
-        g.completa.filter((t) => t.includes("se completa")).forEach((t) => cambios.push(`${rol}: ${t}`));
-        if (g.completa.some((t) => t.includes("se completa"))) carga[rol] = g.clave;
+        g.completa.filter((t) => !t.queda).forEach((t) => cambios.push(`${rol}: ${t.texto}`));
+        if (g.completa.some((t) => !t.queda)) carga[rol] = g.clave;
+        // «Recibe corte» de un vínculo que ya existe: solo con «Actualizar», y
+        // se muestra como cualquier otro cambio (decisión del 25-oct).
+        if (corte !== null && corte !== (v.enviar_corte !== false)) {
+          cambios.push(`${rol} recibe el corte: ${v.enviar_corte !== false ? "Sí" : "No"} → ${corte ? "Sí" : "No"}`);
+          carga[rol] = g.clave;
+          carga[kCorte] = corte;
+        }
       } else {
         // Nunca se manda: la fila se carga sin este vínculo (la base igual lo
         // rechazaría, como red de seguridad).
@@ -759,7 +1115,8 @@ export function analizar(
               { nivel: "info", texto: `ya tiene como ${rol} a «${nombreDe(v)}» (otra ficha con el mismo nombre): se deja como está` }
             : {
                 nivel: "ambar",
-                texto: `el archivo trae otro ${rol} («${nombreFila}»; la ficha tiene «${nombreDe(v)}»): no se cambia desde aquí, cámbielo desde la ficha`,
+                texto: `el archivo trae otro ${rol} («${nombreFila}»): no se cambia desde aquí, cámbielo desde la ficha`,
+                queda: nombreDe(v),
               }
         );
       }
@@ -768,7 +1125,7 @@ export function analizar(
     if (d.paga && d.paga !== pagaActual) {
       const tieneInq = !!vigente(existente.vinculos, "inquilino") || !!carga.inquilino;
       if (d.paga === "inquilino" && !tieneInq) {
-        f.notas.push({ nivel: "ambar", texto: "dice que paga el inquilino, pero la unidad no tiene inquilino: no se cambia" });
+        f.notas.push({ nivel: "ambar", texto: "dice que paga el inquilino, pero la unidad no tiene inquilino: no se cambia", queda: "paga el propietario" });
       } else {
         const etiqueta = (p: Paga) => (p === "inquilino" ? "Inquilino" : "Propietario");
         cambios.push(`quién paga ${etiqueta(pagaActual)} → ${etiqueta(d.paga)}`);
@@ -783,6 +1140,7 @@ export function analizar(
     }
     if (dec.actualizar[f.clave]) {
       f.estado = "actualizar";
+      avisos(carga);
       cargaFilas.push(carga);
     } else {
       f.estado = "omitir";
@@ -799,7 +1157,7 @@ export function analizar(
   for (const d of sinElegir) d.pendiente = true;
   for (const d of sinElegir)
     for (const n of d.filas ?? [])
-      filaDe(n)?.notas.push({ nivel: "ambar", texto: "falta elegir en «Personas para revisar»: los correos no coinciden. La carga espera esa respuesta" });
+      filaDe(n)?.notas.push({ nivel: "ambar", texto: "falta elegir en «Personas para revisar» si es la misma persona. La carga espera esa respuesta" });
 
   // Personas a mandar: las de las filas que se cargan.
   const usadasFinal = new Set<string>();
@@ -811,8 +1169,26 @@ export function analizar(
     .filter((g) => usadasFinal.has(g.clave))
     .map((g) =>
       g.personaId
-        ? { ref: g.clave, persona_id: g.personaId, nombre: g.nombre, telefono: g.telefono || undefined, correo: g.correo || undefined, correo_respaldo: g.respaldo || undefined }
-        : { ref: g.clave, prefijo: g.prefijo, nombre: g.nombre, telefono: g.telefono || undefined, correo: g.correo || undefined, correo_respaldo: g.respaldo || undefined }
+        ? {
+            ref: g.clave,
+            persona_id: g.personaId,
+            nombre: g.nombre,
+            documento: g.documento || undefined,
+            telefono: g.telefono || undefined,
+            correo: g.correo || undefined,
+            correo_respaldo: g.respaldo || undefined,
+          }
+        : {
+            ref: g.clave,
+            // Sin la clave si el archivo no trae tratamiento (la base decide);
+            // null si dice «Sin tratamiento».
+            ...(g.prefijo !== undefined ? { prefijo: g.prefijo } : {}),
+            nombre: g.nombre,
+            documento: g.documento || undefined,
+            telefono: g.telefono || undefined,
+            correo: g.correo || undefined,
+            correo_respaldo: g.respaldo || undefined,
+          }
     );
 
   // Suma de alícuotas tal como quedaría el edificio.
@@ -839,6 +1215,7 @@ export function analizar(
       sumaAlicuotas: suma,
       saldoIgnorado: ctx.hayCierres && filas.some((f) => f.campos.saldo?.valor),
       porElegir: sinElegir.length,
+      faltanColumnas: (["codigo", "alicuota", "saldo", "propietario", "correo"] as Campo[]).filter((c) => col(c) < 0).map((c) => CAMPOS[c]),
     },
     carga: { personas: personasCarga, filas: cargaFilas },
   };

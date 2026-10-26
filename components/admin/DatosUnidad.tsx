@@ -2,16 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Aviso, Button, Campo, Card, Confirmar, EstadoGuardado, Input, Select } from "@/components/ui";
+import { Aviso, Button, Campo, Card, Confirmar, EstadoGuardado, Input, Select, Textarea } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
 import { fechaCorta, hoyLocalISO, montoAlSalir, num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
-import { correoValido, nombreDe } from "@/lib/admin/personas";
+import { TRATAMIENTOS, correoValido, etiquetaTratamiento, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
-import { TIPOS_UNIDAD, type TipoUnidad, type UnidadConPaga, type Vinculo } from "@/lib/admin/tipos";
+import { LARGO_NOTA, TIPOS_UNIDAD, type TipoUnidad, type UnidadConPaga, type Vinculo } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
-
-const TRATAMIENTOS = ["Sr.", "Sra.", "Sres.", "Dr.", "Dra.", ""];
 
 type FormPersona = {
   prefijo: string;
@@ -70,11 +68,13 @@ export function DatosUnidad({
   unidad,
   prop,
   inq,
+  nota: notaGuardada,
 }: {
   orgId: string;
   unidad: UnidadConPaga;
   prop: Vinculo | null;
   inq: Vinculo | null;
+  nota: string;
 }) {
   const router = useRouter();
   const [u, setU] = useState({
@@ -88,6 +88,7 @@ export function DatosUnidad({
     tipo: (unidad.tipo ?? "apartamento") as TipoUnidad,
   });
   const [paga, setPaga] = useState<Paga>(pagaDe(unidad.paga));
+  const [nota, setNota] = useState(notaGuardada);
   const [p, setP] = useState<FormPersona>(aForm(prop));
   const [i, setI] = useState<FormPersona>(aForm(inq));
   const [ocupado, setOcupado] = useState(false);
@@ -201,6 +202,21 @@ export function DatosUnidad({
     }
   }
 
+  /**
+   * La nota de la unidad (caso 74): en `notas_unidad`, aparte de `unidades`,
+   * porque un residente puede leer la fila de su unidad. Vacía, se borra.
+   * `org_id` lo pone la base a partir de la unidad.
+   */
+  async function guardarNota() {
+    const texto = nota.trim();
+    if (texto === notaGuardada.trim()) return;
+    const supabase = crearClienteNavegador();
+    const { error } = texto
+      ? await supabase.from("notas_unidad").upsert({ unidad_id: unidad.id, org_id: orgId, nota: texto })
+      : await supabase.from("notas_unidad").delete().eq("unidad_id", unidad.id);
+    if (error) throw error;
+  }
+
   async function guardarPaga() {
     if (paga === pagaDe(unidad.paga)) return;
     const supabase = crearClienteNavegador();
@@ -261,6 +277,7 @@ export function DatosUnidad({
       else await guardarVinculo(tipo, formDe[tipo], actualDe[tipo]);
     }
     await guardarPaga();
+    await guardarNota();
     if (avisos.length) setListo(avisos.join(" "));
     router.refresh();
   });
@@ -332,9 +349,11 @@ export function DatosUnidad({
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
           <Campo etiqueta="Tratamiento">
             <Select value={f.prefijo} onChange={(e) => setF({ ...f, prefijo: e.target.value })}>
-              {TRATAMIENTOS.map((x) => (
+              {/* Un tratamiento que la ficha ya tiene y no está en la lista (p. ej.
+                  «Srta.»): se muestra tal cual, para no cambiarlo sin querer al guardar. */}
+              {[...TRATAMIENTOS, ...((TRATAMIENTOS as readonly string[]).includes(f.prefijo) ? [] : [f.prefijo])].map((x) => (
                 <option key={x} value={x}>
-                  {x || "sin tratamiento"}
+                  {etiquetaTratamiento(x)}
                 </option>
               ))}
             </Select>
@@ -376,7 +395,7 @@ export function DatosUnidad({
     <div style={{ display: "grid", gap: 16 }}>
       {error && <p style={{ color: "var(--rojo)", fontSize: 13 }}>{error}</p>}
       {listo && (
-        <Aviso tono="verde" titulo="Listo">
+        <Aviso tono="ok" titulo="Listo">
           {listo}
         </Aviso>
       )}
@@ -430,6 +449,14 @@ export function DatosUnidad({
               </Aviso>
             </div>
           )}
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Campo
+              etiqueta="Nota (solo la ve la administración)"
+              ayuda={`Los residentes no la ven, ni en su portal ni en el recibo. ${nota.length}/${LARGO_NOTA} caracteres.`}
+            >
+              <Textarea rows={3} maxLength={LARGO_NOTA} value={nota} onChange={(e) => setNota(e.target.value)} />
+            </Campo>
+          </div>
           <label style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
             <input type="checkbox" checked={u.activa} onChange={(e) => setU({ ...u, activa: e.target.checked })} />
             Unidad activa · una unidad inactiva no se factura, pero conserva su historia

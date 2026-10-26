@@ -1610,3 +1610,291 @@ un porcentaje.
   es «Monto $» o «Porcentaje %» si todos los cobros son del mismo tipo; si se mezclan,
   dice «Monto $ o porcentaje %» y cada celda lleva su unidad debajo.
 - **Cómo se revierte:** `components/admin/Cobros.tsx`.
+
+## Ronda 5 — plantilla oficial de carga y respuestas de Gustavo (25-oct)
+
+> Gustavo respondió las preguntas de la ronda 5 y mandó la plantilla oficial
+> (`Vecitap-plantilla-carga.xlsx`). Decisiones de Nicolás del 25-oct. **Estado:
+> construidos y probados con los archivos y contra la base de pruebas (M4); sin validar en
+> el navegador.** Migración M4: `20261025120000_importar_unidades_plantilla.sql`, aplicada
+> en pruebas. Lo marcado **«para aprobar»** no lo pidió nadie: lo decidí al construir y lo
+> revisa Nicolás.
+
+### 66. «Cargar datos» reconoce la plantilla oficial
+
+**Caso de uso:** la administradora descarga la plantilla, llena la hoja «Unidades» y la
+sube sin tocar nada.
+
+- **`main`:** no había plantilla. El importador leía la primera hoja del Excel y
+  reconocía siete columnas.
+- **Ahora:**
+  - **Botón «Descargar plantilla»** en «Cargar datos»: entrega el archivo de Gustavo tal
+    cual (`public/Vecitap-plantilla-carga.xlsx`; solo trae datos de ejemplo, revisado: sin
+    datos personales en las propiedades del archivo).
+  - **Qué hoja se lee:** la que se llama «Unidades». Si está vacía, no se carga nada y se
+    avisa. Si el archivo no la tiene, la primera hoja con encabezados reconocibles (o, si
+    ninguna los tiene, la primera con datos, como antes). «Ejemplo» no se carga nunca.
+    **Para aprobar:** «Léame primero» tampoco se toma como datos.
+  - **Las 21 columnas** se reconocen por el encabezado. Antes, «PROPIETARIO TRATAMIENTO»
+    se tomaba como el nombre del propietario y «PROPIETARIO NOMBRE» como el inquilino.
+  - **NOTA** *(cambió el 26-oct: ahora se guarda, ver caso 74)*: «No usar esta columna», con la razón «Vecitap no guarda notas de la unidad»
+    (no hay campo). Su texto se muestra en la fila de la previa, como información.
+  - **Lo que la plantilla pide** (código, alícuota, saldo de condominio, nombre y correo
+    del propietario): si falta en una fila, aviso en ámbar; solo bloquea lo que ya
+    bloqueaba (sin código o sin alícuota). **Para aprobar:** si el archivo no trae una de
+    esas columnas, un aviso arriba («Faltan columnas que la plantilla pide»); y el aviso de
+    saldo vacío sale solo en unidades nuevas (en una que ya existe, vacío es «no cambiar»).
+- **Cómo se revierte:** `elegirHoja()` y la detección en
+  `lib/admin/cargar-datos/columnas.ts`, `leerHojas()` en `lib/admin/archivos-tabla.ts`, y
+  el botón en `components/admin/CargarDatos.tsx`.
+
+### 67. Personas: un dato en común con otro nombre espera respuesta
+
+**Caso de uso:** dos filas (o una fila y una ficha que ya existe) comparten correo,
+teléfono o cédula, pero tienen otro nombre. Un «Sí» equivocado manda los recibos y avisos
+de esa unidad al correo de la otra persona.
+
+- **Antes (ronda 5):** «¿Es la misma persona?» con «Sí» por omisión, salvo cuando
+  coincidía solo el teléfono con otro correo. Contra una ficha existente, se usaba la
+  ficha sin preguntar.
+- **Ahora (confirmado por Gustavo):**
+  - mismo nombre y un dato en común: se juntan solas, como antes;
+  - un dato en común y **otro nombre**: la pregunta sale **sin respuesta por omisión** y
+    la carga espera (si esa fila se carga). Entre filas del archivo y contra fichas;
+  - solo el mismo nombre, sin datos en común: por omisión, distintas, como antes.
+- **La cédula es un dato más** (agregado nuestro; decisión para Gustavo). Se compara sin
+  guiones, puntos ni espacios y sin importar mayúsculas: «V-11.111.111» = «v11111111». Se
+  guarda como viene.
+- **Para aprobar:**
+  - **Mismo nombre con otra cédula** cuenta como otra persona (padre e hijo que se llaman
+    igual y comparten el correo de la casa): también pregunta sin respuesta por omisión.
+  - **Contra la administradora**, si alguna ficha **con el mismo nombre** comparte el
+    dato, se usa esa sin preguntar, y las fichas de otro nombre que también lo comparten
+    se nombran como información («también comparte datos con…: es otra persona, esa ficha
+    no se usa»). Sin esto, en la administradora de Gustavo (cargada con el importador
+    viejo, una ficha por unidad) casi cada fila preguntaba: 26 preguntas sin respuesta en
+    vez de 10. La pregunta sale cuando **ninguna** ficha que comparte el dato tiene el
+    mismo nombre.
+  - **Arreglo de paso:** cada fila se comparaba solo con la **primera** fila que tenía ese
+    dato. 12D (mismo nombre y correo que 12C) se comparaba con 10A, de otro nombre, y
+    quedaba separada de 12C. Con el «Sí» por omisión no se notaba. Ahora se compara con
+    todas.
+  - Las preguntas nombran a cada persona una vez, con todos sus datos y filas: «el mismo
+    correo y teléfono que «X» (filas 12, 13: 03A, 03B)».
+- **Cómo se revierte:** la sección «Personas» de `lib/admin/cargar-datos/analisis.ts`.
+
+### 68. Tratamiento: el del archivo manda; «Sres.», «Ing.», «Lic.» y «Sin tratamiento»
+
+**Caso de uso:** la plantilla trae el tratamiento en su columna, de una lista.
+
+- **`main` y M3:** la lista era Sr., Sra., Sres., Dr., Dra. y «sin tratamiento». La regla
+  de empresas de M3 (C.A., S.A., S.R.L., «Junta» → sin tratamiento) pisaba el
+  tratamiento que mandaba la pantalla: «Sres.» de «Comercial XYZ, C.A.» (hoja «Ejemplo»)
+  se perdía.
+- **Ahora:**
+  - la lista es la de la plantilla, igual en la ficha, en Nueva unidad y en el importador:
+    Sr., Sra., Sres., Dr., Dra., **Ing.**, **Lic.** y **Sin tratamiento** (se guarda null).
+    «Sres.» y «Sin tratamiento» ya estaban; faltaban Ing. y Lic.;
+  - el tratamiento del archivo **manda**, incluido «Sin tratamiento». La regla de
+    empresas aplica solo si el archivo no trae tratamiento (M4);
+  - **para aprobar** *(cambió el 26-oct: ahora se carga sin tratamiento, ver caso 72)*: un tratamiento que no es de la lista («Srta.») sale en ámbar y no se
+    usa (queda «Sr.», o sin tratamiento si es una empresa). La ficha muestra tal cual un
+    tratamiento que ya tiene y no está en la lista, para no cambiarlo sin querer al
+    guardar.
+- **Cómo se revierte:** `TRATAMIENTOS` en `lib/admin/personas.ts` y el rollback de M4.
+
+### 69. Saldo de administración, cédula y «recibe corte» desde el archivo
+
+**Caso de uso:** la plantilla trae datos que tienen su campo en la base y que el
+importador no recibía.
+
+- **Antes:** se cargaban a mano, ficha por ficha.
+- **Ahora (M4):**
+  - **SALDO ADMINISTRACION $** → `unidades.saldo_inicial_hon`, con la regla del saldo de
+    condominio: solo antes del primer cierre;
+  - **CEDULA O RIF** → `personas.documento`. Ficha existente: solo se completa si está
+    vacía, como el resto;
+  - **RECIBE CORTE** → `vinculos.enviar_corte`. Vínculo nuevo: lo que diga el archivo, o
+    «sí» si está vacío. Uno que ya existe no se toca salvo con «Actualizar», y el cambio
+    se muestra («propietario recibe el corte: No → Sí»);
+  - **correo de respaldo del inquilino**, también en la pantalla;
+  - avisos en ámbar, sin bloquear: unidad donde **nadie recibe el corte**; unidad que
+    **paga el inquilino** y no tiene su correo (sin nombre del inquilino ya no se cargaba).
+  - **Para aprobar:** «recibe corte» que no dice Sí o No sale en ámbar y no se usa.
+- **Cómo se revierte:** el rollback de M4
+  (`supabase/rollbacks/20261025120000_importar_unidades_plantilla_rollback.sql`) y la
+  pantalla.
+
+## Ronda 5 — pedidos de Gustavo al cerrar la ronda 5 (26-oct)
+
+> Gustavo terminó la ronda 5 con 0 fallas graves. Decisiones de Nicolás del 26-oct.
+> Nicolás aprobó lo marcado «para aprobar» en los casos 66–69, con un cambio (caso 72).
+> **Estado: construidos; la base, probada en vecitap-pruebas (M4 reaplicada); sin validar
+> en el navegador.** El menta (caso 71) quedó resuelto en el caso 77. M4 revisada y
+> aprobada por Nicolás el 26-oct.
+
+### 70. Menú con los nombres de Gustavo; «Pagos recibidos» con lo registrado arriba
+
+**Caso de uso:** la administradora encuentra cada cosa con el nombre que usa en su día.
+
+- **`main`:** Inicio · Propietarios · Cobros · Cierre del mes · Pagos · Cortes de cuenta ·
+  Estadísticas · Accesos.
+- **Ahora:** Inicio · Propietarios · **Pagos recibidos** · **Gastos del mes** · Cortes de
+  cuenta · Estadísticas · Accesos · Cobros. «Gastos del mes» es el nuevo nombre de «Cierre
+  del mes» y «Pagos recibidos» el de «Pagos». Cobros queda al final hasta que sus reglas
+  pasen a Ajustes (después del piloto). Las direcciones no cambian (`/mes`, `/pagos`).
+  - Los textos que nombraban las secciones también: el aviso «Falta el presupuesto del mes»
+    de Inicio («…en «Gastos del mes» antes de cerrar») y el de Cortes («Desde «Gastos del
+    mes», reabrirlo…»).
+  - **«Pagos recibidos»:** «Movimientos registrados» va arriba, destacado (título más
+    grande y una franja naranja arriba); debajo, las pestañas Registrar · Conciliar con el
+    banco · Exoneraciones, con «Registrar un pago» abierto y visible.
+- **Cómo se revierte:** `SECCIONES` en `components/admin/MarcoAdmin.tsx` y el orden de las
+  tarjetas en `components/admin/Pagos.tsx`.
+
+### 71. «A favor» en verde #15803D; el menta, por decidir
+
+**Caso de uso:** el único verde de la app dice «a favor».
+
+- **Antes (caso 64):** `--a-favor` #4D7C0F en el claro.
+- **Ahora:** **#15803D** en el claro (#84CC16 en el oscuro, sin cambio), también en el
+  recibo impreso. Contraste (AA ≥ 4,5:1): 5,02:1 sobre las tarjetas, 4,79:1 sobre el fondo
+  de la página, 4,59:1 sobre su fondo de etiqueta; 4,30:1 sobre una fila con el mouse
+  encima (la misma salvedad que antes). En el oscuro: 8,98:1, 9,86:1 y 7,01:1.
+- **Resuelto en el caso 77** (decisión de Nicolás del 26-oct). Hasta entonces: quitar el menta (`--verde`) de toda la app y
+  dejar «al día» en un color neutro. Dónde se usa hoy está en `docs/estado-migracion.md`
+  («Cierre de la ronda 5»), con la propuesta para los mensajes de éxito.
+- **Cómo se revierte:** `--a-favor` en `app/globals.css` y `nota-fav` en
+  `lib/recibo-papel.ts`.
+
+### 72. Tratamiento: fuera de la lista, sin tratamiento; «s.n.» y «&» también sin tratamiento
+
+**Caso de uso:** el archivo trae un tratamiento raro, o el nombre es de una firma.
+
+- **Antes (caso 68):** un tratamiento que no estaba en la lista («Srta.») no se usaba y
+  quedaba «Sr.». Solo C.A., S.A., S.R.L. y «Junta» quedaban sin tratamiento.
+- **Ahora (Nicolás, 26-oct):**
+  - fuera de la lista: **se carga sin tratamiento** (null), con el aviso en ámbar «no está
+    en la lista: se carga sin tratamiento». Nunca «Sr.» por omisión en ese caso;
+  - cuando el archivo **no** trae tratamiento, quedan también sin tratamiento los nombres
+    con **«s.n.»** (como palabra suelta, con o sin puntos) o con **«&»** («Rerozo, Ropopar &
+    Vumulinog»). Si el archivo trae tratamiento, manda el del archivo. En M4.
+  - Lo mismo que con «Sa» y «Ca» sueltos: un nombre con «Sn» como palabra suelta queda sin
+    tratamiento. No hay ninguno en la planilla del piloto.
+- **Cómo se revierte:** `leerTratamiento` en `lib/admin/cargar-datos/analisis.ts` y la
+  regla en M4.
+
+### 73. «Reabrir» un mes dice cuántos recibos emitió
+
+**Caso de uso:** la administradora va a reabrir un mes y tiene que saber qué borra.
+
+- **`main`:** «Reabrir» pedía confirmación con un texto general.
+- **Ahora:** antes de preguntar se cuentan los recibos de ese mes, y la confirmación
+  empieza con «Este mes ya emitió 53 recibos. ¿Seguro?». Si el conteo falla, la
+  confirmación sale igual, sin el número. La confirmación aparte para un mes ya enviado no
+  cambió.
+- **Cómo se revierte:** `pedirReabrir` en `components/admin/CierreMes.tsx`.
+
+### 74. La nota de la unidad se guarda (solo la ve la administración)
+
+**Caso de uso:** la administradora anota algo de la unidad («llave en conserjería») y lo
+trae en la planilla.
+
+- **Antes (caso 66):** la columna NOTA no se guardaba; se mostraba en la previa.
+- **Ahora (decisión de Gustavo):**
+  - tabla nueva **`notas_unidad`**, aparte de `unidades`, porque un residente puede leer la
+    fila de su unidad (y la junta y el contador, las de su edificio u organización). RLS:
+    solo `puede_operar` (propietario de la cuenta y administrador) la ve y la escribe;
+    `authenticated` solo con select/insert/update/delete (sin TRUNCATE); `anon`, nada. En
+    M4;
+  - en la ficha, «Nota (solo la ve la administración)», editable, hasta 1.000 caracteres;
+    vacía, se borra;
+  - en «Cargar datos», NOTA se reconoce por el encabezado y se carga: unidad nueva, se
+    guarda; una que ya existe, «nota: se completa con «…»» si no tenía, o «nota «A» →
+    «B»» si tenía otra, y solo se aplica con «Actualizar». Más larga que el límite: se
+    recortan los primeros 1.000, con aviso en ámbar.
+  - **Verificado en la base** con la cuenta `+propietario` (residente de 02A), con una nota
+    en 02A: no la ve (0 filas), no puede escribirla (RLS), no puede vaciar la tabla, su
+    fila de `unidades` no la trae, y `mis_unidades()` y `saldos_actuales` tampoco.
+    Ninguna pantalla del residente ni el recibo leen `notas_unidad`.
+- **Cómo se revierte:** el rollback de M4 (borra la tabla y las notas) y la pantalla.
+
+### 75. La previa: preguntas en una línea, «Lo que dice su archivo» y «Se queda»
+
+**Caso de uso:** la administradora revisa la carga rápido.
+
+- **Antes:** cada pregunta era un párrafo con una lista desplegable; la tabla se titulaba
+  «La previa, fila por fila»; lo que no se cambiaba decía «no se cambia» sin decir qué
+  quedaba.
+- **Ahora:**
+  - cada pregunta en una línea: «¿Es la misma persona? Archivo: «X» (03D) · Archivo: «Y»
+    (03A, 03B) [Sí] [No]», o «· Ficha: …» contra una ficha que ya existe. Con varias
+    fichas posibles, una línea por ficha con [Sí] y un «No, ninguna: es otra persona» al
+    final; las fichas iguales (mismo nombre, correo y cédula, del importador viejo) en
+    una sola línea. Si con «Sí» los recibos cambian de correo, lo dice debajo, en chico;
+  - la tabla se titula **«Lo que dice su archivo»**;
+  - donde algo no se cambia, la fila dice lo que queda: «Se queda: Sr. Mefaz…» (otro
+    propietario), «Se queda: 0414-…» (un dato de la ficha distinto del archivo), «Se queda:
+    paga el propietario».
+  - La prueba 18 de Gustavo (77X contra la ficha de Sr. Boso) ahora pregunta sin nada
+    marcado: «¿Es la misma persona? Archivo: «Otro Nombre Prueba» (77X) · Ficha: Sr.
+    Boso… [Sí] [No]».
+- **Cómo se revierte:** `PreguntaPersona` y `NotaCelda` en
+  `components/admin/CargarDatos.tsx`, y `lineas`/`queda` en `analisis.ts`.
+
+### 76. El mensaje para el vigilante nombra el botón que existe
+
+**Caso de uso:** la administradora le copia al vigilante el mensaje de la invitación.
+
+- **Antes:** decía «Toque "Es mi primera vez"», el botón de `garita.html` en `main`. En la
+  app, la garita usa la pantalla de Entrar de todos, donde el enlace dice «No tengo cuenta
+  todavía». Encontrado al escribir los pasos de G6; no pedido, **aprobado por Nicolás el 26-oct**.
+- **Ahora:** «Toque "No tengo cuenta todavía", cree su clave con el correo…».
+- **Cómo se revierte:** el texto de «Copiar el mensaje completo» en
+  `components/admin/Accesos.tsx`.
+
+### 77. Sin menta: «al día» en neutro, éxito en «ok», la garita en #15803D
+
+**Caso de uso:** el único verde de la app es «a favor» (decisión de Nicolás del 26-oct,
+sobre la propuesta del caso 71).
+
+- **Antes:** el menta (`--verde`, #0E7C6B / #00D1B2) marcaba «al día», los mensajes de
+  éxito y los estados «bien».
+- **Ahora:**
+  - **«Al día» y los estados** (Confirmado, Activa, enviados, aceptada, habilitado, el
+    total en cero, «Por cobrar» en 0, los abonos del historial, «Se carga»): en neutro,
+    con la etiqueta gris (`neutro`) o el color del texto. En el mapa del edificio, las
+    unidades al día van con borde gris y su punto en la leyenda, gris.
+  - **Mensajes de éxito:** tono nuevo **«ok»**: marino (`--tinta`) sobre gris claro
+    (`--lienzo-alt`), con un ✓ adelante. «Guardado ✓» en `--tinta-2`. El aviso de Entrar
+    («revise su correo») también.
+  - **Estadísticas:** cobrado ≥ 80 % y la variación a la baja, en neutro; lo malo sigue en
+    ámbar y rojo.
+  - **Operador:** módulo habilitado, cobro pagado, servicio activo y los puntos de estado,
+    en neutro.
+  - **El «Puede pasar» de la garita:** #15803D en los dos temas (antes #0E7C6B en el
+    claro y #0E9C86 en el oscuro). Con la letra blanca: **5,02:1**. **De paso:** el del
+    oscuro, #0E9C86, daba 3,43:1, debajo del mínimo de 4,5:1. **Decisión para Gustavo**:
+    si prefiere uno más oscuro, #166534 da 7,13:1.
+  - Los tokens `--verde` y `--verde-bg` y la etiqueta `badge-verde` ya no existen: si
+    alguien los vuelve a usar, `tsc` lo marca (el tono «verde» salió de `Aviso` y `Badge`).
+  - **Fuera de este cambio:** `public/inicio.html`, la página de venta, con su propia
+    paleta.
+- **Cómo se revierte:** los tokens en `app/globals.css`, el tono en
+  `components/ui/Aviso.tsx` y `Badge.tsx`, y los reemplazos en cada pantalla.
+
+### 78. «Descartar» recuerda que el mes había emitido recibos
+
+**Caso de uso:** la administradora reabrió un mes y ahora lo va a descartar.
+
+- **Antes:** «Descartar» decía lo mismo para un mes nuevo que para uno que se había
+  cerrado, emitido recibos y reabierto.
+- **Ahora:** al tocar «Descartar este mes», la pantalla busca en `auditoria` si ese mes
+  pasó de cerrado a abierto. Si pasó, el recuadro dice primero, en rojo: «Este mes ya se
+  había cerrado y emitió recibos: se reabrió el 26 de octubre de 2026 y esos recibos se
+  borraron. Si alguien llegó a verlos, va a dejar de encontrarlos.» La base no guarda
+  cuántos recibos eran (los borra al reabrir), así que no dice el número. Sin migración:
+  `auditoria` ya registra cada cambio de `periodos`, y la administradora la puede leer.
+  Verificado en pruebas, en una transacción deshecha: la administradora ve la reapertura;
+  el residente, no.
+- **Cómo se revierte:** `pedirDescartar` en `components/admin/CierreMes.tsx`.

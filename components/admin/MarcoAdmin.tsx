@@ -46,16 +46,19 @@ import { mensajeDeError } from "@/lib/errores";
  * props desde el layout, que sí es servidor.
  */
 
-// Mismos íconos que el menú de admin.html:1189-1199 (caso 13).
+// Mismos íconos que el menú de admin.html:1189-1199 (caso 13). Orden y nombres
+// de Gustavo (ronda 5, caso 70): «Pagos» se llama «Pagos recibidos» y «Cierre
+// del mes», «Gastos del mes»; las rutas no cambian (/pagos, /mes). Cobros queda
+// al final hasta que sus reglas pasen a Ajustes (después del piloto).
 const SECCIONES: { seg: string; etiqueta: string; icono: LucideIcon; modulo?: string }[] = [
   { seg: "inicio", etiqueta: "Inicio", icono: House },
   { seg: "propietarios", etiqueta: "Propietarios", icono: Users },
-  { seg: "cobros", etiqueta: "Cobros", icono: ListChecks },
-  { seg: "mes", etiqueta: "Cierre del mes", icono: ReceiptText },
-  { seg: "pagos", etiqueta: "Pagos", icono: Wallet },
+  { seg: "pagos", etiqueta: "Pagos recibidos", icono: Wallet },
+  { seg: "mes", etiqueta: "Gastos del mes", icono: ReceiptText },
   { seg: "cortes", etiqueta: "Cortes de cuenta", icono: Send, modulo: "cortes" },
   { seg: "estadisticas", etiqueta: "Estadísticas", icono: ChartColumn, modulo: "estadisticas" },
   { seg: "accesos", etiqueta: "Accesos", icono: KeyRound },
+  { seg: "cobros", etiqueta: "Cobros", icono: ListChecks },
 ];
 
 export function MarcoAdmin({

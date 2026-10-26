@@ -74,7 +74,7 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
     <div className="garita">
       {aviso && (
         <div style={{ marginBottom: 12 }}>
-          <Aviso tono={aviso.tono === "mal" ? "rojo" : "verde"}>{aviso.texto}</Aviso>
+          <Aviso tono={aviso.tono === "mal" ? "rojo" : "ok"}>{aviso.texto}</Aviso>
         </div>
       )}
       <div className="garita-tarjeta">

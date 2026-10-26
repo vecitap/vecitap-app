@@ -5,7 +5,8 @@ import { contarPorEstadoUnidad, tonoEstadoUnidad } from "@/lib/estados-unidad";
 import type { SaldoActual } from "@/lib/admin/tipos";
 
 const TONO_COLOR: Record<string, { bg: string; borde: string; texto: string }> = {
-  verde: { bg: "var(--verde-bg)", borde: "var(--verde)", texto: "var(--verde)" },
+  // «Al día», en neutro (ronda 5, caso 77): antes menta.
+  neutro: { bg: "var(--lienzo)", borde: "var(--linea-fuerte)", texto: "var(--tinta-2)" },
   rojo: { bg: "var(--rojo-bg)", borde: "var(--rojo)", texto: "var(--rojo)" },
   azul: { bg: "var(--azul-bg)", borde: "var(--azul)", texto: "var(--azul)" },
   // Saldo a favor: su propio color (ronda 5), antes --azul.
@@ -84,7 +85,7 @@ export function Edificio({
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", fontSize: 12.5 }}>
         <span>
-          <Punto color="var(--verde)" />
+          <Punto color="var(--linea-fuerte)" />
           {cuenta.al_dia} al día
         </span>
         <span>

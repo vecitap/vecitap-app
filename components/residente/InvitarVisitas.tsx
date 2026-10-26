@@ -197,7 +197,7 @@ export function InvitarVisitas({
   return (
     <div style={{ display: "grid", gap: 16 }}>
       {mensaje && (
-        <Aviso tono={mensaje.tipo === "error" ? "rojo" : "verde"}>{mensaje.texto}</Aviso>
+        <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>
       )}
 
       {nueva && (

@@ -32,7 +32,7 @@ const FILTROS: [string, string][] = [
  * tinta y parecía un número cualquiera.
  */
 const COLOR_TOTAL = (total: number) =>
-  total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--a-favor)" : "var(--verde)";
+  total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--a-favor)" : "var(--tinta)";
 const TEXTO_TOTAL = (total: number) => (total < -0.01 ? `A favor ${usd(Math.abs(total))}` : usd(total));
 
 /**

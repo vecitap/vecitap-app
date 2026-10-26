@@ -36,6 +36,7 @@ export function Ficha({
   historial,
   pendientes,
   tasa,
+  nota,
 }: {
   orgId: string;
   edificioId: string;
@@ -46,6 +47,8 @@ export function Ficha({
   historial: FilaHistorial[];
   pendientes: PagoPendiente[];
   tasa: number | null;
+  /** La nota de la unidad (solo la ve la administración). */
+  nota: string;
 }) {
   const [pest, setPest] = useState<"cuenta" | "datos">("cuenta");
   const prop = vigente(unidad.vinculos, "propietario");
@@ -56,8 +59,8 @@ export function Ficha({
   // (docs/casos-de-uso-mejorados.md, caso 11); el criterio del 28-sep es
   // paridad con main, así que vuelven los literales.
   // Ronda 2 (caso 36): a favor en `--a-favor`, no en `--azul`.
-  const tono: TonoBadge = total > 0.01 ? "rojo" : total < -0.01 ? "favor" : "verde";
-  const color = total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--a-favor)" : "var(--verde)";
+  const tono: TonoBadge = total > 0.01 ? "rojo" : total < -0.01 ? "favor" : "neutro";
+  const color = total > 0.01 ? "var(--rojo)" : total < -0.01 ? "var(--a-favor)" : "var(--tinta)";
   const etiquetaEstado = total > 0.01 ? "debe" : total < -0.01 ? "a favor" : "al día";
 
   const filasImpresion: FilaMostrar[] = [
@@ -144,7 +147,7 @@ export function Ficha({
                       {f.detalle && <div style={{ fontSize: 11.5, color: "var(--tenue)" }}>{f.detalle}</div>}
                     </td>
                     <td className="mono" style={{ textAlign: "right" }}>{Number(f.cargo) ? nf(2).format(f.cargo) : ""}</td>
-                    <td className="mono" style={{ textAlign: "right", color: f.tipo === "pendiente" ? "var(--ambar)" : "var(--verde)" }}>
+                    <td className="mono" style={{ textAlign: "right", color: f.tipo === "pendiente" ? "var(--ambar)" : "var(--tinta)" }}>
                       {Number(f.abono) ? nf(2).format(f.abono) : f.tipo === "pendiente" ? `(${nf(2).format(f.monto || 0)})` : ""}
                     </td>
                     <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>
@@ -198,7 +201,7 @@ export function Ficha({
           </div>
         </div>
       ) : (
-        <DatosUnidad orgId={orgId} unidad={unidad} prop={prop} inq={inq} />
+        <DatosUnidad orgId={orgId} unidad={unidad} prop={prop} inq={inq} nota={nota} />
       )}
     </div>
   );
