@@ -1,5 +1,5 @@
 import { nf, usd } from "@/lib/formato";
-import { bolivaresExactos } from "@/lib/residente/monto-exacto";
+import { urlParaCompartir } from "@/lib/url-sitio";
 import { datosPagoEnPapel, repartoRecibo, type CuentaPago } from "@/lib/datos-pago";
 import type { CategoriaRecibo, ConceptoRecibo } from "@/lib/residente/tipos";
 
@@ -161,17 +161,16 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
       }
     </div>`;
 
+  // Ronda 8 (decisión de Gustavo, caso 90): el papel no trae ningún monto en
+  // bolívares. Un monto fijo en Bs lleva a pagar días después con otra tasa y
+  // pagar de menos creyendo que se pagó bien. Solo la frase y dónde ver el
+  // monto exacto del día (el portal lo calcula con la tasa de hoy).
   const bloqueTasa = (() => {
     if (favor > 0) return `<div><span class="et">Este mes</span><div class="cifra-s">No tiene que pagar</div></div>`;
     if (d.soloUsd) return "";
-    const viva = Number(d.tasaHoy?.valor) > 0;
-    const t = viva ? Number(d.tasaHoy!.valor) : Number(r.tasa_bcv);
-    if (!(t > 0)) return "";
-    const cuando = viva && d.tasaHoy?.fecha ? " del " + String(d.tasaHoy.fecha).split("-").reverse().join("/") : "";
     return `<div>
-      <span class="et">Referencial en bolívares</span>
-      <div class="cifra-s">Bs ${nf(2).format(bolivaresExactos(Number(r.total), t))}</div>
-      <div class="nota-t">tasa ${nf(2).format(t)}${cuando}${viva ? "" : " · del recibo"}</div>
+      <span class="et">Pago en bolívares</span>
+      <div class="nota-t">Se paga en bolívares a la tasa oficial BCV del día del pago. El monto exacto de hoy está en el portal: ${esc(urlParaCompartir("/mi"))}</div>
     </div>`;
   })();
 
@@ -303,7 +302,8 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
       ? datosPagoEnPapel(
           d.cuentas,
           repartoRecibo(r, d.cuentas),
-          d.soloUsd ? null : Number(d.tasaHoy?.valor) > 0 ? Number(d.tasaHoy!.valor) : Number(r.tasa_bcv) || null
+          // Ronda 8: sin montos en Bs en los datos para pagar.
+          null
         )
       : ""
   }
@@ -321,9 +321,8 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
     <p>${
       d.soloUsd
         ? "Lo que se debe está en dólares y se paga en dólares."
-        : `Lo que se debe está en dólares. La cifra en bolívares vale para el día
-       que dice arriba: si paga otro día, la conversión se hace con la tasa del Banco
-       Central de ese día y el monto en bolívares será distinto.`
+        : `Lo que se debe está en dólares. Se paga en bolívares a la tasa oficial BCV del
+       día del pago: el monto exacto de cada día está en el portal.`
     }${
          d.organizacion ? " Emitido por " + esc(d.organizacion) + "." : ""
        }</p>

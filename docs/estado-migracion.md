@@ -16,6 +16,272 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 8 del tramo 2 (27-oct) — arreglos de las rondas 6 y 7 antes del piloto de GRUPO ING3
+
+Pedido de Nicolás del 27-oct (bloques A a I), con los resultados de Gustavo de la
+ronda 7. Todo en `dev`, **sin commit**. `npx tsc --noEmit`, `npm run lint` y
+`npm run build` en verde al terminar. Desvíos frente a `main`: casos **88 a 95**
+de `docs/casos-de-uso-mejorados.md`.
+
+### Qué se hizo, por bloque
+
+| Bloque | Qué cambió | Caso |
+|---|---|---|
+| A1 | Lo corregido en la previa **reemplaza** el dato de la ficha existente (`importar_unidades`, `cambiar`); la fila lo dice («Cambia el teléfono de la ficha de …») y ninguna celda dice «corregido» si no se guarda | 88 |
+| A2 | Las filas con «¿misma persona?» salen siempre en Avisos, también si la unidad se omite; «Corregir los datos de esta fila» en cada pregunta | 90 |
+| A3 | La tabla muestra lo que queda al elegir «Sí»/«No»/ficha; `mismoNombre` ya no acepta prefijos (la causa de «se usa la de Sr. Bumagi…»); un «Sí» entre dos nombres pregunta la ficha; notas en una línea con «ver más»; unidades sin repetir | 89 |
+| A4 | Mensajes por unidad (ver, agregar, quitar); cuándo sale lo que espera el cupo; 8 pedidos a Resend por vuelta | 91 |
+| A5 | Aviso y confirmación al cerrar con gastos y alguna cuota de condominio en $ 0,00 | 95 |
+| A6 | «Sí, descartar» en blanco; alícuotas «111,99 %» con coma; verde #166534 | 95 |
+| B1 | Pago agrupado: un grupo nace completo en una sola inserción; `grupo_id` no cambia después | 87 (revisión) |
+| B2 | Código solo al propietario principal y al inquilino; el recibo va también al correo de respaldo, sin código; el código se borra al usar o anular | 93 |
+| C1 | Sin Bs en el correo, el recibo impreso y el PDF; la frase y el enlace al portal | 93 |
+| C2 | Cortes: estado del correo por unidad, «Reenviar recibo», cupo del día y aviso al operador | 92 |
+| C3 | `correo_tope_diario` = 10 en vecitap-pruebas (hecho, es un dato) | — |
+| C4 | Redondeo sobre el total a pagar, igual en `simular_cierre` y `cerrar_periodo` | 94 |
+| D | Garita: ING3 no la tiene activa → solo diseño y estimación (abajo) | — |
+| E | `docs/anexo-paso9-vaciar-organizacion.sql`, preparado, sin ejecutar | — |
+| F | La página sube sola al aviso; volver a leer el mismo archivo; «Abrir un mes» propone el siguiente; «Conciliar 1 pago» | 95 |
+
+### Migraciones nuevas — aplicadas en vecitap-pruebas el 27-oct
+
+Con `execute_sql`; las funciones grandes (`importar_unidades`, `correo_recibo`,
+`cerrar_periodo`) con los mismos reemplazos hechos dentro de la base. **En las 20
+funciones, el md5(prosrc) de pruebas es el del archivo** (comprobado al final).
+Cada guarda aborta si la anterior no está.
+
+| # | Migración | Rollback | md5(prosrc) que deja |
+|---|---|---|---|
+| R8-1 | `20261027120000_importar_corrige_fichas.sql` | `…_rollback.sql` | `importar_unidades` 64fac9ed0e225513035dfd6688715fc4 |
+| R8-2 | `20261027130000_pago_agrupado_completo.sql` | `…_rollback.sql` | `pagos_grupo_al_insertar` 584fb1055a82a713857b633a761ab45f, `pagos_grupo_inmutable` 0289686c43ed2b14d685aff044b30f96 |
+| R8-3 | `20261027140000_recibo_titulares_sin_bs.sql` | `…_rollback.sql` | `correo_recibo` fc342ae7a87d2beac3ad8a10060d440c, `asegurar_invitaciones_recibo` 169010a2f4fdb4cc44e1c4171d09be05, `invitacion_borra_codigo` 6caaeed248130690057e797aec4612f1 |
+| R8-4 | `20261027150000_redondeo_total.sql` | `…_rollback.sql` | `cerrar_periodo` c2fcede6ac32b3fe25b74b48abbd44c4, `simular_cierre` 69144d1e27642caf18a8a264ffa382f8 |
+| R8-5 | `20261027160000_correos_estado_y_cupo.sql` | `…_rollback.sql` | `despachar_correos` ab2d4304b921029146ec19ca9220d00f, `historial_mensajes` b9796ea2…, `vista_previa_mensaje` 0835cbe1…, `enviar_mensaje` 7185c202…, `destinatarios_mensaje` 5e464548…, `unidades_mensaje` 6ca9a9aa…, `estado_correos_periodo` 79c6ad74…, `reenviar_recibo` 9b2cd130…, `cupo_correo` 39d8311e…, `momento_cupo` 9f7d811a4068dc3ab69ac1df2254aa72, `puesto_en_cola` 1722c487…, `tope_correo` 69742c30… |
+
+Dependencias: R8-1 va después de M4 (`20261025120000_…`); R8-2 después de R7-8;
+R8-3 después de R7-3 (y de R7-2); R8-4 después de R7-5; R8-5 después de R7-6 **y
+de R8-3** (su guarda exige el `correo_recibo` de R8-3). `simular_cierre`,
+`historial_mensajes`, `vista_previa_mensaje`, `enviar_mensaje` y
+`destinatarios_mensaje` cambian lo que reciben o devuelven: van con drop +
+create. `types/supabase.ts` **regenerado** desde vecitap-pruebas con la
+herramienta de Supabase (solo cambian esas funciones y las columnas nuevas).
+
+Para la revisión cruzada: `C:\Users\Nicolas\Downloads\revision-cruzada-ronda8.sql`
+(las cinco migraciones y sus rollbacks, tal cual) y
+`…\revision-cruzada-ronda8-diferencias.diff` (antes → después de cada función
+reescrita).
+
+### Resend: lo que se encontró, y qué hace falta para «entregado» y «abierto»
+
+- **La clave de Resend de pruebas es «Sending access»**: al consultar un correo
+  (`GET /emails/{id}`) Resend contesta 401 «This API key is restricted to only
+  send emails». Por eso la consulta del estado quedó **apagada por omisión** en el
+  despachador (secreto `correo_consultar_estado` = 'si' para encenderla, con una
+  clave «Full access»). Sin ella, la pantalla dice: saliendo, espera el cupo (y
+  cuándo sale), enviado (Resend lo aceptó), no salió, rebotó (dirección inválida).
+- **Para tener «entregado», «rebotado» y «abierto» de verdad hay dos caminos:**
+  1. **Webhooks de Resend (recomendado):** Resend avisa cada evento
+     (`email.delivered`, `email.bounced`, `email.opened`, `email.complained`…) a una
+     dirección nuestra. Hace falta: una ruta en la app (p. ej. `/api/resend`) que
+     verifique la firma (Svix, con el secreto del webhook en Vercel) y guarde el
+     evento en `cola_correo.evento` con una función de la base; y darlo de alta en el
+     panel de Resend. Una ronda chica; no gasta pedidos ni cupo.
+  2. **Clave «Full access»** en `secretos.resend_api_key` y el secreto de arriba: ya
+     está construido, pero esa clave puede borrar dominios y claves de la cuenta: no
+     la recomiendo en la base.
+  - «Abierto» necesita además encender el seguimiento de aperturas del dominio en
+    Resend, y no es del todo confiable (hay correos que cargan las imágenes solos y
+    otros que las bloquean).
+- **Límite por segundo:** Resend acepta 10 pedidos por segundo; el despachador ahora
+  hace como mucho 8 por vuelta (cada 5 minutos ≈ 96 por hora).
+- **Cupo:** 100 por día en el plan gratuito, de la cuenta. Con el tope en 90 en
+  producción y 10 en pruebas (si las dos claves son de la misma cuenta, que es lo
+  más probable) suman 100.
+
+**Cuántas unidades caben en un día (para Gustavo):** cada unidad lleva un correo
+por propietario e inquilino con correo, más uno por cada correo de respaldo.
+GRUPO ING3 hoy tiene 55 correos principales en 53 unidades (2 inquilinos), y la
+planilla trae «Correo 2» en 30 de 54 filas: **≈ 85 correos por mes, 1,6 por
+unidad**. Con el tope de 90: **caben unas 55 unidades por día** con sus copias.
+ING3 sale de una vez **si ese día no salen otros correos** (otro cliente, mensajes,
+reenvíos). Para un segundo cliente del mismo tamaño el mismo día, hace falta el
+plan pago de Resend (50.000 por mes, sin tope diario) y subir
+`correo_tope_diario`.
+
+### Paso 8: las 25 migraciones en producción, en orden
+
+Respaldo antes (docs/respaldo.md). Cada una, el archivo tal cual; después, su
+consulta. Las 20 primeras, como en la ronda 7 (ver «Ronda 7» → «Paso 8»):
+
+1–12. Las de rondas anteriores (`20260930120000_unidades_paga.sql` …
+`20261025120000_importar_unidades_plantilla.sql`), en el orden de la ronda 7.
+13–20. R7-1 a R7-8 (`20261026120000_datos_pago.sql` …
+`20261026190000_pago_agrupado.sql`).
+
+Y después:
+
+| # | Migración | Verificación (resultado esperado) |
+|---|---|---|
+| 21 | `20261027120000_importar_corrige_fichas.sql` | `select md5(prosrc) from pg_proc where proname='importar_unidades';` → 64fac9ed0e225513035dfd6688715fc4 |
+| 22 | `20261027130000_pago_agrupado_completo.sql` | md5 de `pagos_grupo_al_insertar` → 584fb1055a82a713857b633a761ab45f; `select count(*) from pg_trigger where tgname='pagos_grupo_inmutable';` → 1 |
+| 23 | `20261027140000_recibo_titulares_sin_bs.sql` | `correo_recibo` → fc342ae7a87d2beac3ad8a10060d440c; `asegurar_invitaciones_recibo` → 169010a2f4fdb4cc44e1c4171d09be05; `select count(*) from pg_trigger where tgname='invitaciones_borra_codigo';` → 1 |
+| 24 | `20261027150000_redondeo_total.sql` | `cerrar_periodo` → c2fcede6ac32b3fe25b74b48abbd44c4; `simular_cierre` → 69144d1e27642caf18a8a264ffa382f8 |
+| 25 | `20261027160000_correos_estado_y_cupo.sql` | `despachar_correos` → ab2d4304b921029146ec19ca9220d00f; `momento_cupo` → 9f7d811a4068dc3ab69ac1df2254aa72; `select count(*) from pg_proc where proname in ('cupo_correo','estado_correos_periodo','reenviar_recibo','unidades_mensaje');` → 4 |
+
+**Datos, después de las migraciones (los corre Nicolás; no son migraciones):**
+- `select guardar_secreto('correo_tope_diario', '90');` en producción (deja margen
+  para el aviso al operador y para lo que mande pruebas).
+- Opcional: `select guardar_secreto('correo_operador', '<correo de Vecitap>');` para
+  que el aviso de «se acabó el cupo» llegue también por correo.
+- Comprobar: `select tope_correo();` → 90.
+
+Al final, la comparación de conjunto de la ronda 7 (md5 de todas las funciones de
+`public` en las dos bases): tiene que dar lo mismo, salvo `mis_unidades` y lo que
+se cambió a propósito.
+
+### Paso 9: vaciar GRUPO ING3 y recargarlo con la plantilla
+
+Decisión de Gustavo. Después del respaldo y del Paso 8:
+1. `docs/anexo-paso9-vaciar-organizacion.sql` en el SQL Editor de producción. Una
+   sola transacción. Antes de borrar verifica que el nombre dé una sola
+   organización, que **nadie tenga acceso de residente**, que **no haya pagos** y
+   que no haya meses cerrados; si algo falla, aborta y no borra nada. Borra
+   unidades, personas, vínculos, notas, meses abiertos y gastos, recibos y cortes
+   (no hay), ajustes de saldo, cola de correos, mensajes, invitaciones de residente
+   sin usar y lo de la garita (no hay). Conserva la organización, la
+   administradora, el edificio con sus ajustes, los cobros, categorías, datos para
+   pagar, ajustes de correo y de cobro, módulos y la auditoría. Antes de borrar,
+   comprueba lo que queda y aborta si no cuadra.
+   - Probado en vecitap-pruebas el 27-oct contra «ZZZ Validación Ronda 8»: con
+     accesos de residente aborta («ABORTADO: 2 propietarios o inquilinos tienen
+     acceso a la app…»); sin ellos, el borrado completo corre en orden (9 correos,
+     1 mensaje, 3 recibos, 3 cortes, 1 mes, 110 vínculos, 4 invitaciones, 109
+     unidades, 35 personas) y deja organización, 3 edificios, la administradora y
+     los cobros. Todo deshecho.
+   - Al 27-oct ING3 tiene 1 edificio, 53 unidades, 55 personas, 55 vínculos, 0
+     pagos, 0 meses, 0 invitaciones y 1 membresía (la administradora).
+2. La consulta de verificación del final del anexo: organizaciones 1, edificios 1,
+   membresías 1, cobros 1, todo lo demás 0.
+3. En la app: Propietarios → Cargar datos → la plantilla. Todas las filas salen
+   «nuevas».
+
+### Garita (bloque D): ING3 no la tiene, así que no se construyó
+
+Leído en producción el 27-oct: `modulos_org` no tiene ninguna fila de GRUPO ING3 y
+el módulo «garita» viene apagado por omisión (`por_defecto` false). **No tiene la
+garita.** Diseño para cuando se active:
+
+- **Visitas invitadas:** las ve solo quien las invitó. Hoy «Mis visitas» lista las
+  invitaciones de la unidad; pasa a filtrar por `invitaciones_visita.creada_por =
+  auth.uid()` (la columna ya existe), en la función que las lista, no solo en
+  pantalla. Las visitas que entraron con esa invitación (`visitas.invitacion_id`),
+  igual.
+- **Visitas sin invitación** («visita a 02A»): las ve, y recibe el aviso por
+  correo, **quien vive en la unidad**: el inquilino si hay; si no, el propietario.
+  Una función nueva `ocupante_de(unidad)` (inquilino vigente, si no el
+  propietario) que usen la lista del residente y el correo de tipo 'visita'.
+- **Administradora y garita:** siguen viendo todo en la bitácora (sin cambio).
+- **Admin → Bitácora:** **no existe esa pantalla hoy** en Admin (la bitácora solo
+  está en `/garita/[edificio]/bitacora`). Va una página nueva de solo lectura,
+  `/admin/[org]/[edificio]/bitacora`, solo para `propietario_cuenta` y
+  `administrador` (**la junta no**: se gatea con `tiene_rol` en el proxy y en la
+  función, que es nueva y de solo lectura, separada de `puede_garita` —ver la
+  advertencia de `AGENTS.md`—).
+- **Estimación:** una ronda de 1 a 1,5 días: una migración (las dos funciones, el
+  cambio de la lista del residente y del aviso, con rollback y md5), la página de
+  Admin, y pruebas con un vigilante, dos residentes de la misma unidad (propietario
+  e inquilino) y la administradora.
+
+### Validación (27-oct)
+
+Contra `next start` (build de producción, puerto 3123) conectado a
+vecitap-pruebas, con Playwright ya instalado con `--no-save` (`package.json` y
+`package-lock.json` con el mismo sha256 antes y después). Script:
+`scripts/validacion-ronda8.mjs`; capturas en `scripts/capturas-ronda8/` (ignorada
+por Git). Cuentas `admin.prueba` y `residente.prueba`. Organización propia «ZZZ
+Validación Ronda 8» (Torre A, B y C), **borrada al terminar**, con su comprobante
+del storage. Correos: ninguno salió; los encolados (todos a @resend.dev) se
+borraron con la organización.
+
+**El cupo de pruebas estaba lleno** (100 correos en 24 horas de las pruebas de
+Gustavo; con el tope en 10, lo nuevo espera hasta que venzan): por eso las
+pantallas se probaron con correos esperando, que era lo pedido en A4 y C2.
+
+| Bloque | Resultado | Lo que se vio |
+|---|---|---|
+| A1 | OK | Torre A (personas nuevas): 10C guarda 04245551666. Torre B, **la misma planilla con las personas ya existentes**, 10C corregido a 0414-5551234: la fila dice «Cambia el teléfono de la ficha de Sr. Poruvadesobon Puduv Cute Zadunu: 04245551666 → 0414-5551234», la celda «corregido en la previa: cambia en la ficha de …»; al cargar, la **misma ficha** queda con 0414-5551234 (en Torre A y en B). En la base: `cambiar` reemplaza nombre y correo, completa lo vacío, un vacío no borra |
+| A2 | OK | Torre B: «12 filas que esperan una respuesta…», 17 preguntas con «Corregir los datos de esta fila». Torre A (unidades ya cargadas): «12 filas con una pregunta en «Personas para revisar» (no frenan: se omiten)» con 36 campos; corregir los tres datos de 03D quita su pregunta; la celda dice «corregido en la previa, pero no se guarda: la unidad ya existe y se omite (marque «Actualizar»)» |
+| A3 | OK | ZB-5C no usa la ficha de Bumagi («también comparte el teléfono con Sr. Bumagi …: es otra persona»). Con «Sí»: la fila muestra «Bumagi…», «delivered+nabisipodalena98@…» con «el archivo dice delivered+risafarag64@…», y aparece la pregunta «Archivo: «Bumagi…» (ZB-1A, ZB-5C) · Ficha: Sr. Bumagi… · Ficha: Sr. Livofesupi Sonopu…» sin respuesta por omisión. Con «No», vuelve. Dos fichas «Pruebo Doble Ficha» + «Otra Persona Distinta» con el mismo correo: usa la del mismo nombre y nombra a la otra como otra persona; sin «otro nombre u otra cédula»; sin unidades repetidas; 6 «ver más» |
+| A4 | OK, **con un arreglo** | La vista previa se quedaba en «Contando destinatarios…» (no se pedía al terminar de cargar las unidades): arreglado. Todos «Va a 53 unidades» · 29 personas; Solo quienes deben «Va a 33 unidades» · 19 personas; a mano «Va a 1 unidad» · 1 persona. Enviado: «… una parte espera el cupo diario y lo último sale en más de un día», historial «0 enviados · 1 esperan el cupo diario» (correcto con el tope 10 de pruebas) |
+| A5 | OK | «1 unidad queda con la cuota de condominio en $ 0,00 · ZC-3»; la confirmación empieza «Atención: la unidad ZC-3 queda…» y el botón dice «Sí, cerrar igual» |
+| A6 | OK | Botón de peligro: texto rgb(255, 255, 255). Alícuotas: «Las alícuotas suman 111,99 %; deben sumar 100 %. Revise las unidades en Propietarios.» |
+| B1 | OK | En la base, como residente y como administradora: un grupo de dos entra; agregar una fila a ese grupo → «Ese pago agrupado ya existe: no se le pueden agregar partes…»; un pago suelto entra; cambiar `grupo_id` → rechazado; confirmar el grupo, ok. En la pantalla, el residente crea uno (ZC-1 + ZC-2) |
+| B2 | OK | El recibo de ZC-1 sale a `…residente@` (con código) y a `…respaldo@` (sin código); anular una invitación borra su código |
+| C1 | OK | Correo: sin «Bs », con la frase y «Vea el monto en bolívares de hoy en el portal». Recibo impreso del portal: sin «Bs <número>». El portal sigue con los Bs del día |
+| C2 | OK | «3 recibos emitidos en Octubre 2026 · 6 correos con los de respaldo · hoy quedan 0 de 10 correos del plan»; la confirmación «Son 6 correos y hoy quedan 0 (y hay 22 esperando)…»; cada destinatario «Espera el cupo: sale hoy a las …»; «Recibo de ZC-1 reenviado: 2 correos en la cola.»; el segundo toque «Ese recibo ya se reenvió hace un momento.» |
+| C4 | OK | Previa = recibo: ZC-1 534,915 → $ 535 (fondo 0,085); ZC-2 (a favor 500) 1,585 → $ 5 (fondo 3,415); ZC-3 0 → 0, sin línea |
+| F | OK | El error del doble envío, arriba: la página subió (618 → 0) y se ve. «Abrir un mes» propone «Noviembre» después de cerrar octubre |
+| Teléfono | OK | Portal (Mi recibo, Reportar un pago con el agrupado) a 390 × 844: nada se sale |
+
+**Arreglos hechos durante la validación:** (1) Mensajes pedía la vista previa
+antes de tener las unidades y no la volvía a pedir; (2) `momento_cupo` daba una
+hora temprana cuando lo enviado pasaba el tope (como en pruebas, con 100 enviados
+y tope 10); (3) la consulta del estado a Resend se apagó por omisión (clave solo de
+envío, ver arriba); (4) el aviso de «Abrir un mes» se rehízo sin efecto (lo pedía
+el lint).
+
+**No se repitió en el navegador** (no lo toca esta ronda, o solo por la base): las
+pruebas 6, 7, 10, 11, 14 y 15/16 del lado de la administradora (datos para pagar,
+solo dólares, cuotas extraordinarias, estado financiero, conciliar el grupo). El
+cierre se reescribió (R8-4) y se probó cerrando un mes en Torre C; las cuotas
+extraordinarias no se ejercitaron en esta ronda.
+
+### Limpieza en pruebas (bloque I)
+
+Borrados de «Administradora Prueba Gustavo»: Edificio Ronda 6 (71 unidades),
+Edificio Prueba Ronda 7 (53) y Edificio Prueba Carga (58, con 1 pago), con todo lo
+que colgaba de ellos. **Edificio Gustavo, intacto** (53 unidades). Las fichas de
+personas son de la administradora, no de un edificio: se dejaron (algunas quedan
+sin unidad).
+
+### Para anotar, después del arranque (bloque G)
+
+- «Solo dólares» por edificio, no solo por administradora.
+- Estado financiero: la fecha de cada movimiento; una línea «Cuotas por cobrar» (lo
+  emitido y no pagado), porque un saldo final negativo asusta a una junta; egresos
+  sin doble negativo; la hoja «Ingresos» del Excel con títulos aunque esté vacía.
+- Cuota extraordinaria visible en Gastos del mes como fila fija («Ascensor · cuota
+  2 de 3 · $ 100»).
+- QR de visitas por día, sin hora, con opción «varios días».
+- Probar «Descargar plantilla» desde el teléfono.
+- Revisar después del piloto: `simular_cierre` reparte los gastos directos por
+  bolsillo y `cerrar_periodo` los suma todos a condominio (el total es el mismo).
+- Webhooks de Resend para «entregado», «rebotado» y «abierto» (ver arriba).
+- Garita: el diseño del bloque D, cuando un cliente la active.
+
+### Riesgos para el piloto
+
+1. **Producción no tiene 25 migraciones** (12 de rondas anteriores, 8 de la
+   ronda 7 y 5 de esta). Respaldo antes, en orden, y leer la verificación de cada
+   una.
+2. **El cupo**: ≈ 85 correos por mes para ING3, con tope 90. Un mensaje masivo o
+   un reenvío grande el mismo día que los recibos hace que una parte salga al día
+   siguiente (la pantalla ahora lo dice).
+3. **El correo de respaldo ahora recibe el recibo** (antes no): es un cambio que
+   las personas van a notar, y cuenta para el cupo.
+4. **Corregir en la previa cambia la ficha existente**, también si la fila se
+   junta con «Sí» a una ficha de otro nombre (la previa lo anuncia en la fila).
+5. El estado «entregado»/«abierto» no está: sin webhooks, la pantalla dice
+   «Enviado» cuando Resend lo aceptó.
+
+### Título del commit
+
+`Ronda 8 del tramo 2: arreglos de las rondas 6 y 7 antes del piloto de GRUPO ING3`
+
+La previa de carga guarda lo corregido en fichas existentes y no junta fichas de otro nombre sin preguntar; mensajes por unidad, estado y reenvío del recibo, recibo sin bolívares, redondeo sobre el total y pago agrupado cerrado, con 5 migraciones probadas en vecitap-pruebas.
+
+---
+
 ## Ronda 7 del tramo 2 (26-oct) — lo que necesita el piloto de GRUPO ING3
 
 Pedido de Nicolás del 26-oct, en nueve bloques, hecho en orden y cada uno

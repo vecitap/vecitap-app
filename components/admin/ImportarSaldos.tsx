@@ -195,7 +195,11 @@ export function ImportarSaldos({
           type="file"
           accept=".xlsx,.xls,.csv,.pdf"
           disabled={leyendo}
-          onChange={(e) => leer(e.target.files?.[0])}
+          onChange={(e) => {
+            leer(e.target.files?.[0]);
+            // Ronda 8: para que volver a elegir el mismo archivo lo lea otra vez.
+            e.target.value = "";
+          }}
           className="control"
           style={{ padding: 10, marginTop: 14 }}
         />

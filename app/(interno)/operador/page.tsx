@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { ConsolaOperador } from "@/components/operador/ConsolaOperador";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { usuarioActual } from "@/lib/supabase/cache";
+import type { CupoCorreo } from "@/lib/cupo-correo";
 
 /**
  * Portado de App() en operador.html:201-537. proxy.ts ya redirige a quien
@@ -23,7 +24,7 @@ export default async function OperadorHome() {
   const { data: esOperador } = await supabase.rpc("es_operador");
   if (!esOperador) redirect("/sin-acceso");
 
-  const [{ data: cartera, error }, { data: tareaLog }, { data: tasa }, { data: tasaLog }] = await Promise.all([
+  const [{ data: cartera, error }, { data: tareaLog }, { data: tasa }, { data: tasaLog }, { data: cupo }] = await Promise.all([
     supabase.rpc("cartera_operador"),
     supabase
       .from("tareas_log")
@@ -38,6 +39,8 @@ export default async function OperadorHome() {
       .eq("tarea", "tasa_bcv")
       .order("corrida_en", { ascending: false })
       .limit(1),
+    // Ronda 8: el cupo diario de correos (se avisa acá cuando se acaba).
+    supabase.rpc("cupo_correo"),
   ]);
   if (error) throw error;
 
@@ -47,6 +50,7 @@ export default async function OperadorHome() {
       tarea={tareaLog?.[0] ?? null}
       tasa={(Array.isArray(tasa) ? tasa[0] : tasa) ?? null}
       tasaTarea={tasaLog?.[0] ?? null}
+      cupo={(cupo as unknown as CupoCorreo | null) ?? null}
       correo={user.email ?? ""}
     />
   );

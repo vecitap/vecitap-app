@@ -83,6 +83,8 @@ type Hecho = {
   vinculos_nuevos: number;
   vinculos_actualizados?: number;
   notas_guardadas?: number;
+  /** Ronda 8: fichas existentes con un dato cambiado por lo corregido en la previa. */
+  personas_cambiadas?: number;
 };
 
 /**
@@ -217,10 +219,23 @@ export function CargarDatos({
     return copia;
   }, [lectura, ediciones]);
 
+  // Ronda 8: qué celdas se corrigieron, como `fila:campo`, para que la previa
+  // diga si cada corrección se guarda (y la aplique a la ficha si ya existe).
+  const corregidasSet = useMemo(
+    () =>
+      new Set(
+        Object.keys(ediciones).map((k) => {
+          const [i, j] = k.split(":").map(Number);
+          return `${i + 1}:${columnas[j]}`;
+        })
+      ),
+    [ediciones, columnas]
+  );
+
   const resultado = useMemo(() => {
     if (!lectura || !crudas || !personas || hayCierres === null || !notas) return null;
-    return analizar(crudas, lectura.encabezados, columnas, { unidades, personas, hayCierres, notas }, dec);
-  }, [lectura, crudas, columnas, personas, hayCierres, notas, unidades, dec]);
+    return analizar(crudas, lectura.encabezados, columnas, { unidades, personas, hayCierres, notas, corregidas: corregidasSet }, dec);
+  }, [lectura, crudas, columnas, personas, hayCierres, notas, unidades, dec, corregidasSet]);
 
   const grupos = useMemo(() => (resultado ? agruparAvisos(resultado.filas) : []), [resultado]);
   const semaforo = useMemo(() => (resultado ? contarFilas(resultado.filas) : null), [resultado]);
@@ -279,6 +294,9 @@ export function CargarDatos({
           {hecho.unidades_actualizadas ? `, ${hecho.unidades_actualizadas} actualizadas` : ""}. {hecho.personas_nuevas} personas
           nuevas
           {hecho.personas_completadas ? `, ${hecho.personas_completadas} fichas existentes completadas` : ""}.
+          {hecho.personas_cambiadas
+            ? ` ${hecho.personas_cambiadas === 1 ? "1 ficha existente cambió" : `${hecho.personas_cambiadas} fichas existentes cambiaron`} con lo corregido en la previa.`
+            : ""}
           {hecho.vinculos_actualizados ? ` Se cambió «recibe el corte» en ${hecho.vinculos_actualizados}.` : ""}
           {hecho.notas_guardadas ? ` ${hecho.notas_guardadas} ${hecho.notas_guardadas === 1 ? "nota guardada" : "notas guardadas"} (solo las ve la administración).` : ""}
         </Aviso>
@@ -553,6 +571,9 @@ export function CargarDatos({
                   key={d.clave}
                   d={d}
                   elegir={(valor) => setDec({ ...dec, personas: { ...dec.personas, [d.clave]: valor } })}
+                  corregirFilas={
+                    <CorregirContacto filas={d.filas ?? []} codigoDe={(n) => resultado.filas.find((f) => f.fila === n)?.codigo ?? ""} columnas={columnas} celdaDe={celdaDe} fueCorregida={fueCorregida} corregir={corregir} />
+                  }
                 />
               ))}
             </Card>
@@ -612,7 +633,11 @@ export function CargarDatos({
                         return (
                           <td key={c} style={{ background: v?.nota?.nivel === "ambar" ? "var(--ambar-bg)" : undefined, fontSize: 13 }}>
                             <span className={c === "alicuota" || c.startsWith("saldo") || c.includes("telefono") || c.includes("documento") ? "mono" : undefined}>{v?.valor || <span style={{ color: "var(--tenue)" }}>—</span>}</span>
-                            {fueCorregida(f.fila, c) && <div style={{ fontSize: 11, fontWeight: 600, color: "var(--tinta-2)" }}>corregido en la previa</div>}
+                            {/* Ronda 8: lo que se muestra es lo que queda guardado; si el archivo decía otra cosa, debajo. */}
+                            {v?.archivo && <div style={{ fontSize: 11, color: "var(--tenue)", overflowWrap: "anywhere" }}>el archivo dice {v.archivo}</div>}
+                            {v?.corregido && (
+                              <div style={{ fontSize: 11, fontWeight: 600, color: v.corregido.guarda ? "var(--tinta-2)" : "var(--ambar)" }}>{v.corregido.texto}</div>
+                            )}
                             <NotaCelda nota={v?.nota} />
                           </td>
                         );
@@ -741,16 +766,7 @@ function GrupoAvisos({
                   </div>
                 )
               )}
-              {it.persona &&
-                CONTACTO.filter((c) => columnas.includes(c) && celdaDe(it.fila, c)).map((c) => (
-                  <CorregirCelda
-                    key={`${c}:${celdaDe(it.fila, c)}`}
-                    campo={c}
-                    valor={celdaDe(it.fila, c)}
-                    corregida={fueCorregida(it.fila, c)}
-                    onCorregir={(v) => corregir(it.fila, c, v)}
-                  />
-                ))}
+              {it.persona && <CamposContacto fila={it.fila} columnas={columnas} celdaDe={celdaDe} fueCorregida={fueCorregida} corregir={corregir} />}
               {(it.sinAlicuota || estacionamiento[it.fila]) && (
                 <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--tinta-2)", marginTop: 6 }}>
                   <input type="checkbox" checked={!!estacionamiento[it.fila]} onChange={(e) => elegirEstacionamiento(it.fila, e.target.checked)} />
@@ -805,18 +821,79 @@ function CorregirCelda({ campo, valor, corregida, onCorregir }: { campo: Campo; 
   );
 }
 
+type PropsContacto = {
+  columnas: Campo[];
+  celdaDe: (fila: number, campo: Campo) => string;
+  fueCorregida: (fila: number, campo: Campo) => boolean;
+  corregir: (fila: number, campo: Campo, valor: string) => void;
+};
+
+/** El teléfono, los correos y la cédula de una fila, para corregirlos (ronda 7; ronda 8, también los vacíos). */
+function CamposContacto({ fila, columnas, celdaDe, fueCorregida, corregir }: PropsContacto & { fila: number }) {
+  return (
+    <>
+      {CONTACTO.filter((c) => columnas.includes(c) && (celdaDe(fila, c) || !c.startsWith("inq_") || celdaDe(fila, "inquilino"))).map((c) => (
+        <CorregirCelda key={`${c}:${celdaDe(fila, c)}`} campo={c} valor={celdaDe(fila, c)} corregida={fueCorregida(fila, c)} onCorregir={(v) => corregir(fila, c, v)} />
+      ))}
+    </>
+  );
+}
+
+/**
+ * Ronda 8 (prueba 2.2 de Gustavo): desde la misma pregunta de «Personas para
+ * revisar» se corrigen los datos de sus filas, y la pregunta se vuelve a
+ * evaluar sola.
+ */
+function CorregirContacto({ filas, codigoDe, ...props }: PropsContacto & { filas: number[]; codigoDe: (fila: number) => string }) {
+  const [abierto, setAbierto] = useState(false);
+  if (!filas.length) return null;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setAbierto(!abierto)}
+        aria-expanded={abierto}
+        style={{ background: "none", border: "none", padding: 0, color: "var(--tinta-2)", fontSize: 12.5, textDecoration: "underline", cursor: "pointer" }}
+      >
+        {abierto ? "Ocultar los datos de la fila" : filas.length === 1 ? "Corregir los datos de esta fila" : "Corregir los datos de estas filas"}
+      </button>
+      {abierto &&
+        filas.map((n) => (
+          <div key={n} style={{ background: "var(--fondo)", borderRadius: "var(--radio-chico)", padding: "8px 10px", fontSize: 13, marginTop: 6 }}>
+            <span style={{ color: "var(--tenue)" }}>Fila {n} ·</span> <b className="mono">{codigoDe(n)}</b>
+            <CamposContacto fila={n} {...props} />
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function Chip({ color, children }: { color: string; children: ReactNode }) {
   return (
     <span style={{ fontSize: 12.5, fontWeight: 600, color, border: `1px solid ${color}`, borderRadius: 999, padding: "3px 10px" }}>{children}</span>
   );
 }
 
+/** Ronda 8: una nota larga va en una línea con «ver más» (antes estiraba la fila). */
+const LARGO_NOTA_CORTA = 90;
+
 function NotaCelda({ nota }: { nota?: Nota }) {
+  const [entera, setEntera] = useState(false);
   if (!nota) return null;
   const color = nota.nivel === "rojo" ? "var(--rojo)" : nota.nivel === "ambar" ? "var(--ambar)" : "var(--tenue)";
+  const larga = nota.texto.length > LARGO_NOTA_CORTA;
   return (
     <div style={{ fontSize: 11.5, color, lineHeight: 1.4, marginTop: 2 }}>
-      {nota.texto}
+      {larga && !entera ? `${nota.texto.slice(0, LARGO_NOTA_CORTA).trimEnd()}… ` : nota.texto}
+      {larga && (
+        <button
+          type="button"
+          onClick={() => setEntera(!entera)}
+          style={{ background: "none", border: "none", padding: 0, color: "var(--tinta-2)", fontSize: 11.5, textDecoration: "underline", cursor: "pointer", marginLeft: entera ? 4 : 0 }}
+        >
+          {entera ? "ver menos" : "ver más"}
+        </button>
+      )}
       {/* Lo que queda cuando algo del archivo no se aplica (caso 75). */}
       {nota.queda && <div style={{ color: "var(--tinta)", fontWeight: 600 }}>Se queda: {nota.queda}</div>}
     </div>
@@ -828,7 +905,7 @@ function NotaCelda({ nota }: { nota?: Nota }) {
  * caso 75). Una línea por candidata; con varias, «Sí» en la que es y un «No»
  * al final para «ninguna».
  */
-function PreguntaPersona({ d, elegir }: { d: Dudoso; elegir: (valor: string) => void }) {
+function PreguntaPersona({ d, elegir, corregirFilas }: { d: Dudoso; elegir: (valor: string) => void; corregirFilas?: ReactNode }) {
   const varias = d.lineas.length > 1;
   const boton = (texto: string, valor: string) => (
     <Button type="button" mini variante={d.valor === valor ? "primario" : "secundario"} aria-pressed={d.valor === valor} onClick={() => elegir(valor)}>
@@ -865,6 +942,7 @@ function PreguntaPersona({ d, elegir }: { d: Dudoso; elegir: (valor: string) => 
       {d.pendiente && (
         <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ambar)" }}>Sin respuesta por omisión: elija para poder cargar.</div>
       )}
+      {corregirFilas}
     </div>
   );
 }

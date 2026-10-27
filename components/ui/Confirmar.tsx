@@ -53,7 +53,7 @@ export function Confirmar({
         <Button
           type="button"
           onClick={onSi}
-          style={tono === "peligro" ? { background: "var(--rojo)", borderColor: "var(--rojo)" } : undefined}
+          style={tono === "peligro" ? { background: "var(--veredicto-no)", borderColor: "var(--veredicto-no)", color: "#fff" } : undefined}
         >
           {boton}
         </Button>

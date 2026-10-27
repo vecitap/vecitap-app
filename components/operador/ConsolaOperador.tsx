@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Campo, Card, Input, Table } from "@/components/ui";
+import { Aviso as AvisoUI, Badge, Button, Campo, Card, Input, Table } from "@/components/ui";
+import { cuandoSale, type CupoCorreo } from "@/lib/cupo-correo";
 import { hoyLocalISO, montoAlSalir, nf, num, usd, usd0 } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularMetricasCartera } from "@/lib/operador/metricas-cartera";
@@ -48,12 +49,15 @@ export function ConsolaOperador({
   tarea,
   tasa,
   tasaTarea,
+  cupo,
   correo,
 }: {
   cartera: ClienteCartera[];
   tarea: TareaLog | null;
   tasa: TasaAtrasada | null;
   tasaTarea: TareaLog | null;
+  /** Ronda 8: el cupo diario de correos de Resend (toda la cuenta). */
+  cupo: CupoCorreo | null;
   correo: string;
 }) {
   const router = useRouter();
@@ -144,6 +148,17 @@ export function ConsolaOperador({
   return (
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 18px" }}>
       <EncabezadoOperador correo={correo} />
+
+      {/* Ronda 8: se acabó el cupo diario y hay correos esperando: se le avisa a Vecitap, no a cada unidad. */}
+      {cupo && cupo.en_cola > 0 && cupo.libre === 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <AvisoUI tono="rojo" titulo="Se acabó el cupo diario de correos">
+            Se mandaron {cupo.usados} de {cupo.tope} en las últimas 24 horas y hay {cupo.en_cola} esperando en la cola. Salen
+            solos a medida que se libera cupo: el último, {cuandoSale(cupo.sale_todo_en)}. Para mandar más por día hay que
+            subir de plan en Resend y cambiar el secreto correo_tope_diario.
+          </AvisoUI>
+        </div>
+      )}
 
       {aviso && (
         <div

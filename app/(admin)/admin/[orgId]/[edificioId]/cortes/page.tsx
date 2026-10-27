@@ -30,7 +30,7 @@ export default async function PaginaCortes({
       supabase
         .from("unidades")
         .select(
-          "id,codigo,alicuota,saldo_inicial,saldo_inicial_hon,activa,vinculos(id,tipo,desde,hasta,enviar_corte,persona_id,personas(id,prefijo,nombre,documento,telefono,correo))"
+          "id,codigo,alicuota,saldo_inicial,saldo_inicial_hon,activa,vinculos(id,tipo,desde,hasta,enviar_corte,persona_id,personas(id,prefijo,nombre,documento,telefono,correo,correo_respaldo))"
         )
         .eq("edificio_id", edificioId)
         .order("codigo"),

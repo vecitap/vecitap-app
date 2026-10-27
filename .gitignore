@@ -44,6 +44,7 @@ supabase/.temp/
 # artefacto del producto, ver scripts/validacion-bloque0.mjs
 scripts/capturas-bloque0/
 scripts/capturas-ronda7/
+scripts/capturas-ronda8/
 
 # typescript
 *.tsbuildinfo

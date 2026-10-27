@@ -848,7 +848,11 @@ export function Pagos({
             <input
               type="file"
               accept=".xlsx,.xls,.csv,.pdf"
-              onChange={(e) => leerBanco(e.target.files?.[0])}
+              onChange={(e) => {
+                leerBanco(e.target.files?.[0]);
+                // Ronda 8: para que volver a elegir el mismo archivo lo lea otra vez.
+                e.target.value = "";
+              }}
               className="control"
               style={{ padding: 10 }}
             />
@@ -952,7 +956,7 @@ export function Pagos({
                   </div>
                   <div style={{ padding: 18, borderTop: "1px solid var(--linea)" }}>
                     <Button type="button" cargando={ocupado} onClick={conciliarLote}>
-                      Conciliar {cruce.casan.length} pagos
+                      {cruce.casan.length === 1 ? "Conciliar 1 pago" : `Conciliar ${cruce.casan.length} pagos`}
                     </Button>
                   </div>
                 </Card>

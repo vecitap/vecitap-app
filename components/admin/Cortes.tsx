@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, Download, Eye, Mail, MessageCircle, Printer, Send, Undo2 } from "lucide-react";
-import { Aviso, Button, Campo, Card, Cargando, Confirmar, Input, Select, Textarea, Vacio } from "@/components/ui";
+import { Check, Download, Eye, Mail, MessageCircle, Printer, RotateCw, Send, Undo2 } from "lucide-react";
+import { Aviso, Badge, Button, Campo, Card, Cargando, Confirmar, Input, Select, Textarea, Vacio, type TonoBadge } from "@/components/ui";
+import { cuandoSale, esperaCupo, type CupoCorreo } from "@/lib/cupo-correo";
 import { bs, nf, usd } from "@/lib/formato";
 import { PLANTILLA_WHATSAPP } from "@/lib/admin/constantes";
 import { usePreferenciaLocal } from "@/lib/preferencia-local";
@@ -27,6 +28,39 @@ type ResumenCorreos = {
   malos: number;
   ultimo_envio: string | null;
 };
+
+/** Fila de `estado_correos_periodo(p_periodo)` (ronda 8): cómo va el correo de cada recibo. */
+type EstadoCorreo = {
+  unidad_id: string | null;
+  recibo_id: string | null;
+  destino: string;
+  tipo: string;
+  estado: string;
+  evento: string | null;
+  encolado_en: string;
+  enviado_en: string | null;
+  sale_en: string | null;
+  rebotado: boolean;
+  error: string | null;
+};
+
+/**
+ * El estado de un correo en palabras (ronda 8, caso 89). «Entregado» y
+ * «Abierto» los informa Resend (`last_event`); «Abierto» no es del todo
+ * confiable: hay correos que cargan las imágenes solos y otros que las
+ * bloquean.
+ */
+function estadoEnPalabras(e: EstadoCorreo): { texto: string; tono: TonoBadge } {
+  if (e.evento === "bounced" || (e.rebotado && e.estado !== "pendiente")) return { texto: "Rebotó", tono: "rojo" };
+  if (e.evento === "complained") return { texto: "Lo marcó como spam", tono: "rojo" };
+  if (e.estado === "fallido") return { texto: "No salió", tono: "rojo" };
+  if (e.estado === "pendiente")
+    return esperaCupo(e.sale_en) ? { texto: `Espera el cupo: sale ${cuandoSale(e.sale_en)}`, tono: "ambar" } : { texto: "Saliendo", tono: "neutro" };
+  if (e.evento === "opened" || e.evento === "clicked") return { texto: "Abierto", tono: "favor" };
+  if (e.evento === "delivered") return { texto: "Entregado", tono: "neutro" };
+  if (e.evento === "delivery_delayed") return { texto: "Demorado", tono: "ambar" };
+  return { texto: "Enviado", tono: "neutro" };
+}
 
 /** Fila de `correo_recibo(p_recibo)` — una por destinatario. */
 type CorreoArmado = { destino: string; rol: string; asunto: string; html: string };
@@ -94,6 +128,10 @@ export function Cortes({
   const [enviando, setEnviando] = useState(false);
   const [confirmaEnvio, setConfirmaEnvio] = useState(false);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
+  // Ronda 8: el estado del correo de cada recibo, el cupo del día y el reenvío.
+  const [estados, setEstados] = useState<{ periodoId: string; filas: EstadoCorreo[] } | null>(null);
+  const [cupo, setCupo] = useState<CupoCorreo | null>(null);
+  const [reenviando, setReenviando] = useState<string | null>(null);
 
   function notificar(texto: string, tipo: "ok" | "error" = "ok") {
     setMensaje({ texto, tipo });
@@ -162,6 +200,68 @@ export function Cortes({
     const supabase = crearClienteNavegador();
     const { data } = await supabase.rpc("resumen_correos", { p_org: orgId });
     setEnvio(((Array.isArray(data) ? data[0] : data) as ResumenCorreos | null) ?? null);
+    cargarEstados();
+  }
+
+  async function cargarEstados() {
+    if (!periodoId) return;
+    const supabase = crearClienteNavegador();
+    const [e, q] = await Promise.all([supabase.rpc("estado_correos_periodo", { p_periodo: periodoId }), supabase.rpc("cupo_correo")]);
+    if (!e.error) setEstados({ periodoId, filas: (e.data ?? []) as EstadoCorreo[] });
+    if (!q.error) setCupo(q.data as unknown as CupoCorreo);
+  }
+
+  // Al cambiar de mes, y cada minuto mientras haya correos saliendo.
+  const filasEstado = estados?.periodoId === periodoId ? estados.filas : [];
+  const haySaliendo = filasEstado.some((e) => e.estado === "pendiente");
+  useEffect(() => {
+    cargarEstados();
+    if (!haySaliendo) return;
+    const t = setInterval(cargarEstados, 60_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodoId, haySaliendo]);
+
+  /** El último correo de cada destinatario de una unidad. */
+  function estadoDe(unidadId: string) {
+    const visto = new Set<string>();
+    return filasEstado.filter((e) => e.unidad_id === unidadId && !visto.has(e.destino) && visto.add(e.destino));
+  }
+
+  /**
+   * Cuántos correos lleva el mes (ronda 8): uno por cada propietario e
+   * inquilino con «recibe corte» y correo, más uno por su correo de
+   * respaldo. Es lo que cuenta para el cupo diario.
+   */
+  const correosDelMes = recibos.reduce((n, r) => {
+    const u = unidades.find((x) => x.id === r.unidad_id);
+    for (const rol of ["propietario", "inquilino"] as const) {
+      const v = vigente(u?.vinculos, rol);
+      if (!v || v.enviar_corte === false) continue;
+      const pr = v.personas?.correo?.trim().toLowerCase();
+      const re = v.personas?.correo_respaldo?.trim().toLowerCase();
+      if (pr) n++;
+      if (re && re !== pr) n++;
+    }
+    return n;
+  }, 0);
+
+  async function reenviar(r: ReciboAdmin, codigo: string) {
+    setReenviando(r.id);
+    const supabase = crearClienteNavegador();
+    const { data, error } = await supabase.rpc("reenviar_recibo", { p_recibo: r.id });
+    if (error) {
+      setReenviando(null);
+      return fallo(error);
+    }
+    const d = await supabase.rpc("despachar_ahora");
+    setReenviando(null);
+    const n = Number(data) || 0;
+    notificar(
+      `Recibo de ${codigo} reenviado: ${n === 1 ? "1 correo" : `${n} correos`} en la cola.` +
+        (d.error ? " Salen en los próximos minutos." : "")
+    );
+    cargarEstados();
   }
 
   async function guardarNota(texto: string, hasta: string) {
@@ -577,6 +677,8 @@ export function Cortes({
           <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>A quién se le envía</h2>
           <p style={{ margin: "3px 0 12px", fontSize: 12.5, color: "var(--tenue)" }}>
             {recibos.length} recibos emitidos en {periodo?.etiqueta ?? ""}
+            {correosDelMes > 0 && ` · ${correosDelMes} correos con los de respaldo`}
+            {cupo && ` · hoy quedan ${cupo.libre} de ${cupo.tope} correos del plan`}
           </p>
         </div>
         {cargando ? (
@@ -590,6 +692,7 @@ export function Cortes({
                   <th>Recibo</th>
                   <th>Propietario</th>
                   <th style={{ textAlign: "right" }}>Total</th>
+                  <th>Correo</th>
                   <th></th>
                 </tr>
               </thead>
@@ -646,6 +749,18 @@ export function Cortes({
                       <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>
                         {usd(r.total)}
                       </td>
+                      <td style={{ minWidth: 170 }}>
+                        {estadoDe(r.unidad_id).map((e) => {
+                          const s = estadoEnPalabras(e);
+                          return (
+                            <div key={e.destino} style={{ marginBottom: 4 }}>
+                              <Badge tono={s.tono}>{s.texto}</Badge>
+                              <div style={{ fontSize: 11, color: "var(--tenue)", overflowWrap: "anywhere" }}>{e.destino}</div>
+                            </div>
+                          );
+                        })}
+                        {!estadoDe(r.unidad_id).length && <span style={{ fontSize: 11.5, color: "var(--tenue)" }}>no se ha enviado</span>}
+                      </td>
                       <td style={{ width: 240 }}>
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                           {gente.map((x) => (
@@ -682,6 +797,11 @@ export function Cortes({
                           <Button type="button" variante="secundario" mini onClick={() => setPrevia(r)}>
                             <Eye size={13} /> Vista previa
                           </Button>
+                          {gente.some((x) => x.correo) && (
+                            <Button type="button" variante="secundario" mini cargando={reenviando === r.id} onClick={() => reenviar(r, u?.codigo ?? "")}>
+                              <RotateCw size={13} /> Reenviar recibo
+                            </Button>
+                          )}
                           <Link
                             href={`/admin/${orgId}/${edificioId}/propietarios/${r.unidad_id}`}
                             className="btn btn-mini btn-secundario"
@@ -704,9 +824,14 @@ export function Cortes({
         <Confirmar
           titulo={`Enviar los recibos de ${periodo?.etiqueta ?? ""}`}
           texto={
-            "Se le manda un correo a cada propietario que tenga dirección cargada, con el enlace a " +
+            "Se le manda un correo a cada propietario e inquilino que tenga dirección cargada (y otro a su correo de respaldo), con el enlace a " +
             "su recibo. Las unidades sin correo se saltean y se le dice cuántas fueron. Un recibo " +
-            "que ya se envió no se manda dos veces."
+            "que ya se envió no se manda dos veces." +
+            (cupo
+              ? correosDelMes + cupo.en_cola <= cupo.libre
+                ? ` Son ${correosDelMes} correos y hoy quedan ${cupo.libre}: salen todos hoy.`
+                : ` Son ${correosDelMes} correos y hoy quedan ${cupo.libre}${cupo.en_cola ? ` (y hay ${cupo.en_cola} esperando)` : ""}: los que no caben esperan el cupo y salen solos en las próximas horas.`
+              : "")
           }
           boton="Enviar"
           onSi={() => {

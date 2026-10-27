@@ -2233,3 +2233,133 @@ agua, o recordarles a los que deben.
 - **Cómo se revierte:** `supabase/rollbacks/20261026190000_pago_agrupado_rollback.sql`
   (los pagos agrupados quedan como pagos sueltos, con su monto ya cuadrado) y los cambios
   en `FormularioReportarPago.tsx` y `Pagos.tsx`.
+
+## Ronda 8 del tramo 2 — arreglos de las rondas 6 y 7 antes del piloto de GRUPO ING3 (27-oct)
+
+> Pedido de Nicolás del 27-oct, con los resultados de Gustavo de la ronda 7 (6 OK, 6 OK con
+> pedidos, 3 fallas, 1 no hecha) y lo pendiente de la ronda 6. Migraciones R8-1 a R8-5 en
+> `docs/estado-migracion.md`, «Ronda 8».
+
+### 88. «Cargar datos»: lo corregido en la previa es lo que queda, también en una ficha que ya existe
+
+**Caso de uso:** la administradora corrige el teléfono de 10C en la previa; la persona de
+10C ya existe en su administradora.
+
+- **Antes (prueba 5 de Gustavo):** la celda decía «corregido en la previa», pero al cargar
+  la fila iba a la ficha existente y la carga **solo completaba lo vacío**: el teléfono
+  viejo se quedaba. La corrección se perdía en silencio.
+- **Ahora:**
+  - Si la fila va a una ficha que ya existe, la previa lo dice en la misma fila: «Cambia
+    el teléfono de la ficha de Sr. …: 04245551666 → 0414-5551234», y la celda: «corregido
+    en la previa: cambia en la ficha de …». Al cargar, `importar_unidades()` **reemplaza**
+    ese dato (R8-1: `cambiar`). Vale para teléfono, correo, correo de respaldo, cédula y
+    nombre. Lo que no se corrigió sigue igual: solo completa lo vacío.
+  - **Nunca dice «corregido» si no se guarda:** con la unidad omitida dice «corregido en
+    la previa, pero no se guarda: la unidad ya existe y se omite (marque «Actualizar»)»;
+    con meses cerrados, que el saldo no se guarda; si la unidad tiene otro propietario,
+    que no se guarda; un dato borrado en la previa no borra la ficha (lo dice).
+  - Con varias filas de la misma persona, el dato corregido manda sobre el de las otras.
+- **Decidido por mi cuenta:** un valor vacío no borra nada de una ficha; el tratamiento
+  (Sr., Sra.…) de una ficha existente no se cambia desde la carga (lo dice la celda). Y
+  **ojo**: si la administradora corrige una fila y después contesta «Sí» a una ficha de
+  otro nombre, lo corregido se aplica a esa ficha (es lo que la previa anuncia en la fila;
+  pasó en la validación con 03D y «Vonepomecen Tolip F, c.a.»).
+- **Cómo se revierte:** `supabase/rollbacks/20261027120000_importar_corrige_fichas_rollback.sql`
+  y los cambios en `analisis.ts` y `CargarDatos.tsx`.
+
+### 89. «Personas para revisar»: la tabla muestra lo que va a quedar, y nunca usa sin preguntar una ficha de otro nombre
+
+**Caso de uso:** 05C («Livofesupi Sonopu») comparte el teléfono con 01A («Bumagi
+Tovavade/Camebogig Zazufuni»).
+
+- **Antes (prueba 6.3):** con «Sí», el aviso decía que los recibos iban al correo de 01A,
+  pero la tabla seguía mostrando el correo de 05C. La observación decía «se usa la de Sr.
+  Bumagi…»: dos causas. (1) `mismoNombre()` aceptaba que un nombre **empezara** como el
+  otro, así «Bumagi Tovavade» era igual a «Bumagi Tovavade/Camebogig Zazufuni». (2) Al
+  juntar con «Sí» filas de dos nombres, la ficha se elegía con el nombre de la primera fila
+  del grupo, sin preguntar. También: «son otras personas (otro nombre u otra cédula)»
+  sobre fichas que se llamaban igual que la fila, unidades repetidas («01B, 01A, 01B, 01A…»)
+  y notas que estiraban la fila.
+- **Ahora:**
+  - Al elegir «Sí», «No» o una ficha, la tabla muestra **al momento** el propietario, el
+    correo y el teléfono que van a quedar, con «el archivo dice …» debajo.
+  - Un nombre solo es igual a otro si son el mismo, o si lo que sobra es la forma de la
+    empresa («Inversiones Uno» = «Inversiones Uno, C.A.»).
+  - Si un «Sí» junta filas de nombres distintos y hay fichas de los dos nombres, **se
+    pregunta cuál** (sin respuesta por omisión; la carga espera).
+  - La nota «también comparte el teléfono con …: es otra persona» nombra solo fichas que se
+    llaman distinto que esa fila; las unidades de una ficha, sin repetir; las notas largas,
+    en una línea con «ver más».
+- **Cómo se revierte:** los cambios en `analisis.ts` y `CargarDatos.tsx` (no hay base).
+
+### 90. Las filas que esperan «¿misma persona?» se corrigen siempre
+
+- **Antes (prueba 2.2):** el grupo «… filas que esperan una respuesta» solo salía si la
+  fila se iba a cargar. En un edificio con las unidades ya cargadas (el Edificio Ronda 6)
+  las filas se omiten, el grupo no salía y no había dónde corregir 03D.
+- **Ahora:** las filas con una pregunta sin responder salen igual en Avisos («… con una
+  pregunta en «Personas para revisar» (no frenan: se omiten)»), con su teléfono, correos y
+  cédula para corregir; y cada pregunta de «Personas para revisar» tiene «Corregir los
+  datos de esta fila». Al corregir, la pregunta se vuelve a evaluar.
+
+### 91. Mensajes: a qué unidades va, a mano, y cuándo sale lo que espera el cupo
+
+- **Antes (prueba 13):** con «Solo quienes deben» no se veía a quiénes iba (el filtro sí
+  funcionaba: 31 personas contra 36 de «Todos» en el Edificio Gustavo, pero los números se
+  parecían). Enviado a «Todos», «0 enviados» y nada más: el despachador corre cada 5
+  minutos y ese día ya se había llegado a los 100 correos (58 recibos de la prueba 9 y otros
+  mensajes); 14 quedaron esperando sin que la pantalla dijera hasta cuándo. Y 2 fallaron con
+  «Too many requests» (el despachador mandaba 20 de una vez; Resend acepta 10 por segundo).
+- **Ahora:** «Va a 33 unidades: 01A, 01B…» con «Ver y cambiar» para marcar o desmarcar
+  unidades (y «Todas», «Ninguna», «Volver al filtro»); la vista previa cuenta sobre esas.
+  El historial dice «N enviados · N salen en los próximos minutos · N esperan el cupo
+  diario» y «Salen solos a medida que se libera cupo: lo último, hoy a las 11:55 p. m.». El
+  despachador hace como mucho 8 pedidos por vuelta.
+
+### 92. Cortes de cuenta: cómo va el correo de cada unidad y «Reenviar recibo»
+
+- **Ahora:** columna «Correo» por unidad y destinatario: «Saliendo», «Espera el cupo: sale
+  hoy a las …», «Enviado», «No salió», «Rebotó» (y «Entregado» / «Abierto» si se enciende
+  la consulta a Resend, ver estado-migracion). Botón «Reenviar recibo» por unidad (uno cada
+  10 minutos). Arriba: cuántos correos lleva el mes con los de respaldo y cuántos quedan
+  hoy; la confirmación de «Enviar» dice si sale todo de una vez. Cuando se acaba el cupo, se
+  le avisa a Vecitap una vez por día (consola del operador, y un correo si existe el secreto
+  `correo_operador`), no unidad por unidad.
+- **Decidido por mi cuenta:** el reenvío va a los mismos destinatarios del envío del mes.
+
+### 93. El recibo: sin bolívares, copia al correo de respaldo, código solo a los titulares
+
+- **Antes:** el correo y el papel traían el total en Bs a la tasa de un día. El recibo **no
+  le llegaba al correo de respaldo** (solo los mensajes lo copiaban). Si la unidad tenía dos
+  propietarios vigentes, los dos recibían código. El código quedaba guardado aunque la
+  invitación se usara o anulara.
+- **Ahora (decisiones de Gustavo):** correo, recibo impreso y PDF traen solo los dólares y
+  «Se paga en bolívares a la tasa oficial BCV del día del pago», con el enlace al portal
+  (el «Monto exacto en Bs» del portal sigue). Los datos para pagar, sin montos en Bs. El
+  recibo va también al correo de respaldo, **en un correo aparte y sin código**. Código solo
+  al propietario principal (el vínculo vigente más reciente) y al inquilino. Al usar o
+  anular una invitación, su código se borra.
+- **Ojo con el cupo:** cada correo de respaldo es un correo más por unidad.
+
+### 94. Redondeo sobre el total a pagar
+
+- **Antes (ronda 7):** se redondeaba solo lo del mes; con deuda anterior el total no daba
+  redondo.
+- **Ahora:** se redondea el **total a pagar** (con la deuda anterior, la mora y lo de
+  administración), siempre hacia arriba; la diferencia va a «Fondo de reserva por
+  redondeo» de ese mes. Total 0 (o un saldo a favor que lo deja en 0): no se redondea. La
+  previa del cierre calcula lo mismo, y ahora también la misma mora que el cierre.
+  Verificado: 534,915 → $ 535 (fondo 0,085); 1,585 → $ 5; 0 → 0.
+
+### 95. Detalles de la ronda 6
+
+- Cerrar un mes con gastos y una unidad con la cuota de condominio en $ 0,00: aviso con las
+  unidades, y la confirmación pide «Sí, cerrar igual».
+- «Sí, descartar» y los botones de peligro: texto blanco, sobre el rojo oscuro de la
+  garita (en tema oscuro el rojo de texto es claro y no se leía blanco encima).
+- «Las alícuotas suman 111,99 %; deben sumar 100 %. Revise las unidades en Propietarios.»
+- «Puede pasar» en la garita: #166534 (letra blanca 7,1:1).
+- La página sube sola hasta un error o un «listo» que aparece fuera de la pantalla después
+  de tocar algo (todas las pantallas que usan el aviso de siempre).
+- «Cargar saldos» y el extracto del banco leen otra vez el mismo archivo; «Abrir un mes»
+  propone el siguiente al cerrado; «Conciliar 1 pago».

@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { useSubirAlAviso } from "@/hooks/useSubirAlAviso";
 
 /**
  * "ok": los mensajes de éxito, en marino sobre gris claro con un ✓ (ronda 5,
@@ -32,8 +35,12 @@ export function Aviso({
   titulo?: string;
   children: ReactNode;
 }) {
+  // Ronda 8: un error o un «listo» que aparece fuera de la pantalla después
+  // de tocar algo sube la página hasta él (ver hooks/useSubirAlAviso.ts).
+  const ref = useSubirAlAviso(tono === "rojo" || tono === "ok");
   return (
     <div
+      ref={ref}
       style={{
         padding: "12px 14px",
         borderRadius: "var(--radio-chico)",

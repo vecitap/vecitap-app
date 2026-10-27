@@ -72,8 +72,8 @@
      que en oscuro son claros y quedarían ilegibles bajo texto blanco.
      Valores de garita.html:35-49. */
   /* Verde, pero no menta (ronda 5, caso 77): el mismo de «a favor» en el
-     claro. Letra blanca encima: 5,02:1. */
-  --veredicto-si: #15803D;
+     claro; desde la ronda 8, #166534 (pedido de Gustavo): letra blanca 7,1:1. */
+  --veredicto-si: #166534;
   --veredicto-no: #9B2C1F;
 
   --sombra: 0 1px 2px rgba(10,17,40,.04), 0 8px 24px -12px rgba(10,17,40,.14);
@@ -133,7 +133,7 @@
   --lat-activo: rgba(255,255,255,.09);
 
   /* Antes #0E9C86, con letra blanca 3,43:1 (debajo del mínimo). */
-  --veredicto-si: #15803D;
+  --veredicto-si: #166534;
   --veredicto-no: #B03A2A;
 
   --sombra: 0 1px 2px rgba(0,0,0,.30), 0 8px 24px -12px rgba(0,0,0,.55);

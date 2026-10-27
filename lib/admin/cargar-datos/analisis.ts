@@ -65,6 +65,12 @@ export type Contexto = {
   hayCierres: boolean;
   /** Nota de cada unidad que ya existe (`notas_unidad`), por id de unidad. */
   notas?: Record<string, string>;
+  /**
+   * Ronda 8: celdas corregidas en la previa, como `${fila}:${campo}`. Lo
+   * corregido es lo que queda: si la fila va a una ficha que ya existe, el
+   * dato corregido la cambia (no solo la completa).
+   */
+  corregidas?: Set<string>;
 };
 
 
@@ -81,7 +87,21 @@ export type Decisiones = {
 
 export const SIN_DECISIONES: Decisiones = { actualizar: {}, estacionamiento: {}, tipo: {}, personas: {} };
 
-type ValorCampo = { valor: string; nota?: Nota };
+type ValorCampo = {
+  valor: string;
+  nota?: Nota;
+  /**
+   * Ronda 8: lo que dice el archivo, cuando la celda muestra otra cosa porque
+   * eso es lo que va a quedar guardado (la ficha elegida, o la persona con la
+   * que se juntó con «Sí»).
+   */
+  archivo?: string;
+  /** Ronda 8: la celda se corrigió en la previa, y si eso se guarda al cargar. */
+  corregido?: { guarda: boolean; texto: string };
+};
+
+/** Los datos de una ficha que la previa puede corregir (ronda 8). */
+export type CampoFicha = "nombre" | "telefono" | "correo" | "correo_respaldo" | "documento";
 
 export type FilaPrevia = {
   /** Número de fila en el archivo, como lo ve Excel (la primera es 1). */
@@ -148,6 +168,8 @@ export type PersonaCarga = {
   telefono?: string;
   correo?: string;
   correo_respaldo?: string;
+  /** Ronda 8: lo corregido en la previa que reemplaza el dato de la ficha existente. */
+  cambiar?: Partial<Record<CampoFicha, string>>;
 };
 
 export type FilaCarga = {
@@ -253,11 +275,21 @@ function leerSiNo(celda: string): boolean | null | "malo" {
 export const cedulaClave = (t: string | null | undefined) => normaliza(t);
 
 const nombreClave = (n: string) => normaliza(separarTratamiento(n).nombre);
-/** "Inversiones Uno" e "Inversiones Uno, C.A." son el mismo nombre escrito distinto. */
+/**
+ * "Inversiones Uno" e "Inversiones Uno, C.A." son el mismo nombre escrito
+ * distinto. Ronda 8: solo cuando lo que sobra es la forma de la empresa
+ * (C.A., S.A., S.R.L.…). Antes bastaba con que uno empezara como el otro, y
+ * «Bumagi Tovavade» quedaba igual a «Bumagi Tovavade/Camebogig Zazufuni»
+ * (otra ficha, de dos personas): la previa usaba esa ficha sin preguntar.
+ */
+const SUFIJO_EMPRESA = /^(CA|SA|SRL|SN|SC|SAS|CORP|INC|LTDA?)$/;
 const mismoNombre = (a: string, b: string) => {
   const x = nombreClave(a);
   const y = nombreClave(b);
-  return !!x && !!y && (x === y || x.startsWith(y) || y.startsWith(x));
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [corto, largo] = x.length < y.length ? [x, y] : [y, x];
+  return largo.startsWith(corto) && SUFIJO_EMPRESA.test(largo.slice(corto.length));
 };
 
 /* ───────────────────────── personas ───────────────────────── */
@@ -279,6 +311,8 @@ type Candidato = {
   correo: string;
   respaldo: string;
   corte: boolean | null;
+  /** Ronda 8: los datos de esta persona que se corrigieron en la previa. */
+  corr: Set<CampoFicha>;
 };
 
 class Conjuntos {
@@ -311,6 +345,8 @@ type Grupo = {
   personaId: string | null;
   /** Lo que se completa en la ficha (sin `queda`) o no se cambia (con lo que se queda). */
   completa: { texto: string; queda?: string }[];
+  /** Ronda 8: lo corregido en la previa que cambia en la ficha existente. */
+  cambia: Partial<Record<CampoFicha, string>>;
 };
 
 /* ───────────────────────── análisis ───────────────────────── */
@@ -577,7 +613,15 @@ export function analizar(
         }
         continue;
       }
+      const fueCorregida = (k: Campo) => !!ctx.corregidas?.has(`${fila}:${k}`);
+      const corr = new Set<CampoFicha>();
+      if (fueCorregida(rol)) corr.add("nombre");
+      if (fueCorregida(kTel)) corr.add("telefono");
+      if (fueCorregida(kCor)) corr.add("correo");
+      if (fueCorregida(kResp)) corr.add("correo_respaldo");
+      if (fueCorregida(kDoc)) corr.add("documento");
       candidatos.push({
+        corr,
         id: `${fila}:${rol}`,
         fila,
         codigo,
@@ -752,24 +796,37 @@ export function analizar(
     [...lista].sort(
       (a, b) => Number(mismoNombre(b.nombre, nombre)) - Number(mismoNombre(a.nombre, nombre)) || b.unidades.length - a.unidades.length
     )[0];
-  const describir = (p: PersonaOrg) =>
-    `${TRATAMIENTO_INICIAL.test(p.nombre) ? p.nombre : [p.prefijo, p.nombre].filter(Boolean).join(" ")}${p.unidades.length ? ` (${p.unidades.slice(0, 4).join(", ")}${p.unidades.length > 4 ? "…" : ""})` : ""}`;
+  const nombreFicha = (p: PersonaOrg) => (TRATAMIENTO_INICIAL.test(p.nombre) ? p.nombre : [p.prefijo, p.nombre].filter(Boolean).join(" "));
+  // Ronda 8: sin unidades repetidas (la misma persona en 01A de cuatro edificios era «01B, 01A, 01B, 01A…»).
+  const describir = (p: PersonaOrg) => {
+    const us = [...new Set(p.unidades)];
+    return `${nombreFicha(p)}${us.length ? ` (${us.slice(0, 4).join(", ")}${us.length > 4 ? "…" : ""})` : ""}`;
+  };
 
   const grupos: Grupo[] = armarGrupos().map((cs) => {
     const primero = cs[0];
-    const correos = cs.flatMap((c) => [c.correo, c.respaldo]).filter((x, i, a) => x && a.indexOf(x) === i);
+    // Ronda 8: lo corregido en la previa manda sobre lo que traen las otras
+    // filas de la misma persona.
+    const conDato = (campo: CampoFicha, val: (c: Candidato) => string | null) =>
+      cs.find((c) => c.corr.has(campo) && val(c)) ?? cs.find((c) => val(c));
+    const corregidoCorreo = (c: Candidato) => c.corr.has("correo") || c.corr.has("correo_respaldo");
+    const correos = [...cs.filter(corregidoCorreo), ...cs.filter((c) => !corregidoCorreo(c))]
+      .flatMap((c) => [c.correo, c.respaldo])
+      .filter((x, i, a) => x && a.indexOf(x) === i);
+    const conTel = conDato("telefono", (c) => c.telefono);
     const g: Grupo = {
       clave: primero.id,
       candidatos: cs,
-      nombre: primero.nombre,
+      nombre: (cs.find((c) => c.corr.has("nombre")) ?? primero).nombre,
       prefijo: cs.find((c) => c.prefijo !== undefined)?.prefijo,
-      documento: cs.find((c) => c.documento)?.documento ?? "",
-      telefono: cs.find((c) => c.telefono)?.telefono ?? "",
-      telNorm: cs.find((c) => c.telNorm)?.telNorm ?? null,
+      documento: conDato("documento", (c) => c.documento)?.documento ?? "",
+      telefono: conTel?.telefono ?? "",
+      telNorm: conTel?.telNorm ?? cs.find((c) => c.telNorm)?.telNorm ?? null,
       correo: correos[0] ?? "",
       respaldo: correos[1] ?? "",
       personaId: null,
       completa: [],
+      cambia: {},
     };
 
     const misCorreos = new Set(correos);
@@ -784,7 +841,12 @@ export function analizar(
     // Una ficha que comparte un dato pero es otra persona: otro nombre, o el
     // mismo nombre con otra cédula.
     const gDoc = cedulaClave(g.documento);
-    const esOtra = (p: PersonaOrg) => !mismoNombre(p.nombre, g.nombre) || (!!gDoc && !!cedulaClave(p.documento) && cedulaClave(p.documento) !== gDoc);
+    // Ronda 8: contra el nombre de CADA fila del grupo, no solo el de la
+    // primera. Un «Sí» puede juntar filas con nombres distintos (05C con
+    // 01A del piloto); entonces una ficha con el nombre de cualquiera de ellas
+    // es candidata, y si hay de más de un nombre se pregunta (abajo).
+    const esOtra = (p: PersonaOrg) =>
+      !cs.some((c) => mismoNombre(p.nombre, c.nombre)) || (!!gDoc && !!cedulaClave(p.documento) && cedulaClave(p.documento) !== gDoc);
     const enComun = (p: PersonaOrg) =>
       [porCorreo.includes(p) && "el correo", porTel.includes(p) && "el teléfono", porDoc.includes(p) && "la cédula"].filter(Boolean).join(", ");
     const codigosGrupo = cs.map((c) => c.codigo).filter((x, i, a) => a.indexOf(x) === i).join(", ");
@@ -821,8 +883,29 @@ export function analizar(
     const pt = porTel.filter((p) => mismas.includes(p));
     const soloPorTel = !pc.length && !porDoc.some((p) => mismas.includes(p)) && pt.length ? mejor(pt, g.nombre) : null;
 
+    // Ronda 8: fichas de nombres distintos entre las «del mismo nombre» (pasa
+    // cuando un «Sí» juntó filas de dos nombres): nunca se elige sola.
+    const nombresMismas = new Set(mismas.map((p) => nombreClave(p.nombre)));
     let elegida: PersonaOrg | null = null;
-    if (otrasConDato.length && !mismas.length) {
+    if (nombresMismas.size > 1) {
+      const orden = [...mismas].sort((a, b) => b.unidades.length - a.unidades.length);
+      const valor = dec.personas[clave] ?? "";
+      dudosos.push({
+        clave,
+        texto: `${archivoGrupo}: estas filas se juntaron como una sola persona y en la administradora hay fichas con nombres distintos que comparten sus datos. ¿Cuál es? Los recibos y avisos van al correo de la ficha que elija.`,
+        archivo: archivoGrupo,
+        lineas: lineasFichas(orden),
+        valorNo: "nueva",
+        opciones: [
+          ...orden.map((p) => ({ valor: p.id, etiqueta: `Es ${describir(p)}: usar su ficha (${p.correo || "sin correo"})` })),
+          { valor: "nueva", etiqueta: "Ninguna: ficha nueva" },
+        ],
+        valor,
+        obligatoria: true,
+        filas: cs.map((c) => c.fila),
+      });
+      elegida = valor && valor !== "nueva" ? (ctx.personas.find((p) => p.id === valor) ?? null) : null;
+    } else if (otrasConDato.length && !mismas.length) {
       // Decisión de Gustavo del 25-oct: un dato en común con otro nombre no
       // tiene respuesta por omisión, y la carga espera.
       const orden = [...todas].sort((a, b) => Number(esOtra(a)) - Number(esOtra(b)) || b.unidades.length - a.unidades.length);
@@ -904,14 +987,19 @@ export function analizar(
           })
         );
       }
-      if (otrasConDato.length) {
-        cs.forEach((c) =>
-          filaDe(c.fila)?.notas.push({
-            nivel: "info",
-            texto: `también comparte datos con ${otrasConDato.map((o) => `${describir(o)} (${enComun(o)})`).join(", ")}: ${otrasConDato.length > 1 ? "son otras personas (otro nombre u otra cédula), esas fichas no se usan" : "es otra persona (otro nombre u otra cédula), esa ficha no se usa"}`,
-          })
+      // Ronda 8: en cada fila, solo las fichas que se llaman distinto que
+      // esa fila (o con otra cédula); nunca «otra persona» sobre una ficha
+      // con el mismo nombre de la fila.
+      cs.forEach((c) => {
+        const otras = otrasConDato.filter(
+          (o) => !mismoNombre(o.nombre, c.nombre) || (!!c.docNorm && !!cedulaClave(o.documento) && cedulaClave(o.documento) !== c.docNorm)
         );
-      }
+        if (!otras.length) return;
+        filaDe(c.fila)?.notas.push({
+          nivel: "info",
+          texto: `también comparte ${[...new Set(otras.map(enComun))].join(", ")} con ${otras.map(describir).join(", ")}: ${otras.length > 1 ? "son otras personas, esas fichas no se usan" : "es otra persona, esa ficha no se usa"}`,
+        });
+      });
     } else {
       const homonimos = llavesOrg.filter((x) => x.nombre && x.nombre === nombreClave(g.nombre)).map((x) => x.p);
       if (homonimos.length) {
@@ -934,20 +1022,36 @@ export function analizar(
 
     if (elegida) {
       g.personaId = elegida.id;
-      const dif = (campo: string, ficha: string | null, archivo: string) => {
-        if (!archivo) return;
-        if (!ficha?.trim()) g.completa.push({ texto: `${campo}: se completa con ${archivo}` });
-        else if (ficha.trim().toLowerCase() !== archivo.trim().toLowerCase())
-          g.completa.push({ texto: `${campo}: el archivo dice ${archivo}, no se cambia`, queda: ficha.trim() });
+      const quien = nombreFicha(elegida);
+      // Ronda 8: lo corregido en la previa es lo que queda. Si la fila va a
+      // esta ficha, el dato corregido la cambia; lo que no se corrigió solo
+      // completa lo vacío, como antes.
+      const corregido = (campo: CampoFicha) => cs.some((c) => c.corr.has(campo));
+      const igual = (campo: CampoFicha, a: string, b: string) =>
+        campo === "documento" ? cedulaClave(a) === cedulaClave(b) : campo === "nombre" ? nombreClave(a) === nombreClave(b) : a.trim().toLowerCase() === b.trim().toLowerCase();
+      const dif = (campo: CampoFicha, etiqueta: string, art: string, ficha: string | null, archivo: string) => {
+        const hoy = ficha?.trim() ?? "";
+        if (corregido(campo)) {
+          if (!archivo) {
+            if (hoy) g.completa.push({ texto: `${etiqueta}: se borró en la previa, pero la carga no borra datos de una ficha`, queda: hoy });
+          } else if (!hoy) {
+            g.completa.push({ texto: `${etiqueta}: se completa con ${archivo} (corregido en la previa)` });
+          } else if (!igual(campo, hoy, archivo)) {
+            g.cambia[campo] = archivo;
+            g.completa.push({ texto: `Cambia ${art} ${etiqueta} de la ficha de ${quien}: ${hoy} → ${archivo}` });
+          }
+          return;
+        }
+        if (!archivo || campo === "nombre") return;
+        if (!hoy) g.completa.push({ texto: `${etiqueta}: se completa con ${archivo}` });
+        else if (!igual(campo, hoy, archivo))
+          g.completa.push({ texto: `${etiqueta}: el archivo dice ${archivo}, no se cambia`, queda: hoy });
       };
-      dif("teléfono", elegida.telefono, g.telefono);
-      dif("correo", elegida.correo, g.correo);
-      dif("correo de respaldo", elegida.correo_respaldo, g.respaldo);
-      if (g.documento) {
-        if (!elegida.documento?.trim()) g.completa.push({ texto: `cédula: se completa con ${g.documento}` });
-        else if (cedulaClave(elegida.documento) !== cedulaClave(g.documento))
-          g.completa.push({ texto: `cédula: el archivo dice ${g.documento}, no se cambia`, queda: elegida.documento.trim() });
-      }
+      dif("nombre", "nombre", "el", elegida.nombre, g.nombre);
+      dif("telefono", "teléfono", "el", elegida.telefono, g.telefono);
+      dif("correo", "correo", "el", elegida.correo, g.correo);
+      dif("correo_respaldo", "correo de respaldo", "el", elegida.correo_respaldo, g.respaldo);
+      dif("documento", "cédula", "la", elegida.documento, g.documento);
     }
     return g;
   });
@@ -980,7 +1084,7 @@ export function analizar(
       if (g.personaId) {
         const quien = ctx.personas.find((p) => p.id === g.personaId)!;
         const enFila = g.candidatos.find((c) => c.fila === f.fila && c.rol === rol);
-        if (enFila && !mismoNombre(enFila.nombre, quien.nombre)) {
+        if (enFila && !mismoNombre(enFila.nombre, quien.nombre) && !g.cambia.nombre) {
           f.notas.push({
             nivel: "ambar",
             texto: `el archivo dice «${enFila.nombre}», y se eligió la ficha de ${describir(quien)}: se usa esa ficha, con su nombre`,
@@ -1189,6 +1293,20 @@ export function analizar(
   for (const d of sinElegir)
     for (const n of d.filas ?? [])
       filaDe(n)?.notas.push({ nivel: "ambar", texto: "falta elegir en «Personas para revisar» si es la misma persona. La carga espera esa respuesta", grupo: "que esperan una respuesta en «Personas para revisar»", persona: true });
+  // Ronda 8 (prueba 2.2 de Gustavo): una pregunta sin responder de una fila
+  // que se omite (la unidad ya existe) no frena la carga, pero la fila igual
+  // aparece en los avisos y se puede corregir: antes no salía en ningún lado.
+  for (const d of dudosos.filter((x) => x.obligatoria && !x.valor && !x.pendiente))
+    for (const n of d.filas ?? []) {
+      const f = filaDe(n);
+      if (!f || f.estado === "no" || f.notas.some((x) => x.persona)) continue;
+      f.notas.push({
+        nivel: "ambar",
+        texto: "tiene una pregunta sin responder en «Personas para revisar». No frena la carga: la unidad ya existe y se omite",
+        grupo: "con una pregunta en «Personas para revisar» (no frenan: se omiten)",
+        persona: true,
+      });
+    }
 
   // Personas a mandar: las de las filas que se cargan.
   const usadasFinal = new Set<string>();
@@ -1208,6 +1326,7 @@ export function analizar(
             telefono: g.telefono || undefined,
             correo: g.correo || undefined,
             correo_respaldo: g.respaldo || undefined,
+            ...(Object.keys(g.cambia).length ? { cambiar: g.cambia } : {}),
           }
         : {
             ref: g.clave,
@@ -1221,6 +1340,82 @@ export function analizar(
             correo_respaldo: g.respaldo || undefined,
           }
     );
+
+  /* ── Ronda 8: lo que queda guardado, y si lo corregido se guarda ── */
+  const cargaDe = new Map<number, FilaCarga>();
+  {
+    let i = 0;
+    for (const f of filas) if (f.estado === "nueva" || f.estado === "actualizar") cargaDe.set(f.fila, cargaFilas[i++]);
+  }
+  const quedaDe = (g: Grupo): Record<CampoFicha, string> => {
+    const ficha = g.personaId ? ctx.personas.find((p) => p.id === g.personaId) : null;
+    const de = (campo: CampoFicha, enFicha: string | null | undefined, delArchivo: string) => g.cambia[campo] ?? (enFicha?.trim() || delArchivo);
+    return {
+      nombre: g.cambia.nombre ?? (ficha ? nombreFicha(ficha) : g.nombre),
+      telefono: de("telefono", ficha?.telefono, g.telefono),
+      correo: de("correo", ficha?.correo, g.correo),
+      correo_respaldo: de("correo_respaldo", ficha?.correo_respaldo, g.respaldo),
+      documento: de("documento", ficha?.documento, g.documento),
+    };
+  };
+  type CampoPrevia = Exclude<Campo, "ignorar" | "codigo">;
+  const NO_GUARDA_OMITIR = "corregido en la previa, pero no se guarda: la unidad ya existe y se omite (marque «Actualizar»)";
+  for (const f of filas) {
+    const carga = cargaDe.get(f.fila);
+    const existente = porCodigo.get(f.clave);
+    const corregida = (k: Campo) => !!ctx.corregidas?.has(`${f.fila}:${k}`);
+    const marcar = (k: CampoPrevia, guarda: boolean, texto: string) => {
+      f.campos[k] = { ...(f.campos[k] ?? { valor: "" }), corregido: { guarda, texto } };
+    };
+    for (const rol of ["propietario", "inquilino"] as const) {
+      const pre = rol === "propietario" ? "" : "inq_";
+      const claves: Record<CampoFicha, CampoPrevia> = {
+        nombre: rol,
+        telefono: `${pre}telefono` as CampoPrevia,
+        correo: `${pre}correo` as CampoPrevia,
+        correo_respaldo: rol === "propietario" ? "correo_respaldo" : "inq_correo_respaldo",
+        documento: `${pre}documento` as CampoPrevia,
+      };
+      const g = grupoDe.get(`${f.fila}:${rol}`);
+      const vig = existente ? vigente(existente.vinculos, rol) : null;
+      const seGuarda = !!g && !!carga && carga[rol] === g.clave;
+      const yaEsLaMisma = !!g && !!g.personaId && !!vig && vig.persona_id === g.personaId;
+      // Lo que va a quedar guardado: al elegir «Sí», «No» o una ficha, la
+      // tabla lo muestra al momento (prueba 6.3 de Gustavo).
+      if (g && carga && (seGuarda || yaEsLaMisma)) {
+        const queda = quedaDe(g);
+        for (const campo of Object.keys(claves) as CampoFicha[]) {
+          const v = f.campos[claves[campo]];
+          const hoy = v?.valor ?? "";
+          const distinto =
+            campo === "nombre" ? nombreClave(hoy) !== nombreClave(queda.nombre) : hoy.trim().toLowerCase() !== queda[campo].trim().toLowerCase();
+          if (queda[campo] && distinto) f.campos[claves[campo]] = { ...(v ?? { valor: "" }), valor: queda[campo], archivo: hoy || "(vacío)" };
+        }
+      }
+      for (const campo of Object.keys(claves) as CampoFicha[]) {
+        const k = claves[campo];
+        if (!corregida(k)) continue;
+        if (f.estado === "no") marcar(k, false, "corregido en la previa, pero la fila no se carga");
+        else if (f.estado === "omitir") marcar(k, false, NO_GUARDA_OMITIR);
+        else if (!g) marcar(k, false, "corregido en la previa, pero no se guarda: falta el nombre");
+        else if (vig && !yaEsLaMisma && !seGuarda) marcar(k, false, `corregido en la previa, pero no se guarda: la unidad ya tiene otro ${rol}`);
+        else if (!g.personaId) marcar(k, true, "corregido en la previa");
+        else if (g.cambia[campo]) marcar(k, true, `corregido en la previa: cambia en la ficha de ${quedaDe(g).nombre}`);
+        else if (!(f.campos[k]?.archivo ?? f.campos[k]?.valor ?? "").trim() && !!quedaDe(g)[campo])
+          marcar(k, false, "corregido en la previa, pero la carga no borra datos de una ficha");
+        else marcar(k, true, "corregido en la previa");
+      }
+    }
+    for (const k of ["alicuota", "saldo", "saldo_hon", "paga", "nota", "corte", "inq_corte", "tratamiento", "inq_tratamiento"] as const) {
+      if (!corregida(k)) continue;
+      if (f.estado === "no") marcar(k, false, "corregido en la previa, pero la fila no se carga");
+      else if (f.estado === "omitir") marcar(k, false, NO_GUARDA_OMITIR);
+      else if ((k === "saldo" || k === "saldo_hon") && ctx.hayCierres) marcar(k, false, "corregido en la previa, pero no se guarda: el edificio ya tiene meses cerrados");
+      else if ((k === "tratamiento" || k === "inq_tratamiento") && grupoDe.get(`${f.fila}:${k === "tratamiento" ? "propietario" : "inquilino"}`)?.personaId)
+        marcar(k, false, "corregido en la previa, pero el tratamiento de una ficha que ya existe se cambia desde la ficha");
+      else marcar(k, true, "corregido en la previa");
+    }
+  }
 
   // Suma de alícuotas tal como quedaría el edificio.
   const tocadas = new Map<string, number>();

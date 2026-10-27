@@ -370,6 +370,10 @@ export type Database = {
           encolado_en: string
           enviado_en: string | null
           estado: string
+          evento: string | null
+          evento_consultado: string | null
+          evento_en: string | null
+          evento_req: number | null
           html: string
           id: string
           intentos: number
@@ -392,6 +396,10 @@ export type Database = {
           encolado_en?: string
           enviado_en?: string | null
           estado?: string
+          evento?: string | null
+          evento_consultado?: string | null
+          evento_en?: string | null
+          evento_req?: number | null
           html: string
           id?: string
           intentos?: number
@@ -414,6 +422,10 @@ export type Database = {
           encolado_en?: string
           enviado_en?: string | null
           estado?: string
+          evento?: string | null
+          evento_consultado?: string | null
+          evento_en?: string | null
+          evento_req?: number | null
           html?: string
           id?: string
           intentos?: number
@@ -1174,6 +1186,7 @@ export type Database = {
           id: string
           org_id: string
           texto: string
+          unidades: string[] | null
         }
         Insert: {
           asunto: string
@@ -1185,6 +1198,7 @@ export type Database = {
           id?: string
           org_id: string
           texto: string
+          unidades?: string[] | null
         }
         Update: {
           asunto?: string
@@ -1196,6 +1210,7 @@ export type Database = {
           id?: string
           org_id?: string
           texto?: string
+          unidades?: string[] | null
         }
         Relationships: [
           {
@@ -2503,6 +2518,7 @@ export type Database = {
         Returns: string
       }
       cuota_mensual: { Args: { p_org: string }; Returns: number }
+      cupo_correo: { Args: never; Returns: Json }
       datos_pago_de: {
         Args: { p_unidad: string }
         Returns: {
@@ -2545,7 +2561,7 @@ export type Database = {
         }[]
       }
       destinatarios_mensaje: {
-        Args: { p_edificio: string; p_filtro: string }
+        Args: { p_edificio: string; p_filtro: string; p_unidades?: string[] }
         Returns: {
           copia: string
           correo: string
@@ -2599,6 +2615,7 @@ export type Database = {
           p_edificio: string
           p_filtro: string
           p_texto: string
+          p_unidades?: string[]
         }
         Returns: Json
       }
@@ -2628,6 +2645,22 @@ export type Database = {
           total_gastos: number
           unidades: number
           unidades_con_deuda: number
+        }[]
+      }
+      estado_correos_periodo: {
+        Args: { p_periodo: string }
+        Returns: {
+          destino: string
+          encolado_en: string
+          enviado_en: string
+          error: string
+          estado: string
+          evento: string
+          rebotado: boolean
+          recibo_id: string
+          sale_en: string
+          tipo: string
+          unidad_id: string
         }[]
       }
       estado_financiero: {
@@ -2802,14 +2835,17 @@ export type Database = {
       historial_mensajes: {
         Args: { p_edificio: string }
         Returns: {
+          a_mano: boolean
           asunto: string
           cantidad: number
           creado_en: string
           destinatarios: string
           enviados: number
+          esperan_cupo: number
           fallidos: number
           id: string
           pendientes: number
+          sale_en: string
           texto: string
         }[]
       }
@@ -2976,6 +3012,7 @@ export type Database = {
           por_defecto: boolean
         }[]
       }
+      momento_cupo: { Args: { p_n: number }; Returns: string }
       mora_de: {
         Args: { p_unidad: string }
         Returns: {
@@ -3047,6 +3084,10 @@ export type Database = {
       permitir_garita: { Args: { p_edificio: string }; Returns: string }
       puede_garita: { Args: { p_edificio: string }; Returns: boolean }
       puede_operar: { Args: { p_org: string }; Returns: boolean }
+      puesto_en_cola: {
+        Args: { p_encolado: string; p_mensaje: boolean }
+        Returns: number
+      }
       reabrir_periodo: {
         Args: { p_confirmar?: boolean; p_periodo: string }
         Returns: undefined
@@ -3075,6 +3116,7 @@ export type Database = {
         }
         Returns: number
       }
+      reenviar_recibo: { Args: { p_recibo: string }; Returns: number }
       residentes_de: {
         Args: { p_edificio: string }
         Returns: {
@@ -3135,6 +3177,7 @@ export type Database = {
           codigo: string
           condominio: number
           mora: number
+          redondeo: number
           servicio: number
           total: number
         }[]
@@ -3175,8 +3218,19 @@ export type Database = {
           referencia: string
         }[]
       }
+      tope_correo: { Args: never; Returns: number }
       traer_tasa_bcv: { Args: never; Returns: Json }
       unidades_historico: { Args: never; Returns: string[] }
+      unidades_mensaje: {
+        Args: { p_edificio: string; p_filtro: string }
+        Returns: {
+          codigo: string
+          con_correo: boolean
+          incluida: boolean
+          quien: string
+          unidad_id: string
+        }[]
+      }
       unidades_visibles: { Args: never; Returns: string[] }
       verificar_cortes: {
         Args: { p_edificio: string }
@@ -3201,7 +3255,7 @@ export type Database = {
         }[]
       }
       vista_previa_mensaje: {
-        Args: { p_edificio: string; p_filtro: string }
+        Args: { p_edificio: string; p_filtro: string; p_unidades?: string[] }
         Returns: Json
       }
     }

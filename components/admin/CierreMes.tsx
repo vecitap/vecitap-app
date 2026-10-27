@@ -85,6 +85,19 @@ export function CierreMes({
   const serieMinima = ultimoCerrado ? serie(ultimoCerrado.anio, ultimoCerrado.mes) + 1 : null;
   const mesPermitido = !serieMinima || serie(Number(abrir.anio), Number(abrir.mes)) >= serieMinima;
 
+  // Ronda 8 (validación de la ronda 7): después de cerrar un mes, «Abrir un
+  // mes» propone el siguiente al último cerrado, no el mismo con «Ese mes ya
+  // pasó». Se ajusta al renderizar, cuando cambia el último cerrado (el
+  // patrón de React para derivar estado de una prop, sin efecto).
+  const [serieVista, setSerieVista] = useState<number | null | undefined>(undefined);
+  if (serieVista !== serieMinima) {
+    setSerieVista(serieMinima);
+    if (serieMinima && serie(Number(abrir.anio), Number(abrir.mes)) < serieMinima) {
+      const mes = ((serieMinima - 1) % 12) + 1;
+      setAbrir({ ...abrir, anio: (serieMinima - mes) / 12, mes });
+    }
+  }
+
   async function cargarGastos() {
     if (!periodoAbierto) return;
     const supabase = crearClienteNavegador();
@@ -129,6 +142,12 @@ export function CierreMes({
   }, [periodoAbierto?.id]);
 
   const comunes = gastos.filter((g) => g.tipo === "comun").reduce((s, g) => s + Number(g.monto), 0);
+  // Ronda 8 (pedido de la ronda 6): con gastos cargados, una unidad cuya cuota
+  // de condominio da $ 0,00 casi siempre es un error (alícuota en 0, un cobro
+  // mal configurado). El cierre lo avisa y pide confirmar; no lo impide. Sin
+  // el redondeo, que se suma a condominio pero no es cuota.
+  const cuotaCero =
+    gastos.length > 0 && previa ? previa.filter((r) => Number(r.condominio) - Number(r.redondeo ?? 0) < 0.005).map((r) => r.codigo) : [];
 
   useEffect(() => {
     if (!periodoAbierto || !simulable) return;
@@ -485,7 +504,7 @@ export function CierreMes({
                     puede deshacer. Los pagos ya registrados no se tocan.
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Button type="button" mini cargando={ocupado} style={{ background: "var(--rojo)", borderColor: "var(--rojo)" }} onClick={descartarMes}>
+                    <Button type="button" mini cargando={ocupado} style={{ background: "var(--veredicto-no)", borderColor: "var(--veredicto-no)", color: "#fff" }} onClick={descartarMes}>
                       Sí, descartar {periodoAbierto.etiqueta}
                     </Button>
                     <Button type="button" variante="secundario" mini onClick={() => setDescartando(false)}>
@@ -676,6 +695,13 @@ export function CierreMes({
             </Aviso>
           )}
 
+          {cuotaCero.length > 0 && (
+            <Aviso tono="ambar" titulo={`${cuotaCero.length === 1 ? "1 unidad queda" : `${cuotaCero.length} unidades quedan`} con la cuota de condominio en $ 0,00`}>
+              {cuotaCero.join(", ")}. Hay gastos cargados, así que casi siempre es un error: revise la alícuota de esas unidades en
+              Propietarios o los cobros en Cobros. Se puede cerrar igual.
+            </Aviso>
+          )}
+
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Button type="button" cargando={ocupado} onClick={() => setConfirma({ que: "cerrar" })}>
               <ReceiptText size={16} /> Cerrar el mes y emitir recibos
@@ -774,8 +800,14 @@ export function CierreMes({
       {confirma?.que === "cerrar" && periodoAbierto && (
         <Confirmar
           titulo={`Cerrar ${periodoAbierto.etiqueta}`}
-          texto="Se emiten los recibos de todas las unidades activas y se guarda la instantánea de saldos. Se puede reabrir después, pero los recibos emitidos quedarían anulados."
-          boton="Cerrar y emitir"
+          texto={
+            (cuotaCero.length
+              ? `Atención: ${cuotaCero.length === 1 ? "la unidad" : `las ${cuotaCero.length} unidades`} ${cuotaCero.join(", ")} ${cuotaCero.length === 1 ? "queda" : "quedan"} con la cuota de condominio en $ 0,00 aunque hay gastos cargados. `
+              : "") +
+            "Se emiten los recibos de todas las unidades activas y se guarda la instantánea de saldos. Se puede reabrir después, pero los recibos emitidos quedarían anulados."
+          }
+          boton={cuotaCero.length ? "Sí, cerrar igual" : "Cerrar y emitir"}
+          tono={cuotaCero.length ? "peligro" : "primario"}
           onSi={cerrar}
           onNo={() => setConfirma(null)}
         />
