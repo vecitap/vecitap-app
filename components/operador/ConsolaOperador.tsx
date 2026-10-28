@@ -15,6 +15,7 @@ import { EncabezadoOperador } from "./EncabezadoOperador";
 import { Kpi } from "./Kpi";
 import { FichaCliente } from "./FichaCliente";
 import { mensajeDeError } from "@/lib/errores";
+import { useSubirAlAviso } from "@/hooks/useSubirAlAviso";
 
 type Aviso = { t: string; tipo: "ok" | "error" };
 
@@ -65,6 +66,8 @@ export function ConsolaOperador({
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("todos");
   const [aviso, setAviso] = useState<Aviso | null>(null);
+  // Ronda 9 (B4): este aviso no es <Aviso>, así que sube con el mismo hook.
+  const refAviso = useSubirAlAviso();
   const [corriendo, setCorriendo] = useState(false);
   const [buscandoTasa, setBuscandoTasa] = useState(false);
   const [tasaManual, setTasaManual] = useState("");
@@ -162,6 +165,7 @@ export function ConsolaOperador({
 
       {aviso && (
         <div
+          ref={refAviso}
           style={{
             marginBottom: 16,
             padding: "10px 14px",

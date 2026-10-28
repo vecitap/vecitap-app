@@ -3,7 +3,6 @@ import { FormularioReportarPago } from "@/components/residente/FormularioReporta
 import { misUnidadesSesion } from "@/lib/residente/datos";
 import { soloEstado } from "@/lib/residente/cuotas";
 import { ultimoReciboDe } from "@/lib/residente/recibo";
-import { favorQueQueda } from "@/lib/recibo-papel";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { usuarioActual } from "@/lib/supabase/cache";
 import { ajustesCobroDe } from "@/lib/cobro";
@@ -33,8 +32,8 @@ export default async function PaginaReportar({
 
   const [{ data: bancos }, ultimo, { data: cuentas }, cobro] = await Promise.all([
     supabase.from("bancos").select("codigo,nombre,corto").eq("activo", true).order("orden"),
-    // El último recibo cerrado, el mismo de «Mi recibo»: si ese recibo dice
-    // «Este mes no tiene que pagar», esta pantalla lo avisa (ronda 5).
+    // El último recibo cerrado y lo que se debe hoy, lo mismo de «Mi
+    // recibo»: si no debe nada, esta pantalla lo avisa (ronda 5; ronda 9, A1).
     ultimoReciboDe(unidadId),
     // Ronda 7: si el edificio cobra los honorarios en otra cuenta, el
     // formulario pregunta a cuál pagó.
@@ -48,7 +47,7 @@ export default async function PaginaReportar({
     hon && hon.monto !== null && unidad.saldo !== null
       ? { condominio: Math.max(Number(unidad.saldo), 0) - Number(hon.monto), honorarios: Number(hon.monto) }
       : null;
-  const recibo = ultimo.unidad ? ultimo.recibo : null;
+  const hoy = ultimo.unidad ? ultimo.hoy : null;
 
   return (
     <FormularioReportarPago
@@ -58,8 +57,11 @@ export default async function PaginaReportar({
       bancos={bancos ?? []}
       // La deuda de ESTA unidad, nunca la suma de las del propietario
       // (ronda 4, caso 54). null = la base no muestra el saldo.
-      deudaUsd={unidad.saldo === null ? null : Number(unidad.saldo)}
-      favorDelRecibo={recibo ? favorQueQueda(recibo) : 0}
+      // Ronda 9 (A1): sin el saldo visible (inquilino con «solo el recibo»), lo
+      // que queda de su último recibo, que ya ve: así también tiene el monto
+      // exacto en bolívares sin mostrarle la deuda acumulada.
+      deudaUsd={unidad.saldo === null ? (hoy ? hoy.monto : null) : Number(unidad.saldo)}
+      hoy={hoy}
       reparto={reparto}
       soloUsd={cobro.soloUsd}
       // Ronda 7 (bloque 9): las otras unidades de este mismo edificio que paga

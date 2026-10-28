@@ -1,6 +1,7 @@
 import { Pagos } from "@/components/admin/Pagos";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import type { BancoFila, ComprobanteFila, PagoAdmin } from "@/lib/admin/tipos";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 /**
  * Portado de Pagos() en admin.html:3289-3897 (Server Component: solo carga
@@ -56,7 +57,7 @@ export default async function PaginaPagos({
   return (
     <Pagos
       orgId={orgId}
-      unidades={unidades ?? []}
+      unidades={ordenarPorCodigo(unidades ?? [], (u) => u.codigo)}
       pagos={pagosFilas}
       bancos={bancosFilas}
       comprobantes={comprobantesFilas}

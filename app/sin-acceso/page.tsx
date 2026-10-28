@@ -10,8 +10,9 @@ import { usuarioActual } from "@/lib/supabase/cache";
  *
  * **Por qué una página y no un salto a /destino** (revisión cruzada de la
  * ronda 2, 08-oct): /destino y las rutas protegidas deciden con criterios
- * distintos — `administra_algo()` no filtra `membresias.activo` y
- * `tiene_rol()` sí, y el operador se resuelve aparte—. Hoy no hay bucle
+ * distintos —hasta la ronda 9 (D4) `administra_algo()` no filtraba
+ * `membresias.activo` y `tiene_rol()` sí; el rol, el edificio y el operador
+ * se siguen resolviendo aparte—. Hoy no hay bucle
  * porque /admin y /garita a secas no saltan solos a una sección, pero el día
  * que alguien agregue ese salto, "sin permiso → /destino → /admin → salto →
  * sin permiso" daría vueltas sin fin. Esta página corta en seco: no

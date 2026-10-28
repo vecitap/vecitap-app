@@ -15,7 +15,7 @@
 // Salida: scripts/capturas-bloque0/*.png + tabla de resultados en stdout.
 
 import { chromium } from "playwright";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,19 +26,34 @@ const CAPTURAS = path.join(__dirname, "capturas-bloque0");
 mkdirSync(CAPTURAS, { recursive: true });
 
 // Las claves de las cuentas de prueba NO se escriben acá: el repo es público
-// (ver AGENTS.md, sección "Producción"). Se pasan por entorno al invocar:
-//   $env:VALIDACION_ADMIN_CLAVE="…"; node scripts/validacion-bloque0.mjs
+// (ver AGENTS.md, sección "Producción"). Ronda 9 (D9): las mismas variables
+// que los scripts de las rondas 7 y 8 —PRUEBA_ADMIN_CLAVE,
+// PRUEBA_RESIDENTE_CLAVE y PRUEBA_OPERADOR_CLAVE—, leídas de .env.local (o
+// del entorno, si se pasan al invocar).
+let envLocal = {};
+try {
+  envLocal = Object.fromEntries(
+    readFileSync(path.join(__dirname, "..", ".env.local"), "utf8")
+      .split(/?
+/)
+      .filter((l) => l.includes("=") && !l.startsWith("#"))
+      .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()])
+  );
+} catch {
+  // Sin .env.local: solo el entorno.
+}
+const clave = (nombre) => process.env[nombre] || envLocal[nombre];
 const CREDS = {
-  admin: { email: "admin.prueba@vecitap.com", password: process.env.VALIDACION_ADMIN_CLAVE },
-  residente: { email: "residente.prueba@vecitap.com", password: process.env.VALIDACION_RESIDENTE_CLAVE },
-  operador: { email: "operador.prueba@vecitap.com", password: process.env.VALIDACION_OPERADOR_CLAVE },
+  admin: { email: "admin.prueba@vecitap.com", password: clave("PRUEBA_ADMIN_CLAVE") },
+  residente: { email: "residente.prueba@vecitap.com", password: clave("PRUEBA_RESIDENTE_CLAVE") },
+  operador: { email: "operador.prueba@vecitap.com", password: clave("PRUEBA_OPERADOR_CLAVE") },
 };
 
 const sinClave = Object.entries(CREDS)
   .filter(([, c]) => !c.password)
-  .map(([rol]) => `VALIDACION_${rol.toUpperCase()}_CLAVE`);
+  .map(([rol]) => `PRUEBA_${rol.toUpperCase()}_CLAVE`);
 if (sinClave.length > 0) {
-  console.error(`Faltan variables de entorno con las claves de prueba: ${sinClave.join(", ")}`);
+  console.error(`Faltan las claves de prueba (en .env.local o en el entorno): ${sinClave.join(", ")}`);
   process.exit(1);
 }
 

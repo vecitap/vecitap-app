@@ -14,7 +14,7 @@ export type ItemAviso = {
   texto: string;
   /** El campo que se corrige para resolverlo (si se puede corregir en la previa). */
   campo?: Campo;
-  /** Fila sin alícuota: se ofrece cargarla como estacionamiento. */
+  /** Fila sin alícuota: no se carga (ronda 9, A5). */
   sinAlicuota?: boolean;
   /** Espera «¿es la misma persona?»: se ofrecen el teléfono, los correos y la cédula de la fila. */
   persona?: boolean;

@@ -1,6 +1,7 @@
 import { misUnidadesSesion } from "@/lib/residente/datos";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { tasaDelDia } from "@/lib/tasa";
+import { aPagarHoy, type APagarHoy } from "@/lib/residente/a-pagar";
 import type { CategoriaRecibo, ConceptoRecibo, RegistroRecibo } from "@/lib/residente/tipos";
 import type { Database } from "@/types/supabase";
 
@@ -8,7 +9,13 @@ type Unidad = Database["public"]["Functions"]["mis_unidades"]["Returns"][number]
 
 export type UltimoRecibo =
   | { unidad: null }
-  | { unidad: Unidad; recibo: RegistroRecibo | null; falla: string | null };
+  | {
+      unidad: Unidad;
+      recibo: RegistroRecibo | null;
+      falla: string | null;
+      /** Lo que se debe hoy (ronda 9, A1): ver lib/residente/a-pagar.ts. */
+      hoy: APagarHoy | null;
+    };
 
 /**
  * El último recibo cerrado de una unidad del portal, con la tasa de hoy.
@@ -45,7 +52,7 @@ export async function ultimoReciboDe(unidadId: string): Promise<UltimoRecibo> {
     tasaDelDia(supabase),
   ]);
 
-  if (error) return { unidad, recibo: null, falla: error.message };
+  if (error) return { unidad, recibo: null, falla: error.message, hoy: null };
 
   // Si la base no tiene ninguna tasa viva, el recibo cae a la congelada del
   // período y lo dice.
@@ -72,5 +79,8 @@ export async function ultimoReciboDe(unidadId: string): Promise<UltimoRecibo> {
       }
     : null;
 
-  return { unidad, recibo, falla: null };
+  const saldo = unidad.saldo === null || unidad.saldo === undefined ? null : Number(unidad.saldo);
+  const hoy = await aPagarHoy(supabase, { unidad_id: unidad.unidad_id, saldo }, recibo ? Number(recibo.total) : null);
+
+  return { unidad, recibo, falla: null, hoy };
 }

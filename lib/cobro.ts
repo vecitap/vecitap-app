@@ -15,5 +15,5 @@ export type { AjustesCobro, Redondeo };
 export const ajustesCobroDe = cache(async (orgId: string): Promise<AjustesCobro> => {
   const supabase = await crearClienteServidor();
   const { data } = await supabase.from("ajustes_cobro").select("solo_usd,redondeo").eq("org_id", orgId).maybeSingle();
-  return data ? { soloUsd: data.solo_usd, redondeo: (data.redondeo as Redondeo) ?? "ninguno" } : SIN_AJUSTES_COBRO;
+  return data ? { soloUsd: data.solo_usd, redondeo: data.redondeo === "redondear" ? "redondear" : "ninguno" } : SIN_AJUSTES_COBRO;
 });

@@ -70,6 +70,12 @@ export type DatosPapelRecibo = {
   cuentas?: CuentaPago[];
   /** La organización cobra solo en dólares (ronda 7, bloque 4): el papel no muestra bolívares. */
   soloUsd?: boolean;
+  /**
+   * Ronda 9 (A1): lo que se debe el día en que se imprime, solo desde el
+   * portal. Los datos para pagar llevan estos montos y no los del recibo, y
+   * si ya no se debe nada lo dicen. Sin él (Admin), los montos del recibo.
+   */
+  pagarHoy?: { monto: number; reparto: { condominio: number; honorarios: number } | null; fecha: string } | null;
   recibo: ReciboPapel;
 };
 
@@ -298,10 +304,22 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
   <table class="res">${resumen}</table>
 
   ${
-    favor === 0 && d.cuentas?.length
+    d.pagarHoy && favor === 0 && Math.abs(d.pagarHoy.monto - Number(r.total)) >= 0.005
+      ? `<p class="ayuda"><b>Al ${esc(d.pagarHoy.fecha)}, con los pagos confirmados después de este recibo: ${
+          d.pagarHoy.monto > 0
+            ? `debe ${m(d.pagarHoy.monto)}.`
+            : d.pagarHoy.monto < 0
+              ? `no debe nada; tiene ${m(-d.pagarHoy.monto)} a favor.`
+              : "está al día, no tiene que pagar."
+        }</b></p>`
+      : ""
+  }
+
+  ${
+    favor === 0 && d.cuentas?.length && (!d.pagarHoy || d.pagarHoy.monto > 0)
       ? datosPagoEnPapel(
           d.cuentas,
-          repartoRecibo(r, d.cuentas),
+          d.pagarHoy?.reparto ?? repartoRecibo(r, d.cuentas),
           // Ronda 8: sin montos en Bs en los datos para pagar.
           null
         )

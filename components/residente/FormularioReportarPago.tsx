@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Input, InputFecha, Select } from "@/components/ui";
 import { bs, fechaLarga, hoyLocalISO, montoAlSalir, nf, num, paraCampo, usd } from "@/lib/formato";
 import { bolivaresExactos, bolivaresParaCopiar } from "@/lib/residente/monto-exacto";
+import type { APagarHoy } from "@/lib/residente/a-pagar";
 import {
   ACEPTA_COMPROBANTE,
   MAX_BYTES_COMPROBANTE,
@@ -15,6 +16,7 @@ import {
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
+import { useSubirAlAviso } from "@/hooks/useSubirAlAviso";
 
 type Banco = Pick<Database["public"]["Tables"]["bancos"]["Row"], "codigo" | "nombre" | "corto">;
 
@@ -85,7 +87,7 @@ export function FormularioReportarPago({
   usuarioId,
   bancos,
   deudaUsd: deudaTotal,
-  favorDelRecibo,
+  hoy = null,
   reparto = null,
   soloUsd = false,
   unidadesGrupo = [],
@@ -97,11 +99,12 @@ export function FormularioReportarPago({
   /** Saldo de esta unidad en dólares (`mis_unidades()`); null si la base no lo muestra. */
   deudaUsd: number | null;
   /**
-   * Lo que le queda a favor según su último recibo (`favorQueQueda`, la
-   * misma cuenta con la que el recibo dice «Este mes no tiene que pagar»);
-   * 0 si el recibo tiene algo que pagar.
+   * Lo que se debe hoy (ronda 9, A1, `lib/residente/a-pagar.ts`): con los
+   * pagos confirmados después del último recibo. Si no debe nada, el
+   * formulario lo dice arriba (antes lo decía solo si el RECIBO quedaba a
+   * favor, y un recibo ya pagado seguía pidiendo el total).
    */
-  favorDelRecibo: number;
+  hoy?: APagarHoy | null;
   /**
    * Ronda 7 (bloque 2): si el edificio tiene una cuenta de honorarios aparte,
    * cuánto de la deuda va a cada cuenta (`datos_pago_de()`). Con él, el
@@ -126,6 +129,8 @@ export function FormularioReportarPago({
   const [archivo, setArchivo] = useState<File | null>(null);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
+  // Ronda 9 (B4): el error general no es <Aviso>; sube con el mismo hook.
+  const refError = useSubirAlAviso();
   const [enviando, setEnviando] = useState(false);
   const [copiado, setCopiado] = useState<"si" | "no" | null>(null);
   const entrada = useRef<HTMLInputElement>(null);
@@ -335,6 +340,7 @@ export function FormularioReportarPago({
 
       {errorGeneral && (
         <div
+          ref={refError}
           style={{
             marginBottom: 12,
             padding: "12px 14px",
@@ -351,10 +357,20 @@ export function FormularioReportarPago({
 
       {/* Ronda 5 (pedido de Gustavo): solo avisa, no bloquea. Puede querer
           adelantar el mes que viene. */}
-      {favorDelRecibo > 0 && (
+      {hoy && hoy.monto <= 0 && (
         <div style={{ marginBottom: 14 }}>
-          <Aviso tono="favor" titulo={`Este mes no tiene que pagar: tiene ${usd(favorDelRecibo)} a favor`}>
-            Su último recibo quedó cubierto con su saldo a favor. Si igual quiere adelantar un pago, puede reportarlo aquí.
+          <Aviso
+            tono="favor"
+            titulo={hoy.monto < 0 ? `Hoy no tiene que pagar: tiene ${usd(-hoy.monto)} a favor` : "Hoy no tiene que pagar: está al día"}
+          >
+            Ya se descontaron los pagos que su administración confirmó. Si igual quiere adelantar un pago, puede reportarlo aquí.
+          </Aviso>
+        </div>
+      )}
+      {hoy && hoy.enRevision > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <Aviso tono="ambar" titulo={`Tiene ${usd(hoy.enRevision)} en pagos que su administración todavía no confirma`}>
+            Si ya pagó, no vuelva a pagar: se descuentan cuando los confirme. Puede verlos en «Mis pagos».
           </Aviso>
         </div>
       )}

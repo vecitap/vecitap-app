@@ -1,6 +1,7 @@
 import { CierreMes } from "@/components/admin/CierreMes";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import type { CategoriaAdmin, ConceptoCobro, PeriodoAdmin } from "@/lib/admin/tipos";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 /** Portado de CierreMes() en app.html:2435-3074 (Server Component: solo carga datos). */
 export default async function PaginaCierreMes({
@@ -40,7 +41,7 @@ export default async function PaginaCierreMes({
     <CierreMes
       orgId={orgId}
       edificioId={edificioId}
-      unidades={unidades ?? []}
+      unidades={ordenarPorCodigo(unidades ?? [], (u) => u.codigo)}
       conceptos={conceptosFilas}
       periodos={periodosFilas}
       categorias={categoriasFilas}

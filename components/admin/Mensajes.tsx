@@ -6,6 +6,7 @@ import { Aviso, Badge, Button, Campo, Card, Confirmar, Input, Select, Textarea }
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { mensajeDeError } from "@/lib/errores";
 import { cuandoSale, esperaCupo } from "@/lib/cupo-correo";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 export type FiltroMensaje = "todos" | "propietarios" | "inquilinos" | "deudores";
 
@@ -79,7 +80,7 @@ export function Mensajes({ edificioId, historial }: { edificioId: string; histor
     supabase.rpc("unidades_mensaje", { p_edificio: edificioId, p_filtro: filtro }).then(({ data, error: e }) => {
       if (!vivo) return;
       if (e) return setError(mensajeDeError(e));
-      setUnidades({ filtro, lista: (data ?? []) as UnidadMensaje[] });
+      setUnidades({ filtro, lista: ordenarPorCodigo((data ?? []) as UnidadMensaje[], (u) => u.codigo) });
       setAMano({});
     });
     return () => {

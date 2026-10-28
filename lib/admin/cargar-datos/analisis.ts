@@ -25,8 +25,9 @@ import { CAMPOS, correosDe, type Campo } from "./columnas";
  *    omisión, y la carga espera; vale entre filas del archivo y contra una
  *    ficha que ya existe. Si solo coincide el nombre, es dudoso y por
  *    omisión son personas distintas.
- *  - Una fila sin alícuota no se carga por omisión; se puede cargar como
- *    estacionamiento con alícuota 0 (decisión provisional, para Gustavo).
+ *  - Una fila sin alícuota no se carga, y el aviso lo dice (ronda 9, A5,
+ *    decisión de Gustavo: ya no se ofrece cargarla como estacionamiento con
+ *    alícuota 0). Un estacionamiento con alícuota propia es una unidad más.
  */
 
 export type Nivel = "rojo" | "ambar" | "info";
@@ -77,15 +78,13 @@ export type Contexto = {
 export type Decisiones = {
   /** Unidad existente (código normalizado) → actualizar en vez de omitir. */
   actualizar: Record<string, boolean>;
-  /** Fila sin alícuota (número de fila) → cargar como estacionamiento con alícuota 0. */
-  estacionamiento: Record<number, boolean>;
   /** Tipo elegido a mano para una fila. */
   tipo: Record<number, TipoUnidad>;
   /** Dudosos de personas: clave → opción elegida. */
   personas: Record<string, string>;
 };
 
-export const SIN_DECISIONES: Decisiones = { actualizar: {}, estacionamiento: {}, tipo: {}, personas: {} };
+export const SIN_DECISIONES: Decisiones = { actualizar: {}, tipo: {}, personas: {} };
 
 type ValorCampo = {
   valor: string;
@@ -430,7 +429,7 @@ export function analizar(
 
     // Alícuota
     const aCelda = celda(f, "alicuota");
-    let alicuota = leerAlicuota(aCelda);
+    const alicuota = leerAlicuota(aCelda);
     if (aCelda && alicuota === null) {
       base.estado = "no";
       base.motivo = `la alícuota «${aCelda}» no se entiende`;
@@ -456,17 +455,10 @@ export function analizar(
     };
 
     if (aCelda === "" && base.estado !== "no") {
-      if (dec.estacionamiento[fila]) {
-        alicuota = 0;
-        base.tipo = dec.tipo[fila] ?? "estacionamiento";
-        campos.tipo = { valor: TIPOS_UNIDAD[base.tipo] };
-        campos.alicuota = { valor: nf(5).format(0), nota: { nivel: "ambar", texto: "no traía alícuota: se carga con 0 (elegido)" } };
-      } else {
-        base.estado = "no";
-        base.sinAlicuota = true;
-        base.motivo = "no tiene alícuota";
-        base.motivoCampo = "alicuota";
-      }
+      base.estado = "no";
+      base.sinAlicuota = true;
+      base.motivo = "no tiene alícuota";
+      base.motivoCampo = "alicuota";
     }
 
     // Saldo

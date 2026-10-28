@@ -10,6 +10,7 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { CategoriaAdmin, ConceptoCobro, GastoAdmin, PeriodoAdmin, SimulacionCierre } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 type ActualizarGasto = Database["public"]["Tables"]["gastos"]["Update"];
 type InsertarGasto = Database["public"]["Tables"]["gastos"]["Insert"];
@@ -161,7 +162,7 @@ export function CierreMes({
         fallo(error);
         return;
       }
-      setPrevia(data);
+      setPrevia(data ? ordenarPorCodigo(data, (r) => r.codigo) : data);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodoAbierto?.id, gastos.length, periodoAbierto?.presupuesto]);

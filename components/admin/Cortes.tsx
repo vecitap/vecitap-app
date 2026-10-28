@@ -17,6 +17,7 @@ import type { CuentaPago } from "@/lib/datos-pago";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { PeriodoAdmin, ReciboAdmin, TasaViva, Unidad, Vinculo } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
 
@@ -60,6 +61,29 @@ function estadoEnPalabras(e: EstadoCorreo): { texto: string; tono: TonoBadge } {
   if (e.evento === "delivered") return { texto: "Entregado", tono: "neutro" };
   if (e.evento === "delivery_delayed") return { texto: "Demorado", tono: "ambar" };
   return { texto: "Enviado", tono: "neutro" };
+}
+
+/**
+ * A quién va el correo del recibo de una unidad (ronda 9, B3): la misma regla
+ * que `correo_recibo()` en la base (ronda 8, B2). Cada propietario e
+ * inquilino vigente con «recibe corte», a su correo; y aparte, a su correo de
+ * respaldo si es otro. Es también lo que cuenta para el cupo. (Un correo que
+ * rebotó antes no sale: eso lo sabe la base y la columna lo dice al enviar.)
+ */
+function destinatariosRecibo(vinculos: Vinculo[] | undefined): { correo: string; respaldo: boolean }[] {
+  const vigentes = (vinculos ?? [])
+    .filter((v) => !v.hasta && v.enviar_corte !== false)
+    .sort((a, b) => (a.tipo === b.tipo ? String(b.desde ?? "").localeCompare(String(a.desde ?? "")) : a.tipo === "propietario" ? -1 : 1));
+  const lista: { correo: string; respaldo: boolean }[] = [];
+  const sumar = (correo: string | null | undefined, respaldo: boolean) => {
+    const c = (correo ?? "").trim().toLowerCase();
+    if (c && !lista.some((d) => d.correo === c)) lista.push({ correo: c, respaldo });
+  };
+  for (const v of vigentes) {
+    sumar(v.personas?.correo, false);
+    sumar(v.personas?.correo_respaldo, true);
+  }
+  return lista;
 }
 
 /** Fila de `correo_recibo(p_recibo)` — una por destinatario. */
@@ -141,7 +165,10 @@ export function Cortes({
   }
 
   const periodo = cerrados.find((p) => p.id === periodoId) ?? null;
-  const recibos = cargado?.periodoId === periodoId ? cargado.filas : [];
+  // Ronda 9 (B3, caso 100): en el orden natural de las unidades (01A, 01B,
+  // 01C, 01D, 02A…), no en el que llegan de la base.
+  const codigoDe = (unidadId: string) => unidades.find((x) => x.id === unidadId)?.codigo ?? "";
+  const recibos = cargado?.periodoId === periodoId ? ordenarPorCodigo(cargado.filas, (r) => codigoDe(r.unidad_id)) : [];
   const cargando = !!periodoId && cargado?.periodoId !== periodoId;
 
   useEffect(() => {
@@ -213,6 +240,29 @@ export function Cortes({
 
   // Al cambiar de mes, y cada minuto mientras haya correos saliendo.
   const filasEstado = estados?.periodoId === periodoId ? estados.filas : [];
+  // Ronda 9 (A4): el envío del mes repartido por el cupo diario.
+  const repartido = (() => {
+    // El último correo de cada destinatario (vienen del más nuevo al más viejo).
+    const vistos = new Set<string>();
+    const ultimos = filasEstado.filter((e) => {
+      const k = `${e.unidad_id}|${e.destino}`;
+      return !vistos.has(k) && !!vistos.add(k);
+    });
+    const esperan = ultimos.filter((e) => e.estado === "pendiente" && esperaCupo(e.sale_en));
+    if (!esperan.length) return null;
+    const diaDe = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Caracas" });
+    const hoy = diaDe(new Date().toISOString());
+    const salieron = ultimos.filter((e) => e.enviado_en);
+    const ultimo = esperan.some((e) => !e.sale_en)
+      ? null
+      : esperan.map((e) => e.sale_en!).sort().at(-1) ?? null;
+    return {
+      hoy: salieron.filter((e) => diaDe(e.enviado_en!) === hoy).length,
+      antes: salieron.filter((e) => diaDe(e.enviado_en!) !== hoy).length,
+      esperan: esperan.length,
+      ultimo,
+    };
+  })();
   const haySaliendo = filasEstado.some((e) => e.estado === "pendiente");
   useEffect(() => {
     cargarEstados();
@@ -233,18 +283,7 @@ export function Cortes({
    * inquilino con «recibe corte» y correo, más uno por su correo de
    * respaldo. Es lo que cuenta para el cupo diario.
    */
-  const correosDelMes = recibos.reduce((n, r) => {
-    const u = unidades.find((x) => x.id === r.unidad_id);
-    for (const rol of ["propietario", "inquilino"] as const) {
-      const v = vigente(u?.vinculos, rol);
-      if (!v || v.enviar_corte === false) continue;
-      const pr = v.personas?.correo?.trim().toLowerCase();
-      const re = v.personas?.correo_respaldo?.trim().toLowerCase();
-      if (pr) n++;
-      if (re && re !== pr) n++;
-    }
-    return n;
-  }, 0);
+  const correosDelMes = recibos.reduce((n, r) => n + destinatariosRecibo(unidades.find((x) => x.id === r.unidad_id)?.vinculos).length, 0);
 
   async function reenviar(r: ReciboAdmin, codigo: string) {
     setReenviando(r.id);
@@ -680,6 +719,23 @@ export function Cortes({
             {correosDelMes > 0 && ` · ${correosDelMes} correos con los de respaldo`}
             {cupo && ` · hoy quedan ${cupo.libre} de ${cupo.tope} correos del plan`}
           </p>
+          {/* Ronda 9 (A4): un envío que se reparte en dos días dice cuántos
+              salieron hoy y cuándo salen los que faltan. */}
+          {repartido && (
+            <div style={{ margin: "0 0 12px" }}>
+              <Aviso
+                tono="ambar"
+                titulo={`Hoy ${repartido.hoy === 1 ? "salió 1 correo" : `salieron ${repartido.hoy} correos`} de este mes; ${
+                  repartido.esperan === 1 ? "1 espera" : `${repartido.esperan} esperan`
+                } el cupo`}
+              >
+                El plan de correos permite {cupo?.tope ?? "un número fijo de"} correos por día. Los que faltan salen solos
+                cuando se libera cupo: el último, {cuandoSale(repartido.ultimo).replace(/\.$/, "")}. No hace falta volver a
+                enviar.
+                {repartido.antes > 0 && ` Antes de hoy ya habían salido ${repartido.antes}.`}
+              </Aviso>
+            </div>
+          )}
         </div>
         {cargando ? (
           <Cargando />
@@ -718,6 +774,9 @@ export function Cortes({
                     .filter((x) => x.correo || x.tel);
 
                   const asunto = `Su recibo de condominio · ${u?.codigo} · ${periodo?.etiqueta}`;
+                  // Ronda 9 (B3): a quién va a ir el correo, con el respaldo, antes
+                  // de enviarlo. La misma regla que correo_recibo() en la base.
+                  const vaA = destinatariosRecibo(u?.vinculos);
                   return (
                     <tr key={r.id}>
                       <td className="mono" style={{ fontWeight: 600 }}>
@@ -746,7 +805,7 @@ export function Cortes({
                           ))}
                         {!p && !q && <span style={{ color: "var(--tenue)" }}>sin registrar</span>}
                       </td>
-                      <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>
+                      <td className="mono" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>
                         {usd(r.total)}
                       </td>
                       <td style={{ minWidth: 170 }}>
@@ -759,7 +818,20 @@ export function Cortes({
                             </div>
                           );
                         })}
-                        {!estadoDe(r.unidad_id).length && <span style={{ fontSize: 11.5, color: "var(--tenue)" }}>no se ha enviado</span>}
+                        {!estadoDe(r.unidad_id).length &&
+                          (vaA.length ? (
+                            <div style={{ fontSize: 11.5, color: "var(--tenue)" }}>
+                              <div>No se ha enviado. Va a:</div>
+                              {vaA.map((d) => (
+                                <div key={d.correo} style={{ color: "var(--tinta-2)", overflowWrap: "anywhere" }}>
+                                  {d.correo}
+                                  {d.respaldo && <span style={{ color: "var(--tenue)" }}> (respaldo)</span>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 11.5, color: "var(--tenue)" }}>no se ha enviado · nadie con correo</span>
+                          ))}
                       </td>
                       <td style={{ width: 240 }}>
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -772,8 +844,10 @@ export function Cortes({
                                   target="_blank"
                                   rel="noreferrer"
                                   href={`https://wa.me/${x.tel}?text=${encodeURIComponent(textoDe(r))}`}
+                                  title={`WhatsApp al ${x.rol.toLowerCase()}`}
                                 >
-                                  <MessageCircle size={13} /> {x.rol.slice(0, 4)}.
+                                  {/* Ronda 9 (B3): «WhatsApp» y «Correo» con letra, no solo el ícono. */}
+                                  <MessageCircle size={13} /> WhatsApp {x.rol.slice(0, 4).toLowerCase()}.
                                 </a>
                               )}
                               {x.correo && (
@@ -783,8 +857,9 @@ export function Cortes({
                                   href={`mailto:${x.correo}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(
                                     textoDe(r)
                                   )}`}
+                                  title={`Correo al ${x.rol.toLowerCase()} desde su programa de correo`}
                                 >
-                                  <Mail size={13} /> {x.rol.slice(0, 4)}.
+                                  <Mail size={13} /> Correo {x.rol.slice(0, 4).toLowerCase()}.
                                 </a>
                               )}
                             </span>

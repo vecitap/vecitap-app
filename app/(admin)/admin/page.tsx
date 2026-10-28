@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card } from "@/components/ui";
-import { CrearOrganizacion } from "@/components/admin/CrearOrganizacion";
+import { SinAdministradora } from "@/components/admin/SinAdministradora";
 import { ROLES_ADMIN } from "@/lib/admin/constantes";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { usuarioActual } from "@/lib/supabase/cache";
@@ -10,10 +10,11 @@ import { usuarioActual } from "@/lib/supabase/cache";
  * Portado de la resolución de organización en App() (app.html:900-906):
  * si `organizaciones` trae una sola fila, se elige sola; si trae más de
  * una (o ninguna), se pide elegir/crear — antes Organizaciones()
- * (app.html:782-840). La alta de organización quedó fuera de la Sesión 1
- * (ver docs/estado-migracion.md); se agrega hoy porque sin ella una cuenta
- * nueva sin membresías no tiene forma de arrancar (ver
- * docs/casos-de-uso-mejorados.md).
+ * (app.html:782-840).
+ *
+ * Ronda 9 (D1, caso 102): ya no se ofrece crear una administradora. Desde
+ * el 28-oct solo Vecitap las crea (decisión de Gustavo; la base lo exige en
+ * crear_organizacion()): una cuenta sin ninguna ve cómo pedirla.
  *
  * proxy.ts solo garantiza sesión acá (el gate por rol es por organización,
  * a partir de /admin/[orgId]/*), así que se revalida como corresponde.
@@ -66,7 +67,7 @@ export default async function AdminHome() {
   if (!orgs || orgs.length === 0) {
     return (
       <main style={{ display: "flex", justifyContent: "center", paddingTop: 12 }}>
-        <CrearOrganizacion />
+        <SinAdministradora />
       </main>
     );
   }
@@ -93,7 +94,6 @@ export default async function AdminHome() {
           ))}
         </div>
       </Card>
-      <CrearOrganizacion />
     </main>
   );
 }

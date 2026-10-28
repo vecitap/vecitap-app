@@ -16,7 +16,10 @@ export function DatosParaPagar({ filas }: { filas: (CuentaPago & { monto: number
   if (!filas.length) return null;
   const montoDe = (destino: string) => filas.find((f) => (destino === "honorarios" ? f.destino === "honorarios" : f.destino !== "honorarios"))?.monto ?? null;
   const conMonto = filas.some((f) => f.monto !== null);
-  const reparto = conMonto ? { condominio: Number(montoDe("condominio") ?? 0), honorarios: Number(montoDe("honorarios") ?? 0) } : null;
+  const conReparto = conMonto ? { condominio: Number(montoDe("condominio") ?? 0), honorarios: Number(montoDe("honorarios") ?? 0) } : null;
+  // Ronda 9 (A1): sin deuda hoy, las cuentas van sin montos («$ 0,00» en cada
+  // cuenta parecía pedir algo).
+  const reparto = conReparto && conReparto.condominio + conReparto.honorarios >= 0.005 ? conReparto : null;
   const grupos = gruposDePago(filas, reparto);
 
   return (

@@ -2519,6 +2519,7 @@ export type Database = {
       }
       cuota_mensual: { Args: { p_org: string }; Returns: number }
       cupo_correo: { Args: never; Returns: Json }
+      dar_de_baja_acceso: { Args: { p_membresia: string }; Returns: undefined }
       datos_pago_de: {
         Args: { p_unidad: string }
         Returns: {
@@ -3046,6 +3047,13 @@ export type Database = {
       }
       org_al_dia: { Args: { p_org: string }; Returns: boolean }
       orgs_del_usuario: { Args: never; Returns: string[] }
+      pagos_desde_cierre: {
+        Args: { p_unidad: string }
+        Returns: {
+          confirmados: number
+          en_revision: number
+        }[]
+      }
       pagos_por_origen: {
         Args: { p_org: string; p_telefono: string }
         Returns: {
@@ -3117,6 +3125,15 @@ export type Database = {
         Returns: number
       }
       reenviar_recibo: { Args: { p_recibo: string }; Returns: number }
+      registrar_evento_correo: {
+        Args: {
+          p_clave: string
+          p_email_id: string
+          p_en?: string
+          p_tipo: string
+        }
+        Returns: string
+      }
       residentes_de: {
         Args: { p_edificio: string }
         Returns: {

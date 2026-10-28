@@ -47,7 +47,7 @@ export function AjustesCobro({ orgId, ajustes }: { orgId: string; ajustes: Ajust
       <div style={{ marginTop: 16, maxWidth: 360 }}>
         <Campo
           etiqueta="Redondeo de las cuotas"
-          ayuda="Al cerrar el mes, lo que se emite a cada unidad se redondea siempre hacia arriba. La diferencia sale en el recibo como «Fondo de reserva por redondeo». No cambia los meses ya cerrados."
+          ayuda="Al cerrar el mes, el total a pagar de cada unidad se redondea hacia arriba: si pasa de $ 20, al múltiplo de $ 5 (20,01 → 25); si es de $ 20 o menos, al dólar entero (18,40 → 19). La diferencia sale en el recibo como «Fondo de reserva por redondeo». No cambia los meses ya cerrados."
         >
           <Select value={redondeo} onChange={(e) => setRedondeo(e.target.value as Redondeo)}>
             {Object.entries(REDONDEOS).map(([k, t]) => (

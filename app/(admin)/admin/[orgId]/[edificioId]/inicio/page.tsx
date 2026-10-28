@@ -7,6 +7,7 @@ import { calcularMetricasInicio } from "@/lib/admin/metricas";
 import { usd } from "@/lib/formato";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import type { SaldoActual, Unidad } from "@/lib/admin/tipos";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 /** Portado de Inicio() en app.html:1348-1433. */
 export default async function PaginaInicio({
@@ -46,8 +47,9 @@ export default async function PaginaInicio({
   if (e1 || e2 || e3 || e4 || e5) throw e1 || e2 || e3 || e4 || e5;
 
   const edificio = edificios?.find((e) => e.id === edificioId);
-  const unidadesFilas: Unidad[] = unidades ?? [];
-  const saldosFilas: SaldoActual[] = saldos ?? [];
+  // Ronda 9 (B3): orden natural por código en todas las listas.
+  const unidadesFilas: Unidad[] = ordenarPorCodigo(unidades ?? [], (u) => u.codigo);
+  const saldosFilas: SaldoActual[] = ordenarPorCodigo(saldos ?? [], (s) => s.codigo);
 
   if (unidadesFilas.length === 0) {
     return (

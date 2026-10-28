@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { fechaCorta } from "@/lib/formato";
+import { fechaCorta, hoyLocalISO } from "@/lib/formato";
+import { repartoRecibo } from "@/lib/datos-pago";
 import { paraPantalla, reciboEnPapel } from "@/lib/recibo-papel";
 import { ultimoReciboDe } from "@/lib/residente/recibo";
 import { usuarioActual } from "@/lib/supabase/cache";
@@ -40,6 +41,25 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ uni
   // Sin recibo (o sin poder traerlo): "Mi recibo" ya explica qué pasó.
   if (!r.recibo) return NextResponse.redirect(new URL(volver, _req.url));
 
+  // Ronda 9 (A1): los datos para pagar con lo que se debe hoy. datos_pago_de()
+  // ya reparte el saldo de hoy entre las cuentas; si no lo muestra (inquilino
+  // con «solo el recibo»), se reparte lo que queda del recibo.
+  const filas = cuentas ?? [];
+  const conMonto = filas.find((c) => c.monto !== null);
+  const hoy = r.hoy;
+  const pagarHoy = hoy
+    ? {
+        monto: hoy.monto,
+        fecha: fechaCorta(hoyLocalISO()),
+        reparto: conMonto
+          ? {
+              condominio: filas.filter((c) => c.destino !== "honorarios").reduce((s, c) => Math.max(s, Number(c.monto ?? 0)), 0),
+              honorarios: filas.filter((c) => c.destino === "honorarios").reduce((s, c) => Math.max(s, Number(c.monto ?? 0)), 0),
+            }
+          : repartoRecibo({ ...r.recibo, total: Math.max(hoy.monto, 0) }, filas),
+      }
+    : null;
+
   const html = reciboEnPapel({
     edificio: r.recibo.edificio || r.unidad.edificio,
     organizacion: r.unidad.organizacion,
@@ -48,7 +68,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ uni
     // La tasa viva viaja al papel: el documento se genera ahora, no el día
     // en que se emitió el recibo (index.html:1453-1455).
     tasaHoy: r.recibo.tasaHoy,
-    cuentas: cuentas ?? [],
+    cuentas: filas,
+    pagarHoy,
     soloUsd: (await ajustesCobroDe(r.unidad.org_id)).soloUsd,
     recibo: r.recibo,
   });

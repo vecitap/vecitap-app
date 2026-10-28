@@ -33,7 +33,7 @@ RESUELTO / PENDIENTE) justo debajo del título, con el motivo en una línea.
 | 10 | Normalización de `unidad_id`/`edificio_id` | **MANTENIDO** (corrupción de datos) |
 | 11 | Umbral de saldo unificado | REVERTIDO |
 | 12 | Alícuota a 4 decimales en Propietarios | REVERTIDO |
-| 13 | Íconos de `lucide` no portados | **APROBADO, pendiente** (bloque 7) |
+| 13 | Íconos de `lucide` no portados | **HECHO** (28-sep, bloques 7 a 9: `lucide-react` 0.469.0 en uso) |
 | 14 | `ImportarSaldos` solo CSV | RESUELTO |
 | 15 | Columna lateral oscura no portada | PORTADO |
 | 16 | Paleta de `main` | MANTENIDO (es la de `main`) |
@@ -393,7 +393,7 @@ Admin — antes la lista de Propietarios la mostraba distinto que el resto.
 
 ### 13. Íconos de `lucide` no portados
 
-> **28-sep — APROBADO, pendiente de implementar (bloque 7).** Nicolás aprobó instalar `lucide-react` (la misma librería, `lucide` 0.469.0, que `main` carga por CDN) para igualar los íconos. Es la única brecha visual que queda frente a `main`.
+> **HECHO (corregido el 28-oct).** `lucide-react` 0.469.0 (la misma librería que `main` carga por CDN) se instaló el 28-sep (commit `e5122f4`, «Integración Bloques 7 a 9») y hoy lo usan 13 pantallas y componentes (Cortes, Cierre del mes, Cobros, Ajustes, Inicio…). Este caso decía «pendiente» por error. Lo de abajo es el registro de cómo estaba antes.
 
 **Caso de uso:** ninguno visible para quien usa la aplicación salvo estético — los
 botones que en `app.html` llevan un ícono (Plus, Trash2, ChevronRight, Search,
@@ -2363,3 +2363,109 @@ Tovavade/Camebogig Zazufuni»).
   de tocar algo (todas las pantallas que usan el aviso de siempre).
 - «Cargar saldos» y el extracto del banco leen otra vez el mismo archivo; «Abrir un mes»
   propone el siguiente al cerrado; «Conciliar 1 pago».
+
+## Ronda 9 del tramo 2 (28-oct)
+
+Decisiones de Gustavo del 28-oct, que enmarcan esta ronda: **Resend sigue en el plan
+gratis para GRUPO ING3**, aceptando que el envío de recibos se reparta en dos días si hace
+falta (el plan pago se contrata al sumar otro edificio), y **solo el operador (Vecitap)
+crea administradoras**.
+
+### 96. «Al día» en vez de «Debe $ 0,00»
+
+- **Antes:** el portal comparaba el saldo contra cero sin margen. La base guarda 4
+  decimales, y 02C del Edificio Gustavo, con un resto de $ 0,0021, decía «Debe $ 0,00» en
+  rojo.
+- **Ahora:** menos de medio centavo es cero. Sin deuda, la tarjeta de la unidad y el
+  resumen dicen «Al día» en gris, sin monto.
+
+### 97. «Si paga hoy» cuenta los pagos confirmados después del recibo
+
+- **Antes:** «Si paga hoy» convertía a bolívares el **total del recibo**. 02A del Edificio
+  Gustavo, con $ 50 a favor, decía «Si paga hoy Bs 109.127,86»: un propietario real pagaba
+  dos veces. Reportar un pago avisaba «no tiene que pagar» solo si el *recibo* quedaba a
+  favor.
+- **Ahora:** el recibo sigue mostrando el total del día en que se emitió, pero «Si paga
+  hoy», «Reportar un pago», el monto exacto en Bs, los datos para pagar del portal y el
+  recibo impreso desde el portal usan **lo que se debe hoy**. Sin deuda no hay monto a
+  pagar: «Está al día» o «A favor $ X». Debajo del total, «Después de este recibo, su
+  administración confirmó pagos por $ X. Hoy debe $ Y». Los pagos reportados sin confirmar
+  se avisan («si ya pagó, no vuelva a pagar»), sin descontarlos.
+- **El inquilino con «Solo el recibo del mes»** no ve el saldo acumulado (saldo_visible()
+  no cambia): ve lo que queda **de su recibo**, el total menos lo confirmado después. Para
+  eso, la función nueva `pagos_desde_cierre()` le da solo esas dos sumas (RLS no le deja
+  leer los pagos que no reportó él).
+
+### 98. Corregir otra vez o deshacer una corrección en la previa
+
+- **Antes:** al tocar «Corregir», el aviso desaparecía y con él el campo: si la
+  administradora se equivocaba, la única salida era descartar todo.
+- **Ahora:** una tarjeta «Correcciones hechas» lista cada celda corregida, con su campo para
+  volver a editarla, «Deshacer» (vuelve al valor del archivo) y «En el archivo: …».
+
+### 99. La página sube también cuando el aviso cambia de texto
+
+- **Antes:** la regla de la ronda 8 (subir hasta el aviso) corría solo cuando el aviso
+  aparecía. Si ya había uno («Recibo de 01B reenviado…») y cambiaba
+  («Ese recibo ya se reenvió hace un momento»), la página no subía.
+- **Ahora:** un aviso que cambia de texto cuenta como nuevo, en todas las pantallas. Los
+  dos avisos hechos a mano que no usaban el componente (el error general de Reportar un
+  pago y el aviso de la consola del operador) usan la misma regla.
+
+### 100. Las unidades en orden natural en todas las listas
+
+- **Antes:** cada lista salía en el orden en que llegaba (en Cortes, 01A, 01B, 01D, 05C,
+  04A…).
+- **Ahora:** por piso y letra en Cortes, Propietarios, Inicio, Pagos, Accesos, Mensajes, el
+  cierre y el listado impreso: 01A, 01B, 01C, 01D, 02A…, y 2A antes que 10A. En Cortes,
+  además: el monto en una línea; «WhatsApp prop.» y «Correo prop.»; y antes de enviar,
+  «No se ha enviado. Va a: …» con el correo de respaldo marcado «(respaldo)».
+
+### 101. Entregado, abierto, rebotó: los avisos de Resend
+
+- **Antes (ronda 8):** «Enviado» solo decía que Resend lo había aceptado.
+- **Ahora:** Resend avisa cada evento a `/api/resend`, que verifica la firma; la base lo
+  guarda en el correo de la cola (sin retroceder: un «entregado» tardío no pisa un
+  «abierto») y anota los rebotes y las quejas de spam en `correos_malos`. Cada base ignora
+  los correos de la otra (la cuenta de Resend es la misma). «Abierto» depende de que el
+  programa de correo cargue las imágenes: no es del todo confiable.
+
+### 102. Solo Vecitap crea administradoras
+
+- **Antes:** cualquier cuenta sin administradora veía «Nueva administradora» y podía crear
+  una y quedar de dueña.
+- **Ahora (decisión de Gustavo):** la base lo exige (`crear_organizacion()` solo para el
+  operador) y la pantalla dice «Para usar Vecitap como administradora, hay que escribirle a
+  Vecitap». **Pendiente de Nicolás:** los datos de contacto (`CONTACTO_VECITAP` en
+  `components/admin/SinAdministradora.tsx`).
+
+### 103. «Dar de baja» funciona también para una `administrador`
+
+- **Antes:** el botón hacía un UPDATE directo que la base solo le permite a la dueña de la
+  cuenta: con una `administrador`, no pasaba nada y no salía ningún error.
+- **Ahora:** pasa por `dar_de_baja_acceso()`, que deja dar de baja solo accesos de
+  propietario o inquilino de una organización que la persona administra.
+
+### 104. Redondeo: la regla de Gustavo
+
+- **Antes:** «Al dólar entero» o «A múltiplos de $ 5», a elección.
+- **Ahora:** «Sin redondeo» o «Redondear»: si el total a pagar pasa de $ 20, hacia arriba
+  al múltiplo de $ 5; si es de $ 20 o menos, al dólar entero. Las organizaciones que
+  tenían una de las dos opciones viejas pasan a «Redondear» (no había ninguna).
+  Verificado con cierres reales en pruebas: 18,40 → 19; 20,00 → 20; 20,01 → 25;
+  122,99 → 125, con y sin saldo anterior y con una cuota extraordinaria en el mismo mes.
+
+### 105. Sin «estacionamiento con alícuota 0» en la previa
+
+- **Antes:** una fila sin alícuota se podía cargar como estacionamiento con alícuota 0.
+- **Ahora (decisión de Gustavo):** una fila sin alícuota no se carga y el aviso lo dice. Un
+  estacionamiento con alícuota propia se carga como cualquier unidad.
+
+### 106. El cupo de correos: cada administradora ve lo suyo
+
+- **Antes:** `cupo_correo()` le mostraba a cualquier administradora los correos de toda la
+  cuenta de Resend, incluidos los de otros clientes.
+- **Ahora:** ve lo que mandó su organización, lo que tiene esperando, cuándo sale lo
+  último suyo y el cupo que le queda hoy. El operador sigue viendo todo. Cuando un envío se
+  reparte, Cortes dice «Hoy salieron N correos de este mes; M esperan el cupo» y cuándo sale
+  el último; el aviso a Vecitap sale una vez por día de Venezuela.

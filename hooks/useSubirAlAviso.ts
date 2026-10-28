@@ -11,6 +11,14 @@ import { useEffect, useRef } from "react";
  * Solo cuando el aviso aparece poco después de que la persona tocó algo o
  * escribió (8 segundos): un aviso que ya estaba en la página al abrirla no
  * mueve nada. Y solo si no se ve entero.
+ *
+ * Ronda 9 (B4, caso 99): también cuando un aviso que ya estaba CAMBIA de
+ * texto. «Reenviar recibo» dejaba arriba «Recibo de 01B reenviado…» y el
+ * segundo toque lo cambiaba por «Ese recibo ya se reenvió hace un momento»:
+ * el aviso era el mismo elemento, el efecto no volvía a correr y la página no
+ * subía. Ahora se compara el texto en cada dibujado; si es otro, cuenta como
+ * un aviso nuevo. (Mismo texto otra vez no mueve nada: no hay nada nuevo que
+ * leer.)
  */
 let ultimaAccion = 0;
 if (typeof window !== "undefined") {
@@ -25,15 +33,20 @@ const VENTANA_MS = 8000;
 
 export function useSubirAlAviso<T extends HTMLElement = HTMLDivElement>(activo = true) {
   const ref = useRef<T>(null);
+  const visto = useRef<string | null>(null);
   useEffect(() => {
     const el = ref.current;
-    if (!activo || !el || Date.now() - ultimaAccion > VENTANA_MS) return;
+    if (!el) return;
+    const texto = el.textContent ?? "";
+    const nuevo = texto !== visto.current;
+    visto.current = texto;
+    if (!activo || !nuevo || Date.now() - ultimaAccion > VENTANA_MS) return;
     const r = el.getBoundingClientRect();
     const seVe = r.top >= 0 && r.bottom <= (window.innerHeight || document.documentElement.clientHeight);
     if (seVe) return;
     // Dentro de un diálogo o una tabla con su propio scroll también funciona:
     // scrollIntoView mueve cada contenedor que haga falta.
     el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activo]);
+  });
   return ref;
 }

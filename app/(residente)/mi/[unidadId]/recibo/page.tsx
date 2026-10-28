@@ -20,5 +20,5 @@ export default async function PaginaRecibo({
   if (!r.unidad) notFound();
 
   const { soloUsd } = await ajustesCobroDe(r.unidad.org_id);
-  return <Recibo unidad={r.unidad} recibo={r.recibo} falla={r.falla} soloUsd={soloUsd} />;
+  return <Recibo unidad={r.unidad} recibo={r.recibo} falla={r.falla} soloUsd={soloUsd} hoy={r.hoy} />;
 }

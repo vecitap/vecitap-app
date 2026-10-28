@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui";
 import { nf, usd } from "@/lib/formato";
+import { aFavorSegunPortal, debeSegunPortal } from "@/lib/residente/resumen";
 import type { Database } from "@/types/supabase";
 
 type Unidad = Database["public"]["Functions"]["mis_unidades"]["Returns"][number];
@@ -55,18 +56,19 @@ export function TarjetaSaldo({ unidad, estado }: { unidad: Unidad; estado?: { te
             <div style={{ fontSize: 13, color: "var(--tenue)", maxWidth: 170, lineHeight: 1.5 }}>
               Su administración no muestra el saldo acumulado en esta unidad.
             </div>
-          ) : (
+          ) : debeSegunPortal(saldo) || aFavorSegunPortal(saldo) ? (
             <>
-              <div style={{ fontSize: 12, color: "var(--tenue)" }}>
-                {saldo > 0 ? "Debe" : saldo < 0 ? "A favor" : "Al día"}
-              </div>
+              <div style={{ fontSize: 12, color: "var(--tenue)" }}>{debeSegunPortal(saldo) ? "Debe" : "A favor"}</div>
               <div
                 className="mono"
-                style={{ fontSize: 26, fontWeight: 700, color: saldo > 0 ? "var(--rojo)" : saldo < 0 ? "var(--a-favor)" : "var(--tinta)" }}
+                style={{ fontSize: 26, fontWeight: 700, color: debeSegunPortal(saldo) ? "var(--rojo)" : "var(--a-favor)" }}
               >
                 {usd(Math.abs(saldo))}
               </div>
             </>
+          ) : (
+            // Ronda 9 (B2, caso 96): sin deuda, «Al día» en gris; no «$ 0,00».
+            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--tenue)", paddingTop: 8 }}>Al día</div>
           )}
         </div>
       </div>

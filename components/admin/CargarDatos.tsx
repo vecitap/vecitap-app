@@ -254,7 +254,31 @@ export function CargarDatos({
     if (j < 0) return;
     setEdiciones((e) => ({ ...e, [`${fila - 1}:${j}`]: valor.trim() }));
   }
+  // Ronda 9 (B1, caso 98): «Deshacer» vuelve la celda al valor del archivo.
+  function deshacer(fila: number, campo: Campo) {
+    const j = columnas.indexOf(campo);
+    if (j < 0) return;
+    setEdiciones((e) => {
+      const copia = { ...e };
+      delete copia[`${fila - 1}:${j}`];
+      return copia;
+    });
+  }
+  /** Lo que dice el archivo, sin las correcciones. */
+  const originalDe = (fila: number, campo: Campo) => {
+    const j = columnas.indexOf(campo);
+    return j < 0 || !lectura ? "" : String(lectura.crudas[fila - 1]?.[j] ?? "");
+  };
   const corregidas = Object.keys(ediciones).length;
+  // Ronda 9 (B1): las celdas corregidas, para volver a editarlas aunque su
+  // aviso ya no esté (al corregir, el aviso se va y con él el campo).
+  const listaCorregidas = Object.keys(ediciones)
+    .map((k) => {
+      const [i, j] = k.split(":").map(Number);
+      return { fila: i + 1, campo: columnas[j] };
+    })
+    .filter((c): c is { fila: number; campo: Campo } => !!c.campo && c.campo !== "ignorar")
+    .sort((a, b) => a.fila - b.fila);
 
   const sinCodigo = lectura && !columnas.includes("codigo");
   const aCargar = resultado ? resultado.carga.filas.length : 0;
@@ -485,6 +509,31 @@ export function CargarDatos({
             )}
           </Card>
 
+          {listaCorregidas.length > 0 && (
+            <Card>
+              <h3 style={{ margin: 0, fontSize: 14 }}>Correcciones hechas</h3>
+              <p style={{ margin: "3px 0 6px", fontSize: 12.5, color: "var(--tenue)", lineHeight: 1.5 }}>
+                Puede cambiar cada una otra vez, o tocar «Deshacer» para volver a lo que dice el archivo. Se guardan solo al
+                confirmar la carga.
+              </p>
+              {listaCorregidas.map((c) => (
+                <div key={`${c.fila}:${c.campo}`} style={{ padding: "8px 0", borderTop: "1px solid var(--linea)", fontSize: 13 }}>
+                  <span style={{ color: "var(--tenue)" }}>Fila {c.fila} ·</span>{" "}
+                  <b className="mono">{resultado?.filas.find((f) => f.fila === c.fila)?.codigo ?? ""}</b>
+                  <CorregirCelda
+                    key={`${c.campo}:${celdaDe(c.fila, c.campo)}`}
+                    campo={c.campo}
+                    valor={celdaDe(c.fila, c.campo)}
+                    corregida
+                    original={originalDe(c.fila, c.campo)}
+                    onCorregir={(v) => corregir(c.fila, c.campo, v)}
+                    onDeshacer={() => deshacer(c.fila, c.campo)}
+                  />
+                </div>
+              ))}
+            </Card>
+          )}
+
           {grupos.length > 0 && (
             <Card>
               <h3 style={{ margin: 0, fontSize: 14 }}>Avisos</h3>
@@ -506,8 +555,8 @@ export function CargarDatos({
                   celdaDe={celdaDe}
                   fueCorregida={fueCorregida}
                   corregir={corregir}
-                  estacionamiento={dec.estacionamiento}
-                  elegirEstacionamiento={(fila, si) => setDec({ ...dec, estacionamiento: { ...dec.estacionamiento, [fila]: si } })}
+                  deshacer={deshacer}
+                  originalDe={originalDe}
                 />
               ))}
             </Card>
@@ -715,16 +764,16 @@ function GrupoAvisos({
   celdaDe,
   fueCorregida,
   corregir,
-  estacionamiento,
-  elegirEstacionamiento,
+  deshacer,
+  originalDe,
 }: {
   grupo: GrupoAviso;
   columnas: Campo[];
   celdaDe: (fila: number, campo: Campo) => string;
   fueCorregida: (fila: number, campo: Campo) => boolean;
   corregir: (fila: number, campo: Campo, valor: string) => void;
-  estacionamiento: Record<number, boolean>;
-  elegirEstacionamiento: (fila: number, si: boolean) => void;
+  deshacer: (fila: number, campo: Campo) => void;
+  originalDe: (fila: number, campo: Campo) => string;
 }) {
   const [abierto, setAbierto] = useState(false);
   const n = grupo.items.length;
@@ -758,7 +807,9 @@ function GrupoAvisos({
                     campo={it.campo}
                     valor={celdaDe(it.fila, it.campo)}
                     corregida={fueCorregida(it.fila, it.campo)}
+                    original={originalDe(it.fila, it.campo)}
                     onCorregir={(v) => corregir(it.fila, it.campo!, v)}
+                    onDeshacer={() => deshacer(it.fila, it.campo!)}
                   />
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--tenue)", marginTop: 4 }}>
@@ -767,11 +818,13 @@ function GrupoAvisos({
                 )
               )}
               {it.persona && <CamposContacto fila={it.fila} columnas={columnas} celdaDe={celdaDe} fueCorregida={fueCorregida} corregir={corregir} />}
-              {(it.sinAlicuota || estacionamiento[it.fila]) && (
-                <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--tinta-2)", marginTop: 6 }}>
-                  <input type="checkbox" checked={!!estacionamiento[it.fila]} onChange={(e) => elegirEstacionamiento(it.fila, e.target.checked)} />
-                  Cargarla como estacionamiento con alícuota 0
-                </label>
+              {/* Ronda 9 (A5, decisión de Gustavo): sin alícuota no se carga; ya
+                  no se ofrece cargarla como estacionamiento con alícuota 0. */}
+              {it.sinAlicuota && (
+                <div style={{ fontSize: 12, color: "var(--tenue)", marginTop: 6, lineHeight: 1.5 }}>
+                  Sin alícuota, esta fila no se carga. Si la tiene, escríbala arriba. Un estacionamiento con alícuota propia
+                  se carga como cualquier unidad.
+                </div>
               )}
             </div>
           ))}
@@ -786,7 +839,22 @@ function GrupoAvisos({
  * no con cada letra: si no, el aviso desaparecería a mitad de lo que se está
  * escribiendo.
  */
-function CorregirCelda({ campo, valor, corregida, onCorregir }: { campo: Campo; valor: string; corregida: boolean; onCorregir: (v: string) => void }) {
+function CorregirCelda({
+  campo,
+  valor,
+  corregida,
+  onCorregir,
+  original,
+  onDeshacer,
+}: {
+  campo: Campo;
+  valor: string;
+  corregida: boolean;
+  onCorregir: (v: string) => void;
+  /** Ronda 9 (B1): lo que dice el archivo, para «Deshacer». */
+  original?: string;
+  onDeshacer?: () => void;
+}) {
   const [borrador, setBorrador] = useState(valor);
   const opciones = campo === "paga" ? ["Propietario", "Inquilino"] : campo === "corte" || campo === "inq_corte" ? ["Sí", "No"] : null;
   const cambiado = borrador.trim() !== valor.trim();
@@ -817,6 +885,16 @@ function CorregirCelda({ campo, valor, corregida, onCorregir }: { campo: Campo; 
         Corregir
       </Button>
       {corregida && !cambiado && <span style={{ fontSize: 11.5, color: "var(--tinta-2)", fontWeight: 600 }}>corregido</span>}
+      {corregida && onDeshacer && (
+        <Button type="button" mini variante="secundario" onClick={onDeshacer}>
+          Deshacer
+        </Button>
+      )}
+      {corregida && original !== undefined && (
+        <span style={{ fontSize: 11.5, color: "var(--tenue)", flexBasis: "100%" }}>
+          En el archivo: {original ? `«${original}»` : "(vacío)"}
+        </span>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { bs, fechaLarga, nf, usd } from "@/lib/formato";
 import { favorQueQueda } from "@/lib/recibo-papel";
 import { bolivaresExactos } from "@/lib/residente/monto-exacto";
 import type { RegistroRecibo } from "@/lib/residente/tipos";
+import type { APagarHoy } from "@/lib/residente/a-pagar";
 import type { Database } from "@/types/supabase";
 
 type Unidad = Database["public"]["Functions"]["mis_unidades"]["Returns"][number];
@@ -16,12 +17,15 @@ export function Recibo({
   recibo,
   falla,
   soloUsd = false,
+  hoy = null,
 }: {
   unidad: Unidad;
   recibo: RegistroRecibo | null;
   falla: string | null;
   /** La organización cobra solo en dólares (ronda 7, bloque 4): sin bolívares. */
   soloUsd?: boolean;
+  /** Lo que se debe hoy (ronda 9, A1). null = sin dato: se usa el total del recibo. */
+  hoy?: APagarHoy | null;
 }) {
   // Este estado va arriba de todo: un hook detrás de un return solo se
   // ejecuta a veces, y React tumba la pantalla entera cuando la cuenta le
@@ -70,6 +74,10 @@ export function Recibo({
   // Ronda 4 (caso 51): un recibo en 0 porque el saldo a favor cubrió todo
   // termina en lo que le queda a favor, no en "Total $ 0,00".
   const favor = favorQueQueda(recibo);
+  // Ronda 9 (A1, caso 97): el recibo queda como se emitió, pero lo que se
+  // paga hoy cuenta los pagos confirmados después.
+  const debeHoy = hoy ? hoy.monto : favor > 0 ? 0 : Number(recibo.total);
+  const cambioDesdeElRecibo = hoy !== null && favor === 0 && Math.abs(debeHoy - Number(recibo.total)) >= 0.005;
 
   const fila = (etiqueta: string, valor: number, fuerte = false) => (
     <div
@@ -101,18 +109,37 @@ export function Recibo({
         </div>
         {/* Se usa la tasa viva. Solo si la base no la dio se cae a la del
             recibo, y entonces se dice de cuándo es (index.html:1368-1384). */}
-        {tasaMostrada !== null && favor === 0 && !soloUsd && (
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, color: "var(--tenue)" }}>Si paga hoy</div>
-            <div className="mono" style={{ fontSize: 15, fontWeight: 600 }}>
-              {/* Mismo redondeo que "Reportar un pago" (hacia arriba al céntimo). */}
-              {bs(bolivaresExactos(Number(recibo.total), tasaMostrada))}
+        {debeHoy > 0 ? (
+          tasaMostrada !== null && !soloUsd ? (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 12, color: "var(--tenue)" }}>Si paga hoy</div>
+              <div className="mono" style={{ fontSize: 15, fontWeight: 600 }}>
+                {/* Mismo redondeo que "Reportar un pago" (hacia arriba al céntimo). */}
+                {bs(bolivaresExactos(debeHoy, tasaMostrada))}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--tenue)" }}>
+                {cambioDesdeElRecibo && <>debe hoy {usd(debeHoy)} · </>}
+                tasa {nf(2).format(tasaMostrada)}
+                {tasaViva ? " de hoy" : " del recibo"}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: "var(--tenue)" }}>
-              tasa {nf(2).format(tasaMostrada)}
-              {tasaViva ? " de hoy" : " del recibo"}
+          ) : soloUsd && cambioDesdeElRecibo ? (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 12, color: "var(--tenue)" }}>Debe hoy</div>
+              <div className="mono" style={{ fontSize: 15, fontWeight: 600 }}>{usd(debeHoy)}</div>
             </div>
-          </div>
+          ) : null
+        ) : (
+          hoy !== null &&
+          favor === 0 && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 12, color: "var(--tenue)" }}>Hoy</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: debeHoy < 0 ? "var(--a-favor)" : "var(--tinta)" }}>
+                {debeHoy < 0 ? <span className="mono">A favor {usd(-debeHoy)}</span> : "Está al día"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--tenue)" }}>no tiene que pagar</div>
+            </div>
+          )
         )}
       </div>
 
@@ -135,7 +162,45 @@ export function Recibo({
         fila("Total", recibo.total, true)
       )}
 
-      {recibo.vence_el && favor === 0 && (
+      {/* Ronda 9 (A1): el recibo es del día en que se emitió; si después se
+          confirmaron pagos, se dice qué queda hoy. */}
+      {cambioDesdeElRecibo && hoy && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "10px 12px",
+            borderRadius: 9,
+            background: "var(--fondo)",
+            border: "1px solid var(--linea)",
+            fontSize: 13,
+            lineHeight: 1.55,
+          }}
+        >
+          {hoy.confirmadosDespues > 0 && (
+            <>
+              Después de este recibo, su administración confirmó pagos por{" "}
+              <b className="mono">{usd(hoy.confirmadosDespues)}</b>.{" "}
+            </>
+          )}
+          {debeHoy > 0 ? (
+            <>
+              Hoy debe <b className="mono">{usd(debeHoy)}</b>.
+            </>
+          ) : debeHoy < 0 ? (
+            <b style={{ color: "var(--a-favor)" }}>Hoy no debe nada: tiene {usd(-debeHoy)} a favor.</b>
+          ) : (
+            <b>Hoy está al día: no tiene que pagar.</b>
+          )}
+        </div>
+      )}
+      {hoy && hoy.enRevision > 0 && (
+        <div style={{ marginTop: 10, fontSize: 13, color: "var(--ambar)", fontWeight: 600, lineHeight: 1.5 }}>
+          Tiene {usd(hoy.enRevision)} en pagos reportados que su administración todavía no confirma. Si ya pagó, no
+          vuelva a pagar: se descuentan cuando los confirme.
+        </div>
+      )}
+
+      {recibo.vence_el && favor === 0 && debeHoy > 0 && (
         <div
           style={{ marginTop: 12, padding: "10px 12px", borderRadius: 9, background: "var(--ambar-bg)", color: "var(--ambar)", fontSize: 13, fontWeight: 600 }}
         >

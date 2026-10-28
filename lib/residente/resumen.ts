@@ -47,15 +47,21 @@ export type ResumenPortal = {
 /**
  * Mismo criterio que la tarjeta de saldo del portal (`TarjetaSaldo.tsx`, en
  * paridad con index.html:668-671): debe si el saldo es mayor que cero, a
- * favor si es menor, sin margen. El resumen y la tarjeta tienen que decir lo
- * mismo de la misma unidad.
+ * favor si es menor. El resumen y la tarjeta tienen que decir lo mismo de la
+ * misma unidad.
+ *
+ * Ronda 9 (B2, caso 96): se compara en centavos. La base guarda 4 decimales y
+ * un resto como 0,0021 decía «Debe $ 0,00» en rojo (02C del Edificio
+ * Gustavo). Menos de medio centavo es «Al día».
  */
+export const MEDIO_CENTAVO = 0.005;
+
 export function debeSegunPortal(saldo: number): boolean {
-  return saldo > 0;
+  return saldo >= MEDIO_CENTAVO;
 }
 
 export function aFavorSegunPortal(saldo: number): boolean {
-  return saldo < 0;
+  return saldo <= -MEDIO_CENTAVO;
 }
 
 function linea(u: UnidadPortal, cuotas: Map<string, CuotasUnidad>): LineaResumen {

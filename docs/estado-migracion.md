@@ -16,6 +16,254 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 9 del tramo 2 (28-oct) — antes de los primeros recibos de GRUPO ING3
+
+Pedido de Nicolás del 28-oct (bloques A a F), con los resultados de Gustavo de la
+ronda 8 (14 OK, 4 con observaciones, 1 falla: la 18, «Si paga hoy» con saldo a
+favor). Todo en `dev`, **sin commit**. `npx tsc --noEmit`, `npm run lint` y
+`npm run build` en verde. Desvíos frente a `main`: casos **96 a 106** de
+`docs/casos-de-uso-mejorados.md`. Pasa a producción aparte, en el **Paso 8b**
+(abajo), antes de cerrar el primer mes de ING3.
+
+**Decisiones de Gustavo del 28-oct:** Resend sigue en el plan gratis para GRUPO
+ING3, aceptando que el envío de recibos se reparta en dos días si hace falta (el
+plan pago se contrata al sumar otro edificio); solo el operador (Vecitap) crea
+administradoras.
+
+### Qué se hizo, por bloque
+
+| Bloque | Qué cambió | Caso |
+|---|---|---|
+| A1 | «Si paga hoy», Reportar un pago, el monto exacto en Bs, los datos para pagar y el recibo impreso del portal usan lo que se debe hoy (con los pagos confirmados después del recibo); sin deuda, «Está al día» o «A favor $ X». El inquilino con «solo el recibo» ve lo que queda de su recibo (R9-7) | 97 |
+| A2 | Regla de Gustavo: más de $ 20 → múltiplo de $ 5; $ 20 o menos → dólar entero. Ajustes: «Sin redondeo» / «Redondear» | 104 |
+| A3 | `/api/resend` (firma Svix con `RESEND_WEBHOOK_SECRET`) → `registrar_evento_correo()`; Cortes muestra Entregado / Abierto / Rebotó / Demorado | 101 |
+| A4 | Cortes: «Hoy salieron N correos de este mes; M esperan el cupo» y cuándo sale el último; aviso a Vecitap una vez por día de Venezuela | 106 |
+| A5 | Sin «estacionamiento con alícuota 0»: una fila sin alícuota no se carga y el aviso lo dice | 105 |
+| B1 | «Correcciones hechas»: volver a editar y «Deshacer» | 98 |
+| B2 | «Al día» en gris; menos de medio centavo es cero | 96 |
+| B3 | Orden natural de las unidades en todas las listas; el monto en una línea; «WhatsApp prop.» / «Correo prop.»; «Va a: …» con el respaldo antes de enviar | 100 |
+| B4 | El aviso que cambia de texto también sube la página (todas las pantallas) | 99 |
+| C1 | Confirmado, sin cambios: `edificios.dia_vencimiento` es NOT NULL, default 15, CHECK 1 a 28, en las dos bases | — |
+| C2 | Confirmado, sin cambios: los destinatarios de `correo_recibo` (sin el respaldo) son los de `destinatarios_de()` (171 = 171, 0 diferencias en pruebas); bajas (`hasta`), «recibe corte» y `correos_malos` se respetan igual | — |
+| C3 | `cupo_correo()`: la administradora ve solo lo suyo y el cupo libre | 106 |
+| D1 | `crear_organizacion()` solo para el operador; la pantalla dice cómo pedirla (contacto a completar por Nicolás) | 102 |
+| D2 | `saldo_unidad()` sin EXECUTE para anon/PUBLIC y con control propio | — |
+| D3 | REVOKE de TRUNCATE/REFERENCES/TRIGGER/MAINTAIN a anon en todo `public` (y a authenticated en `secretos`), también por omisión | — |
+| D4–D7 | `administra_algo()` solo activas; `id`/`creada_en` protegidos; `dar_de_baja_acceso()`; `traer_tasa_bcv()` con WHERE | 103 |
+| D8–D10 | Claves viejas fuera de este archivo (rotadas el 28-oct); `validacion-bloque0.mjs` lee `PRUEBA_*_CLAVE`; pedidos ya hechos fuera de la lista; caso 13 corregido | — |
+| E | Edificio Ronda 8 borrado de «Administradora Prueba Gustavo» (54 unidades, 2 meses, 54 recibos); Edificio Gustavo intacto (53 unidades, 318 recibos) | — |
+
+**Decidido por mi cuenta:** 'entero'/'cinco' → 'redondear' (no había ninguna); la
+base no confía en la ruta del webhook (exige el secreto contra su huella); el
+cupo libre de la administradora descuenta lo que otros ya tienen esperando
+delante; `dar_de_baja_acceso` solo para accesos de residente (no cambia la
+política `mem_admin`); `pagos_desde_cierre()` (R9-7) devuelve solo dos sumas.
+
+### GUS-02A-0327 (marzo 2027, Edificio Gustavo)
+
+Emitido el **26-oct a las 23:29, hora de Venezuela** (`recibos.emitido_en`
+2026-10-27 03:29 UTC), en las pruebas de la ronda 7: condominio 0,8926 + fondo
+4,1074 = cuota 5,00 (se redondeaba solo lo del mes), y con la deuda anterior de
+117,99 el total da 122,99. De los recibos con fondo de reserva de esa noche, 50 de
+53 tienen el total no entero; de los cerrados el 27-oct a mediodía (ya con la regla
+de la ronda 8), **ninguno**. Con la ronda 8, un mes cerrado da siempre un total
+múltiplo del paso, o 0; lo único que puede quedar fuera son diferencias de menos de
+medio centavo (que no hacen línea y se ven redondas).
+
+### Migraciones nuevas — aplicadas en vecitap-pruebas el 28-oct
+
+Con `execute_sql`. **El md5(prosrc) de pruebas es el del archivo en todas.**
+
+| # | Migración | md5(prosrc) que deja |
+|---|---|---|
+| R9-1 | `20261028120000_redondeo_regla_gustavo.sql` | `cerrar_periodo` 36bdef305a5cc58cd1cd3b66038220aa, `simular_cierre` 19b6299970311a6d0bf17d48f3aa673f |
+| R9-2 | `20261028130000_avisos_resend.sql` | `registrar_evento_correo` feb53cdc2d8cc0ad3c7319d5cd04ce7c |
+| R9-3 | `20261028140000_cupo_por_organizacion.sql` | `cupo_correo` 969a97d27dc5380fbb51bc4578a65e33, `despachar_correos` e2b9a8ad1adee36bed93e9ccb80ecdb9 |
+| R9-4 | `20261028150000_solo_operador_y_ajustes_seguridad.sql` | `crear_organizacion` 5e4e1157102d48abc239c29fb2f5923b, `administra_algo` 02553d8dc245667bfd14a16f25608401, `org_campos_del_operador` 0b28110290b22a2a5d3dd9170720f5be, `dar_de_baja_acceso` 80f189f60e790ea3ffd7fa3605f1d9cf, `traer_tasa_bcv` 2a5a1433626ef394de2795f80719fcb2 |
+| R9-5 | `20261028160000_saldo_unidad_control.sql` | `saldo_unidad` 497d819a42e0533a410dbb62155da7cb |
+| R9-6 | `20261028170000_permisos_sobrantes.sql` | (sin funciones) anon sin «Dxtm» en `public`: 0 objetos. **El rollback se probó de verdad** (volvieron los 20 y los privilegios por omisión) y se volvió a aplicar |
+| R9-7 | `20261028180000_pagos_desde_cierre.sql` | `pagos_desde_cierre` 7b86d8acf44f957f57a87a45b1558c24 |
+
+Cada una con su rollback en `supabase/rollbacks/` (guarda md5; R9-6 devuelve
+exactamente lo que había, leído de su respaldo en `tareas_log`). Dependencias:
+R9-1 después de R8-4; R9-2 y R9-3 después de R8-5; las demás, solas.
+`types/supabase.ts`: agregadas a mano, en el formato y el orden del generador,
+las tres funciones nuevas (`dar_de_baja_acceso`, `pagos_desde_cierre`,
+`registrar_evento_correo`); las demás no cambian de firma. **Regenerarlo con la
+herramienta antes del commit para confirmarlo.**
+
+Para la revisión cruzada: `C:\Users\Nicolas\Downloads\revision-cruzada-ronda9\`
+(las siete migraciones y sus rollbacks, tal cual).
+
+**Pendiente, no pedido en esta ronda:** `authenticated` tiene TRUNCATE (y
+REFERENCES/TRIGGER/MAINTAIN) en 36 de 42 tablas de pruebas, también por omisión
+para las nuevas. No pasa por la API, pero TRUNCATE no respeta RLS: candidato a la
+misma migración para `authenticated`. Los privilegios por omisión de
+`supabase_admin` no se pueden cambiar como postgres. En producción, las
+secuencias nuevas le dan `w` a anon y authenticated (en pruebas no).
+
+### Paso 8b: la ronda 9 en producción, antes de cerrar el primer mes de ING3
+
+Después del Paso 8 (las 25 de la ronda 8) y con **respaldo antes**
+(docs/respaldo.md). Cada archivo tal cual; después, su verificación (la del
+final de cada archivo).
+
+| # | Migración | Verificación (resultado esperado) |
+|---|---|---|
+| 26 | `20261028120000_redondeo_regla_gustavo.sql` | `cerrar_periodo` → 36bdef305a5cc58cd1cd3b66038220aa; `simular_cierre` → 19b6299970311a6d0bf17d48f3aa673f; el CHECK de `ajustes_cobro.redondeo` → `ninguno`, `redondear` |
+| 27 | `20261028130000_avisos_resend.sql` | `registrar_evento_correo` → feb53cdc2d8cc0ad3c7319d5cd04ce7c; índice `cola_por_proveedor` → 1 |
+| 28 | `20261028140000_cupo_por_organizacion.sql` | `cupo_correo` → 969a97d27dc5380fbb51bc4578a65e33; `despachar_correos` → e2b9a8ad1adee36bed93e9ccb80ecdb9 |
+| 29 | `20261028150000_solo_operador_y_ajustes_seguridad.sql` | los cinco md5 de R9-4 (arriba) |
+| 30 | `20261028160000_saldo_unidad_control.sql` | `saldo_unidad` → 497d819a42e0533a410dbb62155da7cb; `has_function_privilege('anon','public.saldo_unidad(uuid)','execute')` → false |
+| 31 | `20261028170000_permisos_sobrantes.sql` | el conteo del punto 1 del archivo → **0** (antes 38) |
+| 32 | `20261028180000_pagos_desde_cierre.sql` | `pagos_desde_cierre` → 7b86d8acf44f957f57a87a45b1558c24 |
+
+**Datos, después (los corre Nicolás; no son migraciones):**
+- La huella del secreto del webhook de producción (ver «Resend y Vercel», abajo):
+  `insert into secretos (nombre, valor) values ('webhook_resend_sha256', encode(extensions.digest('<whsec_… del webhook de producción>', 'sha256'), 'hex')) on conflict (nombre) do update set valor = excluded.valor, actualizado = now();`
+- `correo_tope_diario` (abajo): **65**.
+- Antes del deploy: completar `CONTACTO_VECITAP` en
+  `components/admin/SinAdministradora.tsx` (o dejar solo la frase).
+
+### Resend y Vercel: los pasos a mano
+
+**Vercel (Nicolás o Gustavo):**
+1. Project → Settings → Deployment Protection → **Protection Bypass for
+   Automation** → *Add* → copiar el secreto de bypass. Es lo que deja pasar a
+   Resend por la Vercel Authentication del Preview de `dev` sin abrirlo a nadie
+   más: se pone en la URL del webhook de pruebas como
+   `?x-vercel-protection-bypass=<secreto>`.
+2. La dirección fija de la rama `dev` (Deployments → el último de `dev` →
+   Domains): `vecitap-app-git-dev-<equipo>.vercel.app`. No la del deploy, que
+   cambia cada vez.
+
+**Resend (Gustavo tiene acceso):**
+1. **Webhooks → Add Webhook**, uno para producción:
+   - Endpoint URL: `https://vecitap.com/api/resend`
+   - Events: `email.delivered`, `email.delivery_delayed`, `email.bounced`,
+     `email.complained`, `email.opened` (nada más; `email.sent` y `email.clicked`
+     no hacen falta).
+   - Crear → abrir el webhook → copiar el **Signing secret** (`whsec_…`).
+2. Otro igual para pruebas, con Endpoint URL
+   `https://vecitap-app-git-dev-<equipo>.vercel.app/api/resend?x-vercel-protection-bypass=<secreto de bypass>`.
+   Copiar su Signing secret (es otro).
+3. **Domains → `envios.vecitap.com` → Configuration → Open Tracking: activar.**
+   Click Tracking: **dejar apagado** (reescribe los enlaces, incluido el del
+   código de invitación). «Abierto» depende de que el programa de correo cargue
+   las imágenes: hay que leerlo como «probablemente lo abrió».
+
+**Vercel, variables (Settings → Environment Variables):**
+- `RESEND_WEBHOOK_SECRET` — **Production**: el `whsec_…` del webhook de
+  producción. **Preview** (rama `dev`): el del webhook de pruebas. Sin el prefijo
+  `NEXT_PUBLIC_`. Después, **Redeploy** de cada entorno (las variables nuevas no
+  llegan a un deploy ya hecho).
+
+**Cada base, la huella de su secreto** (el INSERT de arriba): en producción lo
+corre Nicolás; en pruebas, igual (el secreto no se pasa por el chat). Comprobar:
+Resend → el webhook → *Send test event* o el próximo correo: la ruta contesta
+200 y, para un correo de otra base, `{"resultado":"no es de esta base"}`.
+
+### Cupo de correos: el tope de producción
+
+Resend gratis: 100 correos por día, **de la cuenta** (pruebas y producción
+juntas), y los de Auth (confirmación de cuenta, «Olvidé mi contraseña») salen por
+el mismo SMTP sin pasar por `cola_correo` ni por el tope.
+
+- Pruebas: tope 10 (ronda 8).
+- El aviso de cupo a Vecitap: 1 (fuera de la cola).
+- Auth el día de los recibos con código: ING3 tiene ≈ 55 propietarios e
+  inquilinos con correo; si el primer día crea su cuenta uno de cada cuatro, son
+  ≈ 14 confirmaciones, más algunos «Olvidé mi contraseña» y reenvíos de
+  confirmación: **≈ 20**.
+- Margen para lo que no se cuenta (un reenvío de confirmación, un error): 4.
+
+100 − 10 − 1 − 20 − 4 = **65**. Con 65, los ≈ 85 correos del mes de ING3 salen 65
+el primer día y ≈ 20 al día siguiente (la pantalla lo dice). Si ese día no se
+prueba nada en pruebas, se puede bajar el de pruebas a 0 y subir producción a
+75.
+
+### Cómo crea hoy el operador una administradora
+
+**Desde la consola, no puede**: no hay pantalla. La función que lo hace bien es
+`crear_cliente()` (crea la organización con su tipo y tope de edificios, la
+suscripción en prueba y una invitación de `propietario_cuenta` para la dueña,
+sin hacer miembro al operador), y exige la sesión del operador: hoy solo se
+puede llamar con esa sesión desde un script, no desde el SQL Editor (ahí
+`auth.uid()` es null). La dueña acepta el código en `/mi/agregar` (sirve:
+`aceptar_invitacion()` acepta el rol `propietario_cuenta`), pero después la
+pantalla la manda a `/mi` y tiene que ir a mano a `/admin`.
+
+**Falta, para hacerlo de punta a punta:** (1) en la consola, «Nuevo cliente»
+(nombre, RIF, tipo, tope de edificios, correo de la dueña, contacto) que llame a
+`crear_cliente()` y muestre el código con «Copiar el mensaje»; (2) que aceptar una
+invitación de administración lleve a `/admin/<org>`. **Medio día**, con la prueba.
+No se construyó (pedido: consultar antes).
+
+### Validación (28-oct)
+
+Contra `next start` (build de producción, puerto 3123) conectado a
+vecitap-pruebas, con Playwright instalado con `--no-save` (`package.json` y
+`package-lock.json` con el mismo sha256 antes y después). Scripts:
+`scripts/validacion-ronda9.mjs` y `scripts/validacion-ronda9-sesion.mjs`;
+capturas en `scripts/capturas-ronda9/` (ignorada por Git). Cuentas
+`admin.prueba` (como `administrador`, no dueña), `residente.prueba` (propietario
+de 01A y 02A, inquilino con «solo el recibo» de 01D) y `operador.prueba`.
+Organización propia «ZZZ Validación Ronda 9» (ZZZ Torre A con 7 unidades en
+desorden; ZZZ Torre B con 4 y una cuota extraordinaria en 2), armada con SQL
+(con D1, una cuenta común ya no puede crearla), **borrada al terminar**. Ningún
+correo salió: el de A3 es una fila de la cola con un id de Resend inventado; los
+2 de «Reenviar recibo» quedaron esperando el cupo de pruebas y se borraron con la
+organización.
+
+| Bloque | Resultado | Lo que se vio |
+|---|---|---|
+| A1 | OK, **con un arreglo** | 01A (recibo $ 19, pagó $ 19): «Hoy · Está al día · no tiene que pagar» y «Después de este recibo, su administración confirmó pagos por $ 19,00. Hoy está al día: no tiene que pagar.» 02A (recibo $ 125, pagó $ 175): «Hoy · A favor $ 50,00», el total sigue en $ 125,00; Reportar un pago: «Hoy no tiene que pagar: tiene $ 50,00 a favor», sin monto exacto; el papel: «…no debe nada; tiene $ 50,00 a favor.» y sin «Datos para pagar». 01D (inquilino con «solo el recibo», recibo $ 25, el propietario pagó $ 10): «Si paga hoy Bs 13.321,78 · debe hoy $ 15,00» y monto exacto por $ 15,00, sin ver el saldo. **El arreglo:** al principio 01D seguía pidiendo $ 25 (RLS no le deja al inquilino leer los pagos de otro) → R9-7. Con los datos de Gustavo (por SQL, como su propietario): 02A saldo −50,0016, confirmados después $ 172,99 → «A favor $ 50,00»; 02C 0,0021 → «Al día» |
+| A2 | OK | Cerrando de verdad octubre en las dos torres, previa = recibo en las 11 unidades: 18,40 → 19 (fondo 0,60), 20,00 → 20 (sin línea), 20,01 → 25 (4,99), 122,99 → 125 (2,01), con saldo anterior, sin él (cargos de la unidad) y con «Ascensor (cuota 1 de 2)» en el mismo mes. Ajustes: «Sin redondeo» / «Redondear» |
+| A3 | OK | Firma falsa → 401. Correo de otra base → 200 «no es de esta base». «email.sent» → «ignorado». delivered → «Entregado»; opened → «Abierto»; un delivered tardío → «sin cambio» (sigue «Abierto»); bounced → «Rebotó» y la dirección en `correos_malos` («Resend: bounced»). Con un secreto descartable y una fila de la cola con un id de Resend inventado: ningún correo salió |
+| A4 | OK | Con los reenvíos esperando el cupo de pruebas: «Hoy salió 1 correo de este mes; 2 esperan el cupo … el último, mañana a las 12:00 a. m. No hace falta volver a enviar.» (los textos del plural y el punto se corrigieron en la validación) |
+| A5 | OK | «no se cargan: no tiene alícuota» y «Sin alícuota, esta fila no se carga. Si la tiene, escríbala arriba…»; no está «estacionamiento con alícuota 0» |
+| B1 | OK | Corregida la alícuota, aparece «Correcciones hechas» con «En el archivo: (vacío)»; se cambia otra vez (queda «2»); «Deshacer» vuelve al archivo y vuelve el aviso |
+| B2 | OK, **con un arreglo** | Tarjeta y resumen «Al día» en el gris de `--tenue` (rgb 100,116,139). El total del resumen seguía en el color de texto: arreglado |
+| B3 | OK | Cortes y Propietarios: 01A, 01B, 01D, 02A, 04A, 05C, 10A (cargadas en desorden). Total `white-space: nowrap`. «WhatsApp prop.» y «Correo prop.». «No se ha enviado. Va a: delivered+r9-01b@… delivered+r9-01b-respaldo@… (respaldo)» |
+| B4 | OK | «Recibo de 01B reenviado: 2 correos en la cola.»; después de bajar la página, el segundo toque deja «Ese recibo ya se reenvió hace un momento.» a la vista (y=124 de 900) |
+| C3 | OK | Administradora: usados 0, en cola 2 (los suyos), libre 0; operador: usados 10, en cola 16 |
+| D1 | OK | Cuenta común → «Solo Vecitap crea administradoras…»; el operador crea una; /admin sin administradora: «Esta cuenta no administra ningún edificio. Para usar Vecitap como administradora, hay que escribirle a Vecitap.» sin formulario |
+| D2 | OK | anon → «permission denied for function saldo_unidad»; propietario y administración sí; inquilino con «solo el recibo» y administradora de otra org → «Sin acceso a esa unidad»; operador sí; `saldos_actuales` 11 unidades; `mis_unidades()` igual (01D sin saldo) |
+| D3 | OK | Ver R9-6 (0 objetos; rollback probado; una tabla nueva ya no trae TRUNCATE para anon) |
+| D4 | OK | Membresías activas → true; con solo una membresía de administrador inactiva → false (antes, true). En una transacción deshecha |
+| D5 | OK | La dueña: `creada_en` → «Ese dato de la administradora no se puede cambiar.»; `plan` → «El tipo de cuenta, el tope de edificios y el plan los fija Vecitap…»; nombre → 1 fila. Deshecho |
+| D6 | OK | Una `administrador` en Accesos → «Quién tiene acceso» → «Dar de baja» en 01D: «Esa persona ya no entra a la unidad.» y `activo` false. A un administrador → «Desde aquí solo se da de baja…»; de otra org → «Sin permiso» |
+| D7 | OK | Con una fila pendiente sin respuesta, «Traer ahora» del operador: «la API no respondió a tiempo» (sin «DELETE requires a WHERE clause») y la fila se borró; una administradora → «Solo el operador…» |
+| R7 / R8 | OK | El correo del recibo trae los datos para pagar (la cuenta) sin Bs. «Cobrar solo en dólares»: portal sin Bs y «Debe hoy $ 15,00»; papel y correo sin bolívares. Extracto con un pago → «Conciliar 1 pago» → conciliado; el mismo archivo otra vez se vuelve a leer (también en «Cargar saldos»). Pago agrupado $ 5 + $ 7 contra un movimiento de $ 12 → los dos conciliados |
+| Teléfono | OK | Portal a 390 × 844 (Mi recibo, Reportar un pago): nada se sale |
+| Sesión (recetario 28-sep) | SESION_PENDIENTE | |
+
+**Arreglos hechos durante la validación:** (1) R9-7, `pagos_desde_cierre()`, para el
+inquilino con «solo el recibo»; (2) el total del resumen del portal en gris; (3) el
+texto del aviso de A4 (plural y punto doble). **Corrida dos veces:** la primera
+tanda de las pruebas de sesión la cortó Claude Code por falta de memoria en la
+máquina, antes del primer vencimiento; se volvió a correr entera.
+
+### Riesgos para los primeros recibos
+
+1. **Producción no tiene 32 migraciones** (25 del Paso 8 y 7 del 8b). Respaldo
+   antes, en orden, y leer la verificación de cada una.
+2. **Sin `RESEND_WEBHOOK_SECRET` y la huella en la base, no hay «Entregado» ni
+   «Rebotó»**: la ruta contesta 500 y Resend reintenta. Configurarlo antes del
+   primer envío.
+3. **El cupo**: con el tope en 65, ING3 sale en dos días. Un mensaje masivo el
+   mismo día lo estira más.
+4. **El redondeo cambia de regla**: una organización que hoy no redondea sigue
+   igual; si alguien elige «Redondear», el recibo de $ 20,01 pasa a $ 25.
+
+### Título del commit
+
+`Ronda 9 del tramo 2: lo que se debe hoy en el portal, redondeo de Gustavo, avisos de Resend y seguridad del 28-oct`
+
+«Si paga hoy» y el portal cuentan los pagos confirmados después del recibo; redondeo de Gustavo, avisos de Resend, cupo por organización y los permisos de la verificación del 28-oct, con 7 migraciones probadas en vecitap-pruebas.
+
+---
+
 ## Ronda 8 del tramo 2 (27-oct) — arreglos de las rondas 6 y 7 antes del piloto de GRUPO ING3
 
 Pedido de Nicolás del 27-oct (bloques A a I), con los resultados de Gustavo de la
@@ -956,9 +1204,6 @@ repo (ninguna entra al repo):
      hay que mantenerlo así hasta que termine ese mes.
 - **Después del piloto** (anotado el 26-oct, pedidos de Gustavo; nada de esto
   está en un plan todavía):
-  - textos cortos en la previa de «Cargar datos», con «ver más» para el
-    detalle;
-  - corregir en la previa los campos en ámbar sin volver a subir el archivo;
   - actualizar la app instalada sin cerrarla: deslizar hacia abajo, al volver
     a la app, y un botón «Actualizar»;
   - una planilla de prueba con varios inquilinos y correos mezclados;
@@ -5448,7 +5693,7 @@ Barrido de solo lectura sobre **72 commits** (`--all`: `integration`, `main`,
 
 | Qué | Dónde | Commits | Acción |
 |---|---|---|---|
-| Claves de las 3 cuentas de prueba: `admin.prueba` y `operador.prueba` = `temporal.1234`; `residente.prueba` = `12345678` | `scripts/validacion-bloque0.mjs:29-31` | Introducidas en **`e0f3dd0`** (27-sep, "Destino por rol, validación automatizada Bloque 0") y presentes en los 9 commits siguientes hasta `135e13c` | **Rotar las 3 claves** en Supabase Auth. Están en `origin/integration`, o sea **publicadas en GitHub desde el 27-sep** |
+| Claves de las 3 cuentas de prueba (`admin.prueba`, `residente.prueba`, `operador.prueba`) | `scripts/validacion-bloque0.mjs:29-31` | Introducidas en **`e0f3dd0`** (27-sep, "Destino por rol, validación automatizada Bloque 0") y presentes en los 9 commits siguientes hasta `135e13c` | **Rotadas el 28-oct.** Las claves viejas quedan en el historial público y ya no sirven; las nuevas están solo en `.env.local` |
 
 Siguen en el historial aunque el punto 1 las haya sacado del código actual:
 borrarlas de un archivo no las borra del pasado. Como no se reescribe el

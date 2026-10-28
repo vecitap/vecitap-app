@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Accesos, type CorreosFicha } from "@/components/admin/Accesos";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { usuarioActual } from "@/lib/supabase/cache";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 /**
  * Portado de Accesos() en admin.html:3899-4252. Server Component: carga lo
@@ -63,7 +64,7 @@ export default async function PaginaAccesos({
       edificioId={edificioId}
       nombreEdificio={nombreEdificio}
       edificios={edificios ?? []}
-      unidades={(unidades ?? []).map(({ id, codigo }) => ({ id, codigo }))}
+      unidades={ordenarPorCodigo(unidades ?? [], (u) => u.codigo).map(({ id, codigo }) => ({ id, codigo }))}
       hayGarita={hayGarita}
       usuarioId={user.id}
       correosFicha={correosFicha}

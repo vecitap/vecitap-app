@@ -9,6 +9,7 @@ import { crearClienteServidor } from "@/lib/supabase/server";
 import { tasaDelDia } from "@/lib/tasa";
 import { esUuid } from "@/lib/validacion";
 import { ajustesCobroDe } from "@/lib/cobro";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 const noEncontrado = () => new NextResponse("No encontrado", { status: 404 });
 
@@ -73,8 +74,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   ]);
   if (!org || !edificio || !periodo || periodo.estado !== "cerrado") return noEncontrado();
 
-  const lista: Unidad[] = unidades ?? [];
-  // Mismo orden que el listado: por código de unidad.
+  // Mismo orden que el listado: natural por código de unidad (ronda 9, B3).
+  const lista: Unidad[] = ordenarPorCodigo(unidades ?? [], (u) => u.codigo);
   const orden = new Map(lista.map((u, i) => [u.id, i]));
   const filas: ReciboAdmin[] = (recibos ?? []).slice().sort((a, b) => (orden.get(a.unidad_id) ?? 0) - (orden.get(b.unidad_id) ?? 0));
   if (!filas.length) return NextResponse.redirect(new URL(volver, req.url));

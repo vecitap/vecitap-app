@@ -153,8 +153,9 @@ async function chequear(
  *    de la ronda 2, 08-oct): una página que no redirige a ningún lado y
  *    ofrece "Ir a mi inicio" (/destino) y "Salir". No va a `/` (la portada
  *    de venta, prueba 7 del tramo 1) ni salta solo a /destino: /destino y
- *    estas ramas deciden con criterios distintos (administra_algo() no
- *    filtra `activo`, tiene_rol() sí), y un salto automático podría
+ *    estas ramas deciden con criterios distintos (por rol y por
+ *    organización; hasta la ronda 9 administra_algo() además no filtraba
+ *    `activo`), y un salto automático podría
  *    terminar en un bucle. Ver app/sin-acceso/page.tsx.
  *
  * Sin distinción por sección todavía (Session 1 del inventario de Admin):

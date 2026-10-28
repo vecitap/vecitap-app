@@ -9,6 +9,7 @@ import { urlParaCompartir } from "@/lib/url-sitio";
 import type { InvitacionAdmin, ResidenteAcceso, VigilanteAcceso } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
 import { otraCuentaEnNavegador } from "@/lib/cuenta-navegador";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 /** Correos de la ficha de cada unidad (vínculos vigentes), por relación. */
 export type CorreosFicha = Record<string, { propietario?: string; inquilino?: string }>;
@@ -96,7 +97,7 @@ export function Accesos({
     setInvs(a.data ?? []);
     const b = await supabase.rpc("residentes_de", { p_edificio: edificioId });
     if (b.error) return fallo(b.error);
-    setGente(b.data ?? []);
+    setGente(ordenarPorCodigo(b.data ?? [], (g) => g.unidad));
   }
 
   // Mismo dato que cargar() (más abajo, reusado después de cada
@@ -113,7 +114,7 @@ export function Accesos({
     });
     supabase.rpc("residentes_de", { p_edificio: edificioId }).then(({ data, error }) => {
       if (error) return fallo(error);
-      setGente(data ?? []);
+      setGente(ordenarPorCodigo(data ?? [], (g) => g.unidad));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, edificioId]);
@@ -230,7 +231,10 @@ export function Accesos({
   async function darDeBaja(id: string) {
     if (await otraCuentaEnNavegador(usuarioId)) return;
     const supabase = crearClienteNavegador();
-    const { error } = await supabase.from("membresias").update({ activo: false }).eq("id", id);
+    // Ronda 9 (D6, caso 103): por la base, no con un UPDATE directo. La
+    // política de membresias solo deja escribir a la dueña de la cuenta: una
+    // `administrador` tocaba el botón, se actualizaban 0 filas y no salía nada.
+    const { error } = await supabase.rpc("dar_de_baja_acceso", { p_membresia: id });
     if (error) return fallo(error);
     notificar("Esa persona ya no entra a la unidad.");
     cargar();

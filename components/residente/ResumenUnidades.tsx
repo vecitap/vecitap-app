@@ -66,7 +66,8 @@ function Bloque({
             </h2>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 12, color: "var(--tenue)" }}>{totalDeuda > 0 ? "Total que debe" : "Total"}</div>
-              <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: totalDeuda > 0 ? "var(--rojo)" : "var(--tinta)" }}>
+              {/* Ronda 9 (B2): sin deuda, «Al día» en gris, como en la tarjeta. */}
+              <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: totalDeuda > 0 ? "var(--rojo)" : "var(--tenue)" }}>
                 {totalDeuda > 0 ? usd(totalDeuda) : "Al día"}
               </div>
             </div>
@@ -125,7 +126,8 @@ function Fila({ linea, conMonto = false, sinEdificio = false }: { linea: LineaRe
     mono = true;
   } else {
     texto = "Al día";
-    color = "var(--tinta)";
+    // Ronda 9 (B2): «Al día» en gris, como en la tarjeta de la unidad.
+    color = "var(--tenue)";
   }
 
   return (

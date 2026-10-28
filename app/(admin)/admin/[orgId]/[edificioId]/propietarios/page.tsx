@@ -2,6 +2,7 @@ import { Propietarios } from "@/components/admin/Propietarios";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import type { SaldoActual, UnidadConPaga } from "@/lib/admin/tipos";
 import { calcularMetricasInicio } from "@/lib/admin/metricas";
+import { ordenarPorCodigo } from "@/lib/orden-unidades";
 
 /** Portado de Propietarios() en app.html:1449-1566 (Server Component: solo carga datos). */
 export default async function PaginaPropietarios({
@@ -28,8 +29,9 @@ export default async function PaginaPropietarios({
   ]);
   if (e1 || e2) throw e1 || e2;
 
-  const unidadesFilas: UnidadConPaga[] = unidades ?? [];
-  const saldosFilas: SaldoActual[] = saldos ?? [];
+  // Ronda 9 (B3): orden natural por código en todas las listas.
+  const unidadesFilas: UnidadConPaga[] = ordenarPorCodigo(unidades ?? [], (u) => u.codigo);
+  const saldosFilas: SaldoActual[] = ordenarPorCodigo(saldos ?? [], (s) => s.codigo);
   const { sumaAlicuotas } = calcularMetricasInicio(unidadesFilas, saldosFilas);
 
   return (
