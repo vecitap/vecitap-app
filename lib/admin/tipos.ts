@@ -145,6 +145,7 @@ export type ReciboAdmin = Pick<
   | "anterior_serv"
   | "total"
   | "conceptos"
+  | "cargos"
   | "detalle"
   | "tasa_bcv"
   | "vence_el"

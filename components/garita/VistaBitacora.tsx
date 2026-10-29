@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Aviso } from "@/components/ui";
 import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
-import { horaCorta, hoyLocalISO } from "@/lib/formato";
+import { formatoHora, hoyLocalISO } from "@/lib/formato";
 import type { NotaBitacora } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { mensajeDeError } from "@/lib/errores";
@@ -158,7 +158,7 @@ export function VistaBitacora({ edificioId }: { edificioId: string }) {
                     {ETIQUETA_TIPO[b.tipo] || b.tipo} · {b.vigilante}
                   </div>
                 </div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 19 }}>{horaCorta(b.creado_en)}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 19 }}>{formatoHora(b.creado_en)}</div>
               </div>
             ))
           ) : (

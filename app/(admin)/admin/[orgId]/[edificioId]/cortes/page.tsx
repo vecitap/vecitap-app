@@ -23,7 +23,7 @@ export default async function PaginaCortes({
   const { periodo: periodoInicial } = await searchParams;
   const supabase = await crearClienteServidor();
 
-  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: unidades, error: eU }, { data: periodos, error: eP }, { data: cuentas }, cobro] =
+  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: unidades, error: eU }, { data: periodos, error: eP }, { data: cuentas }, cobro, { data: saldos }] =
     await Promise.all([
       supabase.from("organizaciones").select("nombre,logo_url").eq("id", orgId).single(),
       supabase.from("edificios").select("nombre,rif").eq("id", edificioId).single(),
@@ -43,6 +43,8 @@ export default async function PaginaCortes({
       // Ronda 7: los datos para pagar, para la vista previa del recibo.
       supabase.from("datos_pago").select("id,destino,tipo,banco,titular,documento,cuenta,nota,orden").eq("edificio_id", edificioId).order("orden"),
       ajustesCobroDe(orgId),
+      // Ronda 10 (B3): lo que debe hoy cada unidad, para el papel del último mes.
+      supabase.from("saldos_actuales").select("unidad_id,administracion,total").eq("edificio_id", edificioId),
     ]);
 
   if (eO || eE) notFound();
@@ -64,6 +66,7 @@ export default async function PaginaCortes({
       tasa={tasa}
       cuentas={cuentas ?? []}
       soloUsd={cobro.soloUsd}
+      saldosHoy={saldos ?? []}
       periodoInicial={typeof periodoInicial === "string" ? periodoInicial : undefined}
     />
   );

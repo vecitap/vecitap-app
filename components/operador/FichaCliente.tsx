@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, Campo, Card, EstadoGuardado, Input, Select, Table, Textarea } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
-import { hoyLocalISO, montoAlSalir, nf, num0, paraCampo, usd, usd0 } from "@/lib/formato";
+import { hoyLocalISO, montoAlSalir, nf, num0, paraCampo, usd, usd0, formatoFecha } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularCuotaPrevista, PLANES, DESCUENTO } from "@/lib/operador/planes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -379,8 +379,8 @@ export function FichaCliente({
               <tbody>
                 {cobros.map((x) => (
                   <tr key={x.id}>
-                    <td className="mono">{x.desde}</td>
-                    <td className="mono">{x.hasta}</td>
+                    <td className="mono">{formatoFecha(x.desde)}</td>
+                    <td className="mono">{formatoFecha(x.hasta)}</td>
                     <td className="mono" style={{ textAlign: "right" }}>
                       {x.unidades ?? "—"}
                     </td>

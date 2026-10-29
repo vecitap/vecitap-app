@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Aviso, Badge, Button, Campo, Input, Select, type TonoBadge } from "@/components/ui";
 import { correoValido } from "@/lib/admin/personas";
 import { crearClienteNavegador } from "@/lib/supabase/client";
-import { fechaCorta } from "@/lib/formato";
+import { formatoFecha } from "@/lib/formato";
 import { urlParaCompartir } from "@/lib/url-sitio";
 import type { InvitacionAdmin, ResidenteAcceso, VigilanteAcceso } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
@@ -431,7 +431,7 @@ export function Accesos({
                     <td className="mono">{i.unidad || "—"}</td>
                     <td>{i.relacion || "—"}</td>
                     <td className="mono" style={{ fontSize: 12 }}>
-                      {String(i.creada_en).slice(0, 10)}
+                      {formatoFecha(i.creada_en)}
                     </td>
                     <td>
                       <Badge tono={TONO_ESTADO[i.estado] ?? "ambar"}>{i.estado}</Badge>
@@ -648,7 +648,7 @@ export function Accesos({
                         </td>
                         <td data-t="Última vez">
                           {v.ultima_anotacion ? (
-                            fechaCorta(v.ultima_anotacion)
+                            formatoFecha(v.ultima_anotacion)
                           ) : (
                             <span style={{ color: "var(--tenue)" }}>nunca</span>
                           )}

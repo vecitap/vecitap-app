@@ -46,6 +46,7 @@ scripts/capturas-bloque0/
 scripts/capturas-ronda7/
 scripts/capturas-ronda8/
 scripts/capturas-ronda9/
+scripts/capturas-ronda10/
 
 # typescript
 *.tsbuildinfo

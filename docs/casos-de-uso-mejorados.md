@@ -2469,3 +2469,70 @@ crea administradoras**.
   último suyo y el cupo que le queda hoy. El operador sigue viendo todo. Cuando un envío se
   reparte, Cortes dice «Hoy salieron N correos de este mes; M esperan el cupo» y cuándo sale
   el último; el aviso a Vecitap sale una vez por día de Venezuela.
+
+## Ronda 10 del tramo 2 (29-oct)
+
+Lo que pidió Gustavo para antes del primer envío de recibos de GRUPO ING3.
+
+### 107. Escribirle a Vecitap: WhatsApp primero, correo después
+
+- **Antes (ronda 9):** una cuenta sin administradora leía «hay que escribirle a Vecitap»,
+  sin decir cómo.
+- **Ahora (decisión de Gustavo):** un botón «Escribir por WhatsApp» que abre la
+  conversación con +58 412-234-8595 con el mensaje ya escrito («Hola, quiero usar Vecitap
+  para mi administradora»), el número a la vista, y debajo el correo info@vecitap.com.
+  El número y el correo están en un solo lugar del código.
+
+### 108. Volver a enviar un mes, y los correos que no llegaron
+
+- **Antes:** «Enviar por correo» en un mes ya enviado volvía a meter correos en la cola
+  sin avisar (le pasó a Gustavo con abril). Cortes decía «86 enviados, 94 en cola, 4
+  fallidos, 1 rebotado» sin decir cuáles.
+- **Ahora:** si el mes ya se envió (o tiene correos en la cola), antes de encolar:
+  «Este mes ya se envió el 28/10/2026, 4:40 p. m.; volver a enviar manda N correos más.
+  ¿Seguro?», con N contado por la base, y si hay correos esperando el cupo, que no hace
+  falta volver a enviarlos. Si N es 0, no se manda nada. Cortes muestra «Este mes: N
+  enviados · M en cola · X no salieron · Y rebotaron · Z unidades sin correo» y «Ver
+  cuáles» abre la lista: unidad, correo, qué pasó en palabras («Dirección inválida:
+  Resend no la aceptó», «Rebotó: la dirección no existe o no recibe correos», «Sin correo: nadie de la
+  unidad tiene correo cargado con «recibe corte»»…), «Corregir en la ficha» y «Reenviar recibo».
+  «Reenviar recibo» no duplica un correo que todavía espera en la cola: avisa «Ese recibo ya
+  está en la cola, esperando para salir: no hace falta reenviarlo.»
+
+### 109. El recibo impreso cuando hoy no se debe nada, y «Total del recibo»
+
+- **Antes:** el recibo impreso decía arriba, grande, «Total a pagar $ 125,00» aunque la
+  unidad ya hubiera pagado (el portal ya decía «Hoy · A favor $ 50,00»).
+- **Ahora:** si hoy no debe nada, el impreso y el PDF (desde el portal y desde Cortes)
+  dicen arriba, con el mismo peso que tenía el total, «Hoy · Está al día» o «Hoy · A
+  favor $ 50,00 · no tiene que pagar», y al lado «Total del recibo $ 125,00 · ya está
+  pagado». El total se llama «Total del recibo», no «Total a pagar», en el papel y en el
+  portal. Desde Cortes, solo el último mes cerrado lleva lo de hoy: un mes viejo se
+  imprime como se emitió.
+
+### 110. Fechas en un solo formato, en hora de Venezuela
+
+- **Antes:** según la pantalla, «2026-10-28 16:40», «28 oct», «28/10/26»; algunos avisos
+  de la base salían en hora UTC (el aviso de visita de la garita, después de las 8 p. m.,
+  decía el día siguiente).
+- **Ahora:** «28/10/2026, 4:40 p. m.» y, solo fecha, «28/10/2026», siempre en hora de
+  Venezuela, en toda la app, los papeles y lo que escribe la base (aviso de cupo, aviso
+  de visita, error al reabrir un mes).
+
+### 111. Cargo a una sola unidad, en Cobros
+
+- **Antes:** Cobros solo cobraba a todas las unidades. Lo único parecido era el gasto
+  «Solo a una unidad» de Gastos del mes, que es un gasto: una multa cargada así salía
+  como egreso del edificio en el estado financiero, y en el recibo se leía «Cargos de su
+  unidad», sin el motivo.
+- **Ahora (pedido de Gustavo):** Cobros → «Cargo a una sola unidad»: unidad, motivo,
+  referencia y monto, en el recibo del mes abierto. Sale en el recibo, el portal, el
+  impreso y el PDF como una línea propia con su motivo («Multa por ruido · Acta del
+  12/10»). Va al bolsillo de condominio: si no se paga, cuenta para la mora igual que la
+  cuota. Se corrige o se quita mientras el mes esté abierto; al cerrarlo queda en el
+  recibo y la base no deja tocarlo. Entra en la previa y en el cierre con el mismo
+  cálculo, junto con las cuotas extraordinarias y el redondeo.
+- **En el estado financiero:** una multa o un consumo **no es egreso**; lo que paga la
+  unidad entra como ingreso. Una reparación que pagó el edificio se marca «El edificio
+  pagó esto»: sale como egreso (lo que se le pagó al plomero) y lo que paga la unidad,
+  como ingreso; el edificio queda en cero.

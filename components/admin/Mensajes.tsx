@@ -7,6 +7,7 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 import { mensajeDeError } from "@/lib/errores";
 import { cuandoSale, esperaCupo } from "@/lib/cupo-correo";
 import { ordenarPorCodigo } from "@/lib/orden-unidades";
+import { formatoFechaHora } from "@/lib/formato";
 
 export type FiltroMensaje = "todos" | "propietarios" | "inquilinos" | "deudores";
 
@@ -306,7 +307,7 @@ export function Mensajes({ edificioId, historial }: { edificioId: string; histor
                 >
                   {m.asunto}
                 </button>
-                <span style={{ fontSize: 12, color: "var(--tenue)" }}>{new Date(m.creado_en).toLocaleString("es-VE", { timeZone: "America/Caracas", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                <span style={{ fontSize: 12, color: "var(--tenue)" }}>{formatoFechaHora(m.creado_en)}</span>
               </div>
               <div style={{ fontSize: 12.5, color: "var(--tinta-2)", marginTop: 3, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {FILTROS[m.destinatarios as FiltroMensaje] ?? m.destinatarios}

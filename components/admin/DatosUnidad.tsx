@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Confirmar, EstadoGuardado, Input, Select, Textarea } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
-import { fechaCorta, hoyLocalISO, montoAlSalir, num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
+import { formatoFecha, hoyLocalISO, montoAlSalir, num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
 import { TRATAMIENTOS, correoValido, etiquetaTratamiento, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
@@ -502,8 +502,8 @@ export function DatosUnidad({
             texto={[
               `El correo ${f.correo.trim()} no es el de ${quien} (${actual.personas?.correo}).`,
               tipo === "inquilino"
-                ? `Si sigue, ${quien} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${fechaCorta(hoyLocalISO())}, igual que con «El inquilino ya no ocupa la unidad»: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes dejan de servir.`
-                : `Si sigue, ${quien} deja de figurar como propietario de ${unidad.codigo} desde hoy, ${fechaCorta(hoyLocalISO())}: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes para esta unidad dejan de servir. Si es propietario de otras unidades, esas no se tocan. Lo que se debía hasta hoy sigue en la cuenta de la unidad.`,
+                ? `Si sigue, ${quien} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${formatoFecha(hoyLocalISO())}, igual que con «El inquilino ya no ocupa la unidad»: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes dejan de servir.`
+                : `Si sigue, ${quien} deja de figurar como propietario de ${unidad.codigo} desde hoy, ${formatoFecha(hoyLocalISO())}: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes para esta unidad dejan de servir. Si es propietario de otras unidades, esas no se tocan. Lo que se debía hasta hoy sigue en la cuenta de la unidad.`,
               `Y se registra como ${tipo} nuevo a ${[f.prefijo, f.nombre.trim()].filter(Boolean).join(" ")}, con ese correo.`,
               tipo === "inquilino" && pagaDe(unidad.paga) === "inquilino" ? "La unidad sigue en «paga el inquilino»." : "",
               "Si es la misma persona y solo estaba mal el correo, use «Es el mismo, corregir el correo»: no se le quita el acceso.",
@@ -522,7 +522,7 @@ export function DatosUnidad({
         <Confirmar
           titulo="¿El inquilino ya no ocupa la unidad?"
           texto={[
-            `${nombreDe(inq) || "El inquilino"} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${fechaCorta(hoyLocalISO())}. Sus datos y su historia se conservan.`,
+            `${nombreDe(inq) || "El inquilino"} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${formatoFecha(hoyLocalISO())}. Sus datos y su historia se conservan.`,
             pagaVuelve ? "La unidad vuelve a «paga el propietario»." : "",
             otrosInquilinos === 0
               ? "Si tiene cuenta en la app, se le quita el acceso a esta unidad; su usuario sigue activo para otros edificios."

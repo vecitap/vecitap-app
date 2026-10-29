@@ -6,13 +6,14 @@ import Link from "next/link";
 import { Check, Download, Eye, Mail, MessageCircle, Printer, RotateCw, Send, Undo2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Card, Cargando, Confirmar, Input, Select, Textarea, Vacio, type TonoBadge } from "@/components/ui";
 import { cuandoSale, esperaCupo, type CupoCorreo } from "@/lib/cupo-correo";
-import { bs, nf, usd } from "@/lib/formato";
+import { bs, nf, usd, formatoFechaHora, formatoFecha, hoyLocalISO } from "@/lib/formato";
 import { PLANTILLA_WHATSAPP } from "@/lib/admin/constantes";
 import { usePreferenciaLocal } from "@/lib/preferencia-local";
 import { nombreDe, normalizarTel, vigente } from "@/lib/admin/personas";
 import { csvDeCortes, descargarCSV, listadoDeCortesEnPapel } from "@/lib/admin/papel-cortes";
 import { imprimirDocumento } from "@/lib/recibo-papel";
-import { reciboAdminEnPapel } from "@/lib/admin/papel-recibos";
+import { reciboAdminEnPapel, type SaldoHoy } from "@/lib/admin/papel-recibos";
+import { EnvioDelMes, type EstadoEnvio } from "@/components/admin/EnvioDelMes";
 import type { CuentaPago } from "@/lib/datos-pago";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { PeriodoAdmin, ReciboAdmin, TasaViva, Unidad, Vinculo } from "@/lib/admin/tipos";
@@ -111,6 +112,7 @@ export function Cortes({
   tasa,
   cuentas,
   soloUsd,
+  saldosHoy,
   periodoInicial,
 }: {
   orgId: string;
@@ -124,6 +126,8 @@ export function Cortes({
   cuentas: CuentaPago[];
   /** La organización cobra solo en dólares (ronda 7, bloque 4). */
   soloUsd: boolean;
+  /** Ronda 10 (B3): lo que debe hoy cada unidad, para el papel del último mes cerrado. */
+  saldosHoy: SaldoHoy[];
   /** `?periodo=` de la dirección: el mes que estaba elegido antes de imprimir. */
   periodoInicial?: string;
 }) {
@@ -150,7 +154,11 @@ export function Cortes({
   const [destinoPrueba, setDestinoPrueba] = useState("");
   const [envio, setEnvio] = useState<ResumenCorreos | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [confirmaEnvio, setConfirmaEnvio] = useState(false);
+  // Ronda 10 (B1): la confirmación de «Enviar por correo» sabe si el mes ya se
+  // envió y cuántos correos nuevos saldrían de verdad.
+  const [confirmaEnvio, setConfirmaEnvio] = useState<EstadoEnvio | null>(null);
+  // Ronda 10 (B2): el envío de ESTE mes, con los que fallaron y por qué.
+  const [estadoMes, setEstadoMes] = useState<{ periodoId: string; e: EstadoEnvio } | null>(null);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
   // Ronda 8: el estado del correo de cada recibo, el cupo del día y el reenvío.
   const [estados, setEstados] = useState<{ periodoId: string; filas: EstadoCorreo[] } | null>(null);
@@ -178,7 +186,7 @@ export function Cortes({
     supabase
       .from("recibos")
       .select(
-        "id,unidad_id,numero,cuota,directos,anterior,a_favor,mora,honorario,servicio,anterior_hon,anterior_serv,total,conceptos,detalle,tasa_bcv,vence_el,alicuota"
+        "id,unidad_id,numero,cuota,directos,anterior,a_favor,mora,honorario,servicio,anterior_hon,anterior_serv,total,conceptos,cargos,detalle,tasa_bcv,vence_el,alicuota"
       )
       .eq("periodo_id", periodoId)
       .then(({ data, error }) => {
@@ -233,9 +241,23 @@ export function Cortes({
   async function cargarEstados() {
     if (!periodoId) return;
     const supabase = crearClienteNavegador();
-    const [e, q] = await Promise.all([supabase.rpc("estado_correos_periodo", { p_periodo: periodoId }), supabase.rpc("cupo_correo")]);
+    const [e, q, m] = await Promise.all([
+      supabase.rpc("estado_correos_periodo", { p_periodo: periodoId }),
+      supabase.rpc("cupo_correo"),
+      supabase.rpc("estado_envio_periodo", { p_periodo: periodoId }),
+    ]);
     if (!e.error) setEstados({ periodoId, filas: (e.data ?? []) as EstadoCorreo[] });
     if (!q.error) setCupo(q.data as unknown as CupoCorreo);
+    if (!m.error) setEstadoMes({ periodoId, e: m.data as unknown as EstadoEnvio });
+  }
+
+  /** Ronda 10 (B1): antes de encolar, cómo está el envío de este mes. */
+  async function pedirEnvio() {
+    if (!periodoId) return;
+    const supabase = crearClienteNavegador();
+    const { data, error } = await supabase.rpc("estado_envio_periodo", { p_periodo: periodoId });
+    if (error) return fallo(error);
+    setConfirmaEnvio(data as unknown as EstadoEnvio);
   }
 
   // Al cambiar de mes, y cada minuto mientras haya correos saliendo.
@@ -342,10 +364,11 @@ export function Cortes({
       notificar(`Se encolaron ${x?.encolados ?? 0} correos, pero el envío falló: ${errorDespacho}`, "error");
     } else {
       notificar(
-        `${x?.encolados ?? 0} correos encolados` +
-          (x?.sin_correo ? ` · ${x.sin_correo} unidades sin correo` : "") +
+        // Ronda 10: singular y plural («1 unidad sin correo», no «1 unidades»).
+        (x?.encolados === 1 ? "1 correo encolado" : `${x?.encolados ?? 0} correos encolados`) +
+          (x?.sin_correo ? ` · ${x.sin_correo === 1 ? "1 unidad" : `${x.sin_correo} unidades`} sin correo` : "") +
           (x?.rebotados ? ` · ${x.rebotados} con dirección rebotada` : "") +
-          (x?.ya_estaban ? ` · ${x.ya_estaban} ya se habían enviado` : "")
+          (x?.ya_estaban ? ` · ${x.ya_estaban === 1 ? "1 ya se había enviado" : `${x.ya_estaban} ya se habían enviado`}` : "")
       );
     }
     cargarEnvio();
@@ -416,7 +439,19 @@ export function Cortes({
       .replace(/{tasa}/g, periodo?.tasa_bcv ? nf(2).format(periodo.tasa_bcv) : "—");
   }
 
-  const datosPapel = { edificio, organizacion, unidades, etiqueta: periodo?.etiqueta, tasa, cuentas, soloUsd };
+  // Ronda 10 (B3): solo el último mes cerrado lleva lo de hoy (`cerrados`
+  // viene del más nuevo al más viejo); los anteriores, como se emitieron.
+  const esElUltimo = periodoId !== "" && periodoId === cerrados[0]?.id;
+  const datosPapel = {
+    edificio,
+    organizacion,
+    unidades,
+    etiqueta: periodo?.etiqueta,
+    tasa,
+    cuentas,
+    soloUsd,
+    ...(esElUltimo ? { saldosHoy, fechaHoy: formatoFecha(hoyLocalISO()) } : {}),
+  };
   const armar = (r: ReciboAdmin) => reciboAdminEnPapel(r, datosPapel);
   /* Imprimir va por una dirección propia bajo /admin, en la misma pestaña y
      con «Volver» (ronda 4, caso 53). Antes, una ventana en blanco. La ruta
@@ -511,7 +546,7 @@ export function Cortes({
             >
               <Mail size={15} /> Probar el correo
             </Button>
-            <Button type="button" mini cargando={enviando} disabled={!recibos.length} onClick={() => setConfirmaEnvio(true)}>
+            <Button type="button" mini cargando={enviando} disabled={!recibos.length} onClick={pedirEnvio}>
               <Send size={15} /> Enviar por correo
             </Button>
             {periodo &&
@@ -527,64 +562,41 @@ export function Cortes({
           </div>
         </div>
 
-        {envio && (envio.pendientes > 0 || envio.enviados > 0 || envio.fallidos > 0) && (
-          <div
-            style={{
-              display: "flex",
-              gap: 16,
-              flexWrap: "wrap",
-              alignItems: "center",
-              marginTop: 14,
-              padding: "12px 14px",
-              background: "var(--fondo)",
-              borderRadius: "var(--radio-chico)",
-              border: "1px solid var(--linea)",
-              fontSize: 13,
+        {estadoMes?.periodoId === periodoId && (
+          <EnvioDelMes
+            estado={estadoMes.e}
+            orgId={orgId}
+            edificioId={edificioId}
+            reenviando={reenviando}
+            onReenviar={(reciboId, codigo) => {
+              const r = recibos.find((x) => x.id === reciboId);
+              if (r) reenviar(r, codigo);
             }}
-          >
-            <span>
-              <b className="mono">{envio.enviados}</b> enviados
-            </span>
-            {envio.pendientes > 0 && (
-              <span style={{ color: "var(--ambar)" }}>
-                <b className="mono">{envio.pendientes}</b> en cola
-              </span>
-            )}
-            {envio.fallidos > 0 && (
-              <span style={{ color: "var(--rojo)" }}>
-                <b className="mono">{envio.fallidos}</b> fallidos
-              </span>
-            )}
-            {envio.malos > 0 && (
-              <span style={{ color: "var(--tenue)" }}>
-                <b className="mono">{envio.malos}</b> direcciones que rebotaron
-              </span>
-            )}
-            {envio.ultimo_envio && (
-              <span style={{ color: "var(--tenue)" }}>
-                último {String(envio.ultimo_envio).slice(0, 16).replace("T", " ")}
-              </span>
-            )}
-            <Button
-              type="button"
-              variante="secundario"
-              mini
-              title={
-                "Los correos no salen en el instante: quedan en una cola y una tarea automática los " +
-                "manda cada 5 minutos. Este botón los manda ya, sin esperar esa tarea. Sirve para " +
-                "comprobar de una vez que están saliendo."
-              }
-              onClick={async () => {
-                const supabase = crearClienteNavegador();
-                const d = await supabase.rpc("despachar_ahora");
-                if (d.error) return fallo(d.error);
-                notificar("Se mandaron los correos que estaban en cola.");
-                cargarEnvio();
-              }}
-            >
-              Enviar ahora los pendientes
-            </Button>
-          </div>
+            pie={
+              <>
+                {envio?.ultimo_envio && <span style={{ color: "var(--tenue)" }}>último {formatoFechaHora(envio.ultimo_envio)}</span>}
+                <Button
+                  type="button"
+                  variante="secundario"
+                  mini
+                  title={
+                    "Los correos no salen en el instante: quedan en una cola y una tarea automática los " +
+                    "manda cada 5 minutos. Este botón los manda ya, sin esperar esa tarea. Sirve para " +
+                    "comprobar de una vez que están saliendo."
+                  }
+                  onClick={async () => {
+                    const supabase = crearClienteNavegador();
+                    const d = await supabase.rpc("despachar_ahora");
+                    if (d.error) return fallo(d.error);
+                    notificar("Se mandaron los correos que estaban en cola.");
+                    cargarEnvio();
+                  }}
+                >
+                  Enviar ahora los pendientes
+                </Button>
+              </>
+            }
+          />
         )}
         {envio && (
           <p style={{ fontSize: 11.5, color: "var(--tenue)", marginTop: 8, lineHeight: 1.6 }}>
@@ -598,7 +610,8 @@ export function Cortes({
           <div style={{ marginTop: 14, fontSize: 13, color: "var(--tinta-2)" }}>
             {periodo.enviado_en ? (
               <>
-                Marcado como <b>enviado</b> el {String(periodo.enviado_en).slice(0, 10)}. Desde
+                {/* Ronda 10: la hora termina en «p. m.»; con «; » no queda un punto doble. */}
+                Marcado como <b>enviado</b> el {formatoFechaHora(periodo.enviado_en)}; desde
                 «Gastos del mes», reabrirlo va a pedir una confirmación aparte.
               </>
             ) : (
@@ -630,7 +643,7 @@ export function Cortes({
                 {nota.texto ? (
                   <>
                     Sale en el correo de todos los recibos
-                    {nota.hasta ? <> · hasta el {nota.hasta}</> : <> · sin fecha de fin</>}
+                    {nota.hasta ? <> · hasta el {formatoFecha(nota.hasta)}</> : <> · sin fecha de fin</>}
                   </>
                 ) : (
                   "Ninguno. Opcional: un aviso suyo dentro del correo del recibo."
@@ -895,27 +908,48 @@ export function Cortes({
         )}
       </Card>
 
-      {confirmaEnvio && (
-        <Confirmar
-          titulo={`Enviar los recibos de ${periodo?.etiqueta ?? ""}`}
-          texto={
-            "Se le manda un correo a cada propietario e inquilino que tenga dirección cargada (y otro a su correo de respaldo), con el enlace a " +
-            "su recibo. Las unidades sin correo se saltean y se le dice cuántas fueron. Un recibo " +
-            "que ya se envió no se manda dos veces." +
-            (cupo
-              ? correosDelMes + cupo.en_cola <= cupo.libre
-                ? ` Son ${correosDelMes} correos y hoy quedan ${cupo.libre}: salen todos hoy.`
-                : ` Son ${correosDelMes} correos y hoy quedan ${cupo.libre}${cupo.en_cola ? ` (y hay ${cupo.en_cola} esperando)` : ""}: los que no caben esperan el cupo y salen solos en las próximas horas.`
-              : "")
-          }
-          boton="Enviar"
-          onSi={() => {
-            setConfirmaEnvio(false);
-            enviarRecibos();
-          }}
-          onNo={() => setConfirmaEnvio(false)}
-        />
-      )}
+      {confirmaEnvio &&
+        (() => {
+          const e = confirmaEnvio;
+          // Ronda 10 (B1, caso 109): si el mes ya se envió (o tiene correos
+          // esperando), se dice antes, con el número de correos nuevos de verdad.
+          const yaSalio = !!e.enviado_en || e.en_cola > 0 || e.enviados > 0;
+          const cupoTexto = cupo
+            ? e.nuevos + cupo.en_cola <= cupo.libre
+              ? ` Hoy quedan ${cupo.libre} en el cupo: salen todos hoy.`
+              : ` Hoy quedan ${cupo.libre} en el cupo${cupo.en_cola ? ` (y hay ${cupo.en_cola} esperando)` : ""}: los que no caben esperan y salen solos en las próximas horas.`
+            : "";
+          const cuando = e.enviado_en
+            ? `Este mes ya se envió el ${formatoFechaHora(e.enviado_en)}`
+            : "Este mes ya tiene correos enviados o en la cola";
+          const enCola =
+            e.en_cola > 0 ? ` Todavía hay ${e.en_cola === 1 ? "1 correo" : `${e.en_cola} correos`} de este mes en la cola, esperando el cupo: no hace falta volver a enviarlos.` : "";
+          // Con 0 correos nuevos no se pregunta «¿Seguro?»: no se va a mandar nada.
+          const texto = yaSalio
+            ? e.nuevos === 0
+              ? (cuando.endsWith(".") ? cuando : `${cuando}.`) +
+                enCola +
+                " No hay ningún correo nuevo para mandar: todos los recibos ya salieron o están en la cola. Para mandarle otra vez a una unidad, use «Reenviar recibo» en su fila."
+              : `${cuando}; volver a enviar manda ${e.nuevos === 1 ? "1 correo más" : `${e.nuevos} correos más`}. ¿Seguro?` +
+                enCola +
+                " Solo salen los que todavía no se mandaron (por ejemplo, un correo que se agregó después)." +
+                cupoTexto
+            : `Se le manda un correo a cada propietario e inquilino que tenga dirección cargada (y otro a su correo de respaldo), con el enlace a su recibo: son ${e.nuevos} correos.` +
+              (e.sin_correo ? ` ${e.sin_correo === 1 ? "1 unidad no tiene" : `${e.sin_correo} unidades no tienen`} a quién mandarle.` : "") +
+              cupoTexto;
+          return (
+            <Confirmar
+              titulo={yaSalio ? `${periodo?.etiqueta ?? "Este mes"} ya se envió` : `Enviar los recibos de ${periodo?.etiqueta ?? ""}`}
+              texto={texto}
+              boton={yaSalio ? (e.nuevos === 0 ? "Entendido" : "Sí, volver a enviar") : "Enviar"}
+              onSi={() => {
+                setConfirmaEnvio(null);
+                if (e.nuevos > 0) enviarRecibos();
+              }}
+              onNo={() => setConfirmaEnvio(null)}
+            />
+          );
+        })()}
 
       {prueba !== null &&
         (() => {

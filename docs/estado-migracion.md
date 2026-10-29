@@ -16,6 +16,252 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 10 del tramo 2 (29-oct) — antes del primer envío de recibos de GRUPO ING3
+
+Pedido de Nicolás del 29-oct (bloques A a E), con los resultados de Gustavo de la
+ronda 9 (4 OK, 3 OK con pedidos, 1 pendiente: Resend, espera el webhook). Todo en
+`dev`, **sin commit**. Desvíos frente a `main`: casos **107 a 111** de
+`docs/casos-de-uso-mejorados.md`. Pasa a producción con el **Paso 8** completo
+(abajo), que ahora junta las rondas 2 a 10 en una sola lista.
+
+### Qué se hizo, por bloque
+
+| Bloque | Qué cambió | Caso |
+|---|---|---|
+| A1 | `types/supabase.ts` regenerado con la herramienta (contra pruebas): las tres funciones agregadas a mano en la ronda 9 (`dar_de_baja_acceso`, `pagos_desde_cierre`, `registrar_evento_correo`) coinciden exactas; solo aparece lo nuevo de la ronda 10 | — |
+| A2 | R10-1: TRUNCATE, REFERENCES, TRIGGER y MAINTAIN fuera de `authenticated` en todo `public`, también por omisión. Ninguna función ni tarea programada los usa | — |
+| A3 | «Esta cuenta no administra ningún edificio»: botón «Escribir por WhatsApp» (wa.me/584122348595, con el mensaje ya escrito) y +58 412-234-8595 a la vista; debajo, info@vecitap.com. Los dos en `lib/contacto-vecitap.ts` | 107 |
+| B1 | «Enviar por correo» en un mes ya enviado o con correos en la cola: «Este mes ya se envió el 28/10/2026, 4:40 p. m.; volver a enviar manda N correos más. ¿Seguro?», con N de la base (R10-2) | 108 |
+| B2 | Cortes: «Este mes: N enviados · M en cola · X no salieron · Y rebotaron · Z unidades sin correo · Ver cuáles»; la lista con unidad, correo, «Qué pasó» en palabras, «Corregir en la ficha» y «Reenviar recibo». «Reenviar recibo» ya no duplica un correo que espera en la cola (R10-6, de la validación) | 108 |
+| B3 | Recibo impreso / PDF (portal y Cortes): sin deuda hoy, arriba «Hoy · Está al día» o «Hoy · A favor $ 50,00 · no tiene que pagar» con el peso del total, y al lado «Total del recibo». El total se llama «Total del recibo» (papel y portal). Cortes lleva los saldos de hoy solo en el último mes cerrado | 109 |
+| B4 | Una sola forma de escribir fechas: «28/10/2026, 4:40 p. m.» y «28/10/2026», en hora de Venezuela (`formatoFecha`/`formatoHora`/`formatoFechaHora` en `lib/formato.ts`; `fecha_ve`/`fecha_hora_ve` en la base, R10-4, para el aviso de cupo, el aviso de visita de la garita y el error al reabrir un mes) | 110 |
+| B5 | Solo documentación: «El día del plan pago de Resend», abajo | — |
+| C | «Cargo a una sola unidad» en Cobros (R10-3 y R10-5): multa o consumo, que no es egreso; o «El edificio pagó esto», que es egreso. Línea propia con su motivo en el recibo, el portal, el papel y Cortes | 111 |
+| D | Solo anotado: «Para después del piloto», abajo | — |
+| E | Validación con «ZZZ Validación Ronda 10», abajo | — |
+
+**Decidido por mi cuenta:** el mes del cargo es el mes abierto (si no hay, la tarjeta lo
+dice); para cambiar un cargo de «multa» a «lo pagó el edificio» hay que quitarlo y
+volver a cargarlo (son dos tablas); en Cortes, «Hoy · …» solo en el último mes cerrado
+(el papel de un mes viejo es el del día de su cierre); los recibos emitidos antes de la
+ronda 10 siguen con una línea «Cargos de su unidad» (no tienen el detalle); el residente
+no lee `cargos_unidad` (lo ve en su recibo al cerrar).
+
+### Cargo a una sola unidad: cómo queda en el estado financiero
+
+Aprobado por Nicolás el 29-oct, antes de construirlo: el cargo de Cobros va a una tabla
+propia y no a `gastos`, porque un gasto es egreso en el estado financiero. En los dos
+casos: bolsillo de condominio; si no se paga, al mes siguiente es deuda de condominio y
+cuenta para la mora igual que la cuota; línea propia con su motivo; entra en
+`simular_cierre()` y en `cerrar_periodo()` con el mismo cálculo (antes de la mora y del
+redondeo); se corrige o se quita mientras el mes está abierto, y la base no lo deja
+tocar al cerrarlo.
+
+| Caso | Dónde queda | Estado financiero |
+|---|---|---|
+| Multa, consumo u otro cobro | `cargos_unidad` (nueva) | **No es egreso.** Cuando la unidad paga, el pago conciliado entra como **ingreso** |
+| Reparación que pagó el edificio y le cobra a una unidad («El edificio pagó esto») | `gastos`, tipo `directo` (el gasto «Solo a una unidad» de siempre) | **Egreso** el mes en que se registra (lo que se le pagó al plomero), en «Cargos a una unidad»; cuando la unidad paga, **ingreso**. El edificio queda en cero |
+
+**Dos cosas que se vieron y no se tocaron** (anotadas para después del piloto):
+1. Gastos del mes → «Solo a una unidad» deja elegir el bolsillo «Administración»
+   («un recargo por gestión de cobranza»). Ese gasto también sale como egreso del
+   edificio en el estado financiero, sin serlo. En producción no hay ninguno
+   (0 gastos). Lo simple: en Gastos del mes, quitar la opción y mandar eso a Cobros.
+2. Con un gasto directo de bolsillo «Administración», `simular_cierre()` lo suma a
+   administración y `cerrar_periodo()` al condominio. El total da igual; cambia solo
+   en qué bolsillo queda la deuda. Se arregla junto con el punto 1.
+
+### Migraciones nuevas — aplicadas en vecitap-pruebas el 29-oct
+
+Con `execute_sql`, el archivo tal cual. **El md5(prosrc) de pruebas es el del archivo en
+todas.**
+
+| # | Migración | md5(prosrc) que deja |
+|---|---|---|
+| R10-1 | `20261029120000_permisos_authenticated.sql` | (sin funciones) authenticated sin TRUNCATE/REFERENCES/TRIGGER/MAINTAIN en `public`: 0 objetos. **El rollback se probó de verdad** (volvieron los privilegios y los de por omisión) y se volvió a aplicar |
+| R10-2 | `20261029130000_estado_envio_periodo.sql` | `estado_envio_periodo` 1ffdc2eba5960fa1d868b676ffe69136 |
+| R10-3 | `20261029140000_cargos_en_recibo.sql` | `cerrar_periodo` eaa0fce90bcfe90a248a0c0393f8f3b1 (+ `recibos.cargos`). El rollback, probado, vuelve a 36bdef30… |
+| R10-4 | `20261029150000_fechas_ve.sql` | `despachar_correos` d20348414484564578a3469ed7940c89, `garita_avisar` afd9c226b53ff1acfe7916d0a95758fd, `reabrir_periodo` 482c12b7434a33c76696a5ff66d69b81, `fecha_ve` ff704daf3dcd23234bd5619bf203eec6, `fecha_hora_ve` 44079179f4bffb33e3691cb0101c2182 |
+| R10-5 | `20261029160000_cargos_unidad.sql` | `cerrar_periodo` 2db1cb7be8c9a6d8330e29da8a6a7ac3, `simular_cierre` c116e31f4170921832b2f640a5592d77 (+ `cargos_unidad`, su guarda y RLS). **El rollback se probó en seco** (dentro de una transacción deshecha: deja eaa0fce9… y 19b62999… y sin la tabla) |
+| R10-6 | `20261029170000_reenviar_sin_duplicar.sql` (salió de la validación de B2) | `reenviar_recibo` 5786e9909401cca6bbacaf9302276efd. **El rollback se probó en seco** (vuelve a 9b2cd130…) |
+
+Cada una con su rollback en `supabase/rollbacks/` (guarda md5). Dependencias: R10-1
+después de R9-6; R10-2 después de R9-2 y de 20261027140000; R10-3 después de R9-1;
+R10-4 después de R9-3; R10-5 después de R10-3; R10-6 después de R8-5. `types/supabase.ts` regenerado con la
+herramienta después de R10-5. Para la revisión cruzada:
+`C:\Users\Nicolas\Downloads\revision-cruzada-ronda10\` (las seis con sus rollbacks y
+el `.diff` del código).
+
+### Pendiente antes del Paso 8
+
+- **info@vecitap.com tiene que existir** (lo crea Gustavo): la pantalla «Esta cuenta no
+  administra ningún edificio» lo muestra como enlace. Si cambia, es una línea en
+  `lib/contacto-vecitap.ts`.
+- La revisión cruzada de las seis migraciones de la ronda 10.
+
+### Paso 8: las 38 migraciones en producción, en orden (rondas 2 a 10)
+
+**Reemplaza al Paso 8 de la ronda 8 y al Paso 8b de la ronda 9.** Comprobado el 29-oct
+por lectura: producción sigue en `20260929120000_segunda_ronda_dia_local.sql` (no tiene
+`unidades.paga`, ni `datos_pago`, ni `reemplazar_inquilino`; `crear_invitacion`
+f29847e7…). **Respaldo antes** (docs/respaldo.md). Cada archivo tal cual, en este orden;
+después de cada uno, su verificación (la completa está al final de cada archivo). Un md5
+que no coincide: parar y avisar. Las funciones que cambian varias veces
+(`cerrar_periodo`, `simular_cierre`, `correo_recibo`, `despachar_correos`) tienen en cada
+paso el md5 de **ese** paso: la guarda del archivo siguiente lo exige.
+
+| # | Migración | Verificación (resultado esperado) |
+|---|---|---|
+| 1 | `20260930120000_unidades_paga.sql` (correr su paso 0 antes) | `select count(*) from information_schema.columns where table_name='unidades' and column_name='paga';` → 1 |
+| 2 | `20260930130000_puede_operar_search_path.sql` | `select proconfig from pg_proc where proname='puede_operar';` → `{search_path=public}` |
+| 3 | `20260930140000_vinculos_org_coherente.sql` (su consulta previa = 0) | `select count(*) from pg_trigger where tgname in ('vinculos_unidad_misma_org','unidades_org_con_vinculos');` → 2 |
+| 4 | `20261005120000_crear_invitacion_reemplaza_pendiente.sql` | `select md5(prosrc) from pg_proc where proname='crear_invitacion';` → d5807ae08c2fb3415f04056493b5e5a7 |
+| 5 | `20261008120000_reemplazar_inquilino.sql` | `select count(*) from pg_proc where proname='reemplazar_inquilino';` → 1 |
+| 6 | `20261008130000_mis_cuotas.sql` | `select md5(prosrc) from pg_proc where proname='mis_cuotas';` → 7cf5f15d328f76cc2ee23b9e2f4dcb0d |
+| 7 | `20261008140000_reemplazar_propietario.sql` | `select count(*) from pg_proc where proname in ('reemplazar_propietario','vinculos_propietario_sale_accesos');` → 2 |
+| 8 | `20261008150000_indices_saldo_unidad.sql` | `select count(*) from pg_indexes where indexname in ('ajustes_sin_cerrar_por_unidad','pagos_conciliados_sin_cerrar_por_unidad','recibos_por_unidad');` → 3 |
+| 9 | `20261018120000_periodo_cerrado_exige_tasa.sql` | `select count(*) from pg_constraint where conname='periodos_cerrado_con_tasa';` → 1 |
+| 10 | `20261018130000_unidades_tipo_correo_respaldo.sql` | `select count(*) from information_schema.columns where (table_name,column_name) in (('unidades','tipo'),('personas','correo_respaldo'));` → 2 |
+| 11 | `20261018140000_importar_unidades.sql` | `select count(*) from pg_proc where proname='importar_unidades';` → 1 |
+| 12 | `20261025120000_importar_unidades_plantilla.sql` | `importar_unidades` → 467fadf95398b1ce1e99ed8bb6b85655; `select to_regclass('public.notas_unidad');` → notas_unidad |
+| 13 | `20261026120000_datos_pago.sql` | `correo_recibo` → 83afc196154108cf42d6fa594f36becd |
+| 14 | `20261026130000_invitacion_en_recibo.sql` | `correo_recibo`, `crear_invitacion`, `encolar_recibos` → 3ad164ea…, cf461ba9…, cac4ad33… |
+| 15 | `20261026140000_cobro_solo_usd.sql` | `correo_recibo` → d84d3494c388f5fa1edb9e4195d1f4ad |
+| 16 | `20261026150000_cuotas_extraordinarias.sql` | `cerrar_periodo`, `simular_cierre` → cfb4fbee…, 816f061e… |
+| 17 | `20261026160000_redondeo_cuotas.sql` | ídem → f66ee0ad4fe97ac0be046bf13ab4751e, 6f06cc3e42184a36ff82ace505e59dc8 |
+| 18 | `20261026170000_mensajes_masivos.sql` | `despachar_correos` → 734b58aa8b3e953b70774e054a62ec22 |
+| 19 | `20261026180000_estado_financiero.sql` | `estado_financiero` → c4c4878ecf9f8a9eb6fad425323df9e5 |
+| 20 | `20261026190000_pago_agrupado.sql` | `select count(*) from pg_trigger where tgname in ('pagos_grupo_al_insertar','pagos_grupo_mismo_estado');` → 2; `pagos_posible_duplicado` → 13959e3ec8eaf321a99d5b32aa063b07 |
+| 21 | `20261027120000_importar_corrige_fichas.sql` | `importar_unidades` → 64fac9ed0e225513035dfd6688715fc4 |
+| 22 | `20261027130000_pago_agrupado_completo.sql` | `pagos_grupo_al_insertar` → 584fb1055a82a713857b633a761ab45f; `select count(*) from pg_trigger where tgname='pagos_grupo_inmutable';` → 1 |
+| 23 | `20261027140000_recibo_titulares_sin_bs.sql` | `correo_recibo` → fc342ae7a87d2beac3ad8a10060d440c; `asegurar_invitaciones_recibo` → 169010a2f4fdb4cc44e1c4171d09be05; trigger `invitaciones_borra_codigo` → 1 |
+| 24 | `20261027150000_redondeo_total.sql` | `cerrar_periodo` → c2fcede6ac32b3fe25b74b48abbd44c4; `simular_cierre` → 69144d1e27642caf18a8a264ffa382f8 |
+| 25 | `20261027160000_correos_estado_y_cupo.sql` | `despachar_correos` → ab2d4304b921029146ec19ca9220d00f; `momento_cupo` → 9f7d811a4068dc3ab69ac1df2254aa72; `select count(*) from pg_proc where proname in ('cupo_correo','estado_correos_periodo','reenviar_recibo','unidades_mensaje');` → 4 |
+| 26 | `20261028120000_redondeo_regla_gustavo.sql` | `cerrar_periodo` → 36bdef305a5cc58cd1cd3b66038220aa; `simular_cierre` → 19b6299970311a6d0bf17d48f3aa673f; el CHECK de `ajustes_cobro.redondeo` → `ninguno`, `redondear` |
+| 27 | `20261028130000_avisos_resend.sql` | `registrar_evento_correo` → feb53cdc2d8cc0ad3c7319d5cd04ce7c; índice `cola_por_proveedor` → 1 |
+| 28 | `20261028140000_cupo_por_organizacion.sql` | `cupo_correo` → 969a97d27dc5380fbb51bc4578a65e33; `despachar_correos` → e2b9a8ad1adee36bed93e9ccb80ecdb9 |
+| 29 | `20261028150000_solo_operador_y_ajustes_seguridad.sql` | `crear_organizacion` 5e4e1157102d48abc239c29fb2f5923b, `administra_algo` 02553d8dc245667bfd14a16f25608401, `org_campos_del_operador` 0b28110290b22a2a5d3dd9170720f5be, `dar_de_baja_acceso` 80f189f60e790ea3ffd7fa3605f1d9cf, `traer_tasa_bcv` 2a5a1433626ef394de2795f80719fcb2 |
+| 30 | `20261028160000_saldo_unidad_control.sql` | `saldo_unidad` → 497d819a42e0533a410dbb62155da7cb; `has_function_privilege('anon','public.saldo_unidad(uuid)','execute')` → false |
+| 31 | `20261028170000_permisos_sobrantes.sql` | el conteo del punto 1 del archivo → **0** |
+| 32 | `20261028180000_pagos_desde_cierre.sql` | `pagos_desde_cierre` → 7b86d8acf44f957f57a87a45b1558c24 |
+| 33 | `20261029120000_permisos_authenticated.sql` | el conteo del punto 1 del archivo → **0**; los privilegios por omisión de `postgres` en `public` sin `authenticated` ni `anon` |
+| 34 | `20261029130000_estado_envio_periodo.sql` | `estado_envio_periodo` → 1ffdc2eba5960fa1d868b676ffe69136, `prosecdef` true, EXECUTE solo para authenticated |
+| 35 | `20261029140000_cargos_en_recibo.sql` | `cerrar_periodo` → eaa0fce90bcfe90a248a0c0393f8f3b1; `recibos.cargos` con default `'[]'::jsonb`, NOT NULL |
+| 36 | `20261029150000_fechas_ve.sql` | `despachar_correos` d20348414484564578a3469ed7940c89, `garita_avisar` afd9c226b53ff1acfe7916d0a95758fd, `reabrir_periodo` 482c12b7434a33c76696a5ff66d69b81; `select fecha_hora_ve('2026-10-28 20:40:00+00');` → `28/10/2026, 4:40 p. m.` |
+| 37 | `20261029160000_cargos_unidad.sql` | `cerrar_periodo` → 2db1cb7be8c9a6d8330e29da8a6a7ac3; `simular_cierre` → c116e31f4170921832b2f640a5592d77; `cargos_unidad` con RLS y las políticas `cargos_unidad_ver` y `cargos_unidad_escribir`; grants solo para authenticated |
+| 38 | `20261029170000_reenviar_sin_duplicar.sql` | `reenviar_recibo` → 5786e9909401cca6bbacaf9302276efd |
+
+Al final, la comparación de conjunto de la ronda 7: md5 de todas las funciones de
+`public` en las dos bases; tiene que dar lo mismo salvo `mis_unidades` y lo que se haya
+cambiado a propósito. La corro yo por lectura cuando avises que terminaste.
+
+**Datos, después (los corre Nicolás en el SQL Editor de producción; no son
+migraciones).** `guardar_secreto()` exige la sesión del operador, así que desde el SQL
+Editor va el INSERT directo:
+- La huella del secreto del webhook de producción (ver «Ronda 9» → «Resend y Vercel»):
+  `insert into secretos (nombre, valor) values ('webhook_resend_sha256', encode(extensions.digest('<whsec_… del webhook de producción>', 'sha256'), 'hex')) on conflict (nombre) do update set valor = excluded.valor, actualizado = now();`
+- El tope del plan gratis: `insert into secretos (nombre, valor) values ('correo_tope_diario', '65') on conflict (nombre) do update set valor = excluded.valor, actualizado = now();`
+  y comprobar `select tope_correo();` → 65. **No 90**: el 90 era la propuesta de la
+  ronda 8; la ronda 9 lo bajó a 65 (ver «Ronda 9» → «Cupo de correos»).
+- Opcional: `correo_operador` con el correo de Vecitap, para que el aviso de «se acabó
+  el cupo» llegue también por correo.
+
+### El día del plan pago de Resend
+
+**No se cambió nada.** Esto es lo que hay hoy y lo que se cambia ese día. Los límites
+de Resend, de su documentación (29-oct): el plan Pro trae 50.000 correos por mes, sin
+tope diario; el límite de 10 pedidos por segundo es el mismo en todos los planes.
+
+| Tope | Dónde está | Hoy | Ese día |
+|---|---|---|---|
+| Resend, plan gratis | la cuenta de Resend (pruebas y producción juntas) | 100 por día | Plan Pro: **50.000 por mes, sin tope diario**; si se pasa, Resend cobra cada 1.000 más |
+| `correo_tope_diario`, producción | `secretos` de vecitap-produccion; lo lee `tope_correo()` (sin el secreto: 100) | **todavía no existe** (las migraciones del cupo no están en producción); después del Paso 8, **65** | **1600** (50.000 ÷ 31: no se pasa del mes aunque se mande todos los días). **Hay que cambiarlo:** si no, con el plan pago sigue saliendo a 65 por día |
+| `correo_tope_diario`, pruebas | `secretos` de vecitap-pruebas | **10** | Puede quedar en 10. Ya no le quita cupo diario a producción |
+| El «90» que menciona Gustavo | — | **no existe**: fue la propuesta de la ronda 8, reemplazada por 65 en la ronda 9 | — |
+| 8 pedidos por vuelta | constante `v_por_vuelta` dentro de `despachar_correos()` | 8 cada 5 minutos (tarea `vecitap_correos`, `*/5 * * * *`) ≈ 96 por hora | **No cambia.** El plan pago no sube los 10 por segundo de Resend. A 96 por hora, los ≈ 85 correos de ING3 salen en menos de una hora. Si con más clientes hace falta más rápido, es una migración (la tarea cada minuto), no un cambio del día |
+| Correos de Auth (crear cuenta, «Olvidé mi contraseña») | el SMTP de Supabase Auth, por Resend | no pasan por la cola ni por el tope, pero gastan el cupo de la cuenta | Nada: ya no compiten con los recibos por un tope diario |
+
+**Los comandos, en el SQL Editor de vecitap-produccion, después de contratar el plan:**
+
+```sql
+insert into secretos (nombre, valor) values ('correo_tope_diario', '1600')
+on conflict (nombre) do update set valor = excluded.valor, actualizado = now();
+
+select tope_correo();   -- → 1600
+```
+
+Para volver al plan gratis, el mismo INSERT con `'65'`. Lo que estaba esperando el
+cupo sale solo en las vueltas siguientes del despachador (no hay que volver a enviar);
+en Cortes del mes, «en cola» baja a 0.
+
+### Para después del piloto (junto con el formulario «Nuevo cliente» del operador)
+
+- **Cobros se reorganiza:** las reglas fijas (condominio, fondo de reserva) pasan a
+  Ajustes; en el menú queda «Cuotas extraordinarias y cargos», con las cuotas
+  extraordinarias y el cargo a una sola unidad.
+- **La pantalla de «escribirle a Vecitap» tiene que vender:** un mensaje con diseño,
+  WhatsApp primero y correo después, y un formulario «Quiero Vecitap» (nombre,
+  administradora, teléfono, cuántos edificios o unidades) que le avise a Vecitap, con un
+  límite de envíos contra el spam.
+- **Gastos del mes → «Solo a una unidad» con bolsillo «Administración»:** quitar la
+  opción (sale como egreso del edificio sin serlo) y mandarlo a Cobros; y que
+  `simular_cierre()` y `cerrar_periodo()` lo pongan en el mismo bolsillo (ver «Cargo a
+  una sola unidad»).
+
+### Validación (29-oct)
+
+Contra `next start` (build de producción, puerto 3123) conectado a vecitap-pruebas,
+con Playwright (ya estaba en `node_modules` sin guardar; `package.json` y
+`package-lock.json` con el mismo sha256 antes y después). Script:
+`scripts/validacion-ronda10.mjs`; capturas y PDF en `scripts/capturas-ronda10/`
+(ignorada por Git). Cuentas `admin.prueba` (como `administrador`) y `residente.prueba`.
+Organización propia «ZZZ Validación Ronda 10» (ZZZ Torre R10: 01A, 01B, 02A y 02B, con
+«Redondear» y la cuota extraordinaria «Ascensor» en 2), armada con SQL y **borrada al
+terminar** con todo lo suyo (recibos, pagos, cola, cargos); la marca de rebote que agregué
+también. **Ningún correo salió:** el cupo de pruebas estaba lleno (10 de 10 en 24 horas, y
+84 correos de Gustavo esperando delante); los estados de B2 (dirección inválida, rebote)
+se pusieron por SQL en las filas de la cola de la prueba, sin `mandado_en`, para no gastar
+cupo. Los 84 de Gustavo siguen esperando, sin tocar.
+
+| Bloque | Resultado | Lo que se vio |
+|---|---|---|
+| A3 | OK | `residente.prueba` en /admin: «Esta cuenta no administra ningún edificio»; «Escribir por WhatsApp» → `https://wa.me/584122348595?text=Hola%2C%20quiero%20usar%20Vecitap%20para%20mi%20administradora`; «+58 412-234-8595» a la vista, antes que `mailto:info@vecitap.com` |
+| C | OK | Cobros → «Cargo a una sola unidad» · «Cargos del recibo de Octubre 2026». Sin motivo → «Falta el motivo: es lo que se lee en el recibo.» Multa por ruido $ 12,34 (01A, «Multa o cobro · no es un egreso»), Reparación de tubería $ 40 con «El edificio pagó esto» (01A, «Lo pagó el edificio · es un egreso», aparece en Gastos del mes como «Cargos a una sola unidad»), Consumo de gas $ 7 (02B). Corregida la multa a $ 15 (al editar, «El edificio pagó esto» queda bloqueado); quitado el gas («…no se cobra en el recibo de Octubre 2026.»). **Previa = recibo** en las 4: 01A 102,50 + Ascensor (cuota 1 de 2) 15 + cargos 55 = 172,50 → **175** (fondo 2,50); las otras 117,50 → 120. Recibo de 01A: `directos` 55 y `cargos` con los dos motivos; las demás `[]`. Cerrado el mes: cambiar o quitar → «Ese mes ya está cerrado: el cargo quedó en el recibo y no se puede cambiar. Para corregirlo, reabra el mes.»; agregar → «Ese mes no está abierto…». Unidad de otro edificio → «Esa unidad no es de este edificio.» **Estado financiero de octubre: egresos $ 40** (solo la reparación, «Cargos a una unidad»); la multa no. **Mora:** previa de noviembre, 01A: 1,75 = 1 % de 175 (con los cargos). RLS: anon «permission denied», residente 0 filas, administradora sí |
+| B3 | OK | Después del cierre, 01B pagó justo su recibo y 02A $ 50 de más. Portal (computadora y teléfono 390 × 844, sin desborde): 01A «Si paga hoy», «Total del recibo», «Multa por ruido · Acta 12/10» y «Reparación de tubería · Fact. 556» como líneas propias; 01B «Hoy · Está al día · no tiene que pagar»; 02A «Hoy · A favor $ 50,00 · no tiene que pagar». Impreso y PDF del portal y de Cortes: 01A «Total del recibo» y «Vence»; 01B y 02A, arriba en el recuadro grande «Hoy · Está al día» / «Hoy · A favor $ 50,00 · no tiene que pagar» y al lado «Total del recibo $ 120,00 · ya está pagado al 29/10/2026», sin «Vence». La vista previa de Cortes, igual. **Datos que ya existen:** Administradora Union 01A (a favor $ 186,35) y Torre Ida 01A (debe $ 100) en el portal y el papel; Torre Ida agosto desde Cortes (no es el último mes de esa vista) con «Total del recibo». `saldos_actuales.total` = `saldo_unidad()` en las dos |
+| B1 | OK, **con dos arreglos** | Primer envío: «Enviar los recibos de Octubre 2026». Vuelto a enviar con todo enviado o en la cola: «Este mes ya se envió el 29/10/2026, 7:39 p. m. Todavía hay 1 correo de este mes en la cola, esperando el cupo: no hace falta volver a enviarlos. No hay ningún correo nuevo para mandar…» y «Entendido». Con un correo cargado a 02B y el de 01B corregido: «…volver a enviar manda 2 correos más. ¿Seguro?» y salen solo esos dos. **Arreglos:** con 0 nuevos decía «manda 0 correos más. ¿Seguro?» antes de decir que no había nada que mandar; y «p. m..» con punto doble (también en «Marcado como enviado el …») |
+| B2 | OK, **con un arreglo (R10-6)** | «Este mes: 0 enviados · 1 en cola · 1 no salió · 1 rebotó · 1 unidad sin correo · Ver cuáles (3)» (el que rebotó no cuenta como enviado). La lista: 01B r10-invalido@resend «Dirección inválida: Resend no la aceptó»; 02A bounced@resend.dev «Rebotó: la dirección no existe o no recibe correos»; 02B «Sin correo: nadie de la unidad tiene correo cargado con «recibe corte»»; «Corregir en la ficha» lleva a la ficha de la unidad. Corregido el de 01B, «Reenviar recibo» → «Recibo de 01B reenviado: 1 correo en la cola.» **Arreglo:** si antes se había tocado «Enviar por correo», «Reenviar recibo» le agregaba un segundo correo a la misma dirección (el propietario lo recibía dos veces) → R10-6: ahora «Ese recibo ya está en la cola, esperando para salir: no hace falta reenviarlo.» y una sola fila |
+| Build | OK | `npx tsc --noEmit`, `npm run lint` y `npm run build` en verde, también después de los arreglos |
+
+**Arreglos hechos durante la validación:** (1) R10-6, `reenviar_recibo()` sin duplicar;
+(2) el aviso de volver a enviar con 0 correos nuevos; (3) el punto doble después de
+«p. m.»; (4) «1 unidades sin correo» → «1 unidad sin correo» en el aviso de «Enviar por
+correo» (venía de antes; **este último no se volvió a ver en el navegador**: el mes ya
+estaba enviado, el cambio es de texto y pasa tsc, lint y build). Ninguno cambia un monto.
+
+**Visto y no tocado:** `exigir_org_al_dia()` (el aviso de cuenta suspendida) dice
+«Escríbanos a hola@vecitap.com»; el contacto acordado es info@vecitap.com. Es un texto
+dentro de una función de la base: va en una migración aparte si se decide cambiarlo.
+Después de corregir un correo, la fila vieja que falló sigue en «Ver cuáles» (con la
+dirección vieja) hasta fin de mes: es lo que pasó, pero puede confundir.
+
+### Riesgos para el primer envío
+
+1. **Producción no tiene 38 migraciones** (Paso 8). Respaldo antes, en orden, y leer la
+   verificación de cada una.
+2. **info@vecitap.com** tiene que existir antes de publicar.
+3. **El cupo**: con el tope en 65, ING3 sale en dos días hasta el plan pago; ese día,
+   el tope a 1600 (sección de arriba).
+4. Los recibos emitidos antes de la ronda 10 siguen con «Cargos de su unidad» en una
+   línea (sin el motivo).
+
+### Título del commit
+
+`Ronda 10 del tramo 2: cargo a una sola unidad, envío del mes con detalle, recibo sin deuda y fechas de Venezuela`
+
+Cobros suma el cargo a una sola unidad (multa o consumo, que no es egreso) y Cortes avisa antes de volver a enviar y muestra cuáles correos fallaron; el recibo impreso dice «Hoy · Está al día» y las fechas salen en hora de Venezuela, con 6 migraciones probadas en vecitap-pruebas.
+
+---
+
 ## Ronda 9 del tramo 2 (28-oct) — antes de los primeros recibos de GRUPO ING3
 
 Pedido de Nicolás del 28-oct (bloques A a F), con los resultados de Gustavo de la
@@ -122,8 +368,7 @@ final de cada archivo).
 - La huella del secreto del webhook de producción (ver «Resend y Vercel», abajo):
   `insert into secretos (nombre, valor) values ('webhook_resend_sha256', encode(extensions.digest('<whsec_… del webhook de producción>', 'sha256'), 'hex')) on conflict (nombre) do update set valor = excluded.valor, actualizado = now();`
 - `correo_tope_diario` (abajo): **65**.
-- Antes del deploy: completar `CONTACTO_VECITAP` en
-  `components/admin/SinAdministradora.tsx` (o dejar solo la frase).
+- ~~Antes del deploy: completar `CONTACTO_VECITAP`~~ hecho en la ronda 10 (A3).
 
 ### Resend y Vercel: los pasos a mano
 

@@ -1,5 +1,5 @@
 import { Badge, Card } from "@/components/ui";
-import { bs, fechaLarga, nf, usd } from "@/lib/formato";
+import { bs, formatoFecha, nf, usd } from "@/lib/formato";
 import { estadoPago } from "@/lib/estados-pago";
 import type { Database } from "@/types/supabase";
 
@@ -32,7 +32,7 @@ export function MisPagos({ pagos }: { pagos: Pago[] }) {
                 <div className="mono" style={{ fontSize: 17, fontWeight: 700 }}>
                   {p.moneda === "VES" ? bs(p.monto) : usd(p.monto)}
                 </div>
-                <div style={{ fontSize: 12.5, color: "var(--tinta-2)", marginTop: 2 }}>{fechaLarga(p.fecha)}</div>
+                <div style={{ fontSize: 12.5, color: "var(--tinta-2)", marginTop: 2 }}>{formatoFecha(p.fecha)}</div>
                 <div style={{ fontSize: 12.5, color: "var(--tenue)", marginTop: 2 }}>
                   {p.metodo}
                   {p.referencia ? ` · ref ${p.referencia}` : ""}

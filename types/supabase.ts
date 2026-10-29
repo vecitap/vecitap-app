@@ -270,6 +270,71 @@ export type Database = {
           },
         ]
       }
+      cargos_unidad: {
+        Row: {
+          concepto: string
+          creado_en: string
+          creado_por: string | null
+          id: string
+          monto: number
+          org_id: string
+          periodo_id: string
+          referencia: string | null
+          unidad_id: string
+        }
+        Insert: {
+          concepto: string
+          creado_en?: string
+          creado_por?: string | null
+          id?: string
+          monto: number
+          org_id: string
+          periodo_id: string
+          referencia?: string | null
+          unidad_id: string
+        }
+        Update: {
+          concepto?: string
+          creado_en?: string
+          creado_por?: string | null
+          id?: string
+          monto?: number
+          org_id?: string
+          periodo_id?: string
+          referencia?: string | null
+          unidad_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cargos_unidad_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cargos_unidad_periodo_id_fkey"
+            columns: ["periodo_id"]
+            isOneToOne: false
+            referencedRelation: "periodos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cargos_unidad_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "saldos_actuales"
+            referencedColumns: ["unidad_id"]
+          },
+          {
+            foreignKeyName: "cargos_unidad_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categorias: {
         Row: {
           edificio_id: string
@@ -1766,6 +1831,7 @@ export type Database = {
           anterior: number
           anterior_hon: number
           anterior_serv: number
+          cargos: Json
           conceptos: Json
           cuota: number
           detalle: Json
@@ -1790,6 +1856,7 @@ export type Database = {
           anterior?: number
           anterior_hon?: number
           anterior_serv?: number
+          cargos?: Json
           conceptos?: Json
           cuota?: number
           detalle?: Json
@@ -1814,6 +1881,7 @@ export type Database = {
           anterior?: number
           anterior_hon?: number
           anterior_serv?: number
+          cargos?: Json
           conceptos?: Json
           cuota?: number
           detalle?: Json
@@ -2664,6 +2732,7 @@ export type Database = {
           unidad_id: string
         }[]
       }
+      estado_envio_periodo: { Args: { p_periodo: string }; Returns: Json }
       estado_financiero: {
         Args: { p_desde: string; p_edificio: string; p_hasta: string }
         Returns: Json
@@ -2673,6 +2742,8 @@ export type Database = {
         Returns: undefined
       }
       exigir_org_al_dia: { Args: { p_org: string }; Returns: undefined }
+      fecha_hora_ve: { Args: { p: string }; Returns: string }
+      fecha_ve: { Args: { p: string }; Returns: string }
       fijar_cliente: {
         Args: {
           p_estado?: string

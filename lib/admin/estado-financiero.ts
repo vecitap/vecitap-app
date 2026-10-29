@@ -1,4 +1,4 @@
-import { fechaCorta, nf, usd } from "@/lib/formato";
+import { formatoFecha, nf, usd } from "@/lib/formato";
 import { MESES } from "./constantes";
 
 /**
@@ -56,7 +56,7 @@ export function estadoFinancieroEnPapel(d: {
   const ingresos = e.detalle_ingresos
     .map(
       (p) =>
-        `<tr><td>${esc(fechaCorta(p.fecha))}</td><td class="m">${esc(p.unidad)}</td><td>${esc([p.metodo, p.referencia ? "ref " + p.referencia : ""].filter(Boolean).join(" · "))}</td><td class="d">${usd(p.monto)}</td></tr>`
+        `<tr><td>${esc(formatoFecha(p.fecha))}</td><td class="m">${esc(p.unidad)}</td><td>${esc([p.metodo, p.referencia ? "ref " + p.referencia : ""].filter(Boolean).join(" · "))}</td><td class="d">${usd(p.monto)}</td></tr>`
     )
     .join("");
   const egresos = e.detalle_egresos

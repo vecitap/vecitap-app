@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { MessageCircle, Printer } from "lucide-react";
 import { Badge, Button, type TonoBadge } from "@/components/ui";
-import { nf, usd } from "@/lib/formato";
+import { formatoFecha, nf, usd } from "@/lib/formato";
 import { nombreDe, normalizarTel, vigente } from "@/lib/admin/personas";
 import { imprimirEstado } from "@/lib/admin/imprimir-estado";
 import type { Database } from "@/types/supabase";
@@ -141,7 +141,7 @@ export function Ficha({
               <tbody>
                 {filasImpresion.map((f, i) => (
                   <tr key={i}>
-                    <td className="mono">{f.fecha || "—"}</td>
+                    <td className="mono">{formatoFecha(f.fecha) || "—"}</td>
                     <td>
                       <div style={{ fontWeight: 600, color: f.tipo === "pendiente" ? "var(--ambar)" : "inherit" }}>{f.concepto}</div>
                       {f.detalle && <div style={{ fontSize: 11.5, color: "var(--tenue)" }}>{f.detalle}</div>}

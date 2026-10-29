@@ -2,7 +2,7 @@ import { misUnidadesSesion } from "@/lib/residente/datos";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { tasaDelDia } from "@/lib/tasa";
 import { aPagarHoy, type APagarHoy } from "@/lib/residente/a-pagar";
-import type { CategoriaRecibo, ConceptoRecibo, RegistroRecibo } from "@/lib/residente/tipos";
+import type { CategoriaRecibo, CargoRecibo, ConceptoRecibo, RegistroRecibo } from "@/lib/residente/tipos";
 import type { Database } from "@/types/supabase";
 
 type Unidad = Database["public"]["Functions"]["mis_unidades"]["Returns"][number];
@@ -44,7 +44,7 @@ export async function ultimoReciboDe(unidadId: string): Promise<UltimoRecibo> {
     supabase
       .from("recibos")
       .select(
-        "numero,total,cuota,directos,anterior,a_favor,mora,honorario,anterior_hon,servicio,conceptos,detalle,tasa_bcv,vence_el,alicuota,periodos!inner(anio,mes,etiqueta,estado)"
+        "numero,total,cuota,directos,anterior,a_favor,mora,honorario,anterior_hon,servicio,conceptos,cargos,detalle,tasa_bcv,vence_el,alicuota,periodos!inner(anio,mes,etiqueta,estado)"
       )
       .eq("unidad_id", unidadId)
       .eq("periodos.estado", "cerrado")
@@ -70,6 +70,7 @@ export async function ultimoReciboDe(unidadId: string): Promise<UltimoRecibo> {
     ? {
         ...ultimo,
         conceptos: Array.isArray(ultimo.conceptos) ? (ultimo.conceptos as unknown as ConceptoRecibo[]) : [],
+        cargos: Array.isArray(ultimo.cargos) ? (ultimo.cargos as unknown as CargoRecibo[]) : [],
         detalle: Array.isArray(ultimo.detalle) ? (ultimo.detalle as unknown as CategoriaRecibo[]) : [],
         anio: ultimo.periodos.anio,
         mes: ultimo.periodos.mes,

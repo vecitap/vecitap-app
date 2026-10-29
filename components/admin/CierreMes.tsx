@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ReceiptText, RotateCcw, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Flechas, Input, Select } from "@/components/ui";
-import { fechaLarga, montoAlSalir, nf, num, paraCampo, usd, numeroMalEscrito } from "@/lib/formato";
+import { formatoFecha, montoAlSalir, nf, num, paraCampo, usd, numeroMalEscrito } from "@/lib/formato";
 import { MESES } from "@/lib/admin/constantes";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { CategoriaAdmin, ConceptoCobro, GastoAdmin, PeriodoAdmin, SimulacionCierre } from "@/lib/admin/tipos";
@@ -227,7 +227,7 @@ export function CierreMes({
       .limit(1);
     const cuando = data?.[0]?.creado_en;
     if (cuando)
-      setReabiertoEl(new Date(cuando).toLocaleDateString("es-VE", { timeZone: "America/Caracas", day: "numeric", month: "long", year: "numeric" }));
+      setReabiertoEl(formatoFecha(cuando));
   }
 
   async function descartarMes() {
@@ -1007,7 +1007,7 @@ function AyudaTasa({ tasaValor, tasaFecha }: { tasaValor: number; tasaFecha: str
       {tasaValor > 0 ? (
         <>
           {" "}La última publicada es <b className="mono">{nf(2).format(tasaValor)}</b>
-          {tasaFecha ? ` (del ${fechaLarga(tasaFecha)})` : ""}.
+          {tasaFecha ? ` (del ${formatoFecha(tasaFecha)})` : ""}.
         </>
       ) : (
         " Todavía no hay ninguna tasa cargada: escríbala a mano."

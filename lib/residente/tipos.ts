@@ -18,6 +18,17 @@ export type ConceptoRecibo = {
   monto: number;
 };
 
+/**
+ * Un cargo a una sola unidad, con su motivo (`recibos.cargos`, ronda 10,
+ * C): una multa o un consumo de Cobros, o un gasto «Solo a una unidad».
+ * Los recibos emitidos antes de la ronda 10 lo tienen vacío.
+ */
+export type CargoRecibo = {
+  concepto: string | null;
+  referencia: string | null;
+  monto: number;
+};
+
 export type RegistroRecibo = {
   numero: string;
   total: number;
@@ -31,6 +42,7 @@ export type RegistroRecibo = {
   anterior_hon: number;
   servicio: number;
   conceptos: ConceptoRecibo[];
+  cargos: CargoRecibo[];
   detalle: CategoriaRecibo[];
   tasa_bcv: number;
   vence_el: string | null;

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Input } from "@/components/ui";
-import { fechaHora } from "@/lib/formato";
+import { formatoFechaHora } from "@/lib/formato";
 import { componerTarjetaVisita, generarQR, nombreArchivoTarjeta, type DatosTarjeta } from "@/lib/residente/tarjeta-visita";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Database } from "@/types/supabase";
@@ -325,7 +325,7 @@ export function InvitarVisitas({
                 <div>
                   <div style={{ fontSize: 14.5, fontWeight: 600 }}>{i.nombre}</div>
                   <div style={{ fontSize: 12, color: "var(--tenue)" }}>
-                    Hasta {fechaHora(i.hasta)} · {i.usos} de {i.usos_max} usadas
+                    Hasta {formatoFechaHora(i.hasta)} · {i.usos} de {i.usos_max} usadas
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>

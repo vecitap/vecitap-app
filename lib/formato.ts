@@ -160,43 +160,68 @@ export function num0(valor: string | number | null | undefined): number {
   return num(valor) ?? 0;
 }
 
-export function fechaCorta(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const [a, m, d] = String(iso).slice(0, 10).split("-");
-  return `${d}/${m}/${a}`;
-}
+/**
+ * **Las únicas funciones de fecha de la app** (ronda 10, B4, caso 108):
+ * «28/10/2026» y «28/10/2026, 4:40 p. m.», siempre en hora de Venezuela,
+ * en el servidor y en el navegador. Antes había cuatro (fechaCorta,
+ * fechaLarga «28 de octubre de 2026», fechaHora «28/10, 16:40» en la zona
+ * del navegador, horaCorta) y varios recortes a mano de un ISO
+ * («2026-10-28 16:40», en UTC). En la base, las mismas reglas las aplican
+ * fecha_ve() y fecha_hora_ve() (migración 20261029150000_fechas_ve.sql).
+ *
+ * Aceptan una fecha sola («2026-10-28», de una columna `date`: se toma tal
+ * cual, sin correrla de zona) o un instante (`timestamptz`, ISO o Date: se
+ * pasa a America/Caracas). Vacío → "".
+ */
+const partesInstanteVecitap = new Intl.DateTimeFormat("en-US", {
+  timeZone: ZONA_VECITAP,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
-const MESES = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-];
+type Partes = { dia: string; mes: string; anio: string; hora: number | null; minuto: string };
 
-export function fechaLarga(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const [a, m, d] = String(iso).slice(0, 10).split("-");
-  return `${Number(d)} de ${MESES[Number(m) - 1]} de ${a}`;
+function partesDe(x: string | Date | null | undefined): Partes | null {
+  if (!x) return null;
+  if (typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x)) {
+    const [anio, mes, dia] = x.split("-");
+    return { dia, mes, anio, hora: null, minuto: "" };
+  }
+  const d = typeof x === "string" ? new Date(x) : x;
+  if (Number.isNaN(d.getTime())) return null;
+  const p = partesInstanteVecitap.formatToParts(d);
+  const v = (t: Intl.DateTimeFormatPartTypes) => p.find((q) => q.type === t)?.value ?? "";
+  return { dia: v("day"), mes: v("month"), anio: v("year"), hora: Number(v("hour")) % 24, minuto: v("minute") };
 }
 
 /**
- * Día/mes y hora:minuto, igual que `fechaHora()` en index.html:942-945
- * (Visitas). A diferencia de `fechaCorta`/`fechaLarga`, esta sí necesita la
- * hora local del navegador — `toLocaleString`, no el recorte de un ISO — y
- * por eso solo tiene sentido llamarla desde un Client Component.
+ * Un texto que no es una fecha («Octubre 2026», «—») vuelve tal cual: así se
+ * puede pasar por acá cualquier columna «Fecha» sin perder lo que no lo es.
  */
-export function fechaHora(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-VE", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+const noEsFecha = (x: string | Date | null | undefined) => (typeof x === "string" ? x : "");
+
+/** «28/10/2026». */
+export function formatoFecha(x: string | Date | null | undefined): string {
+  const p = partesDe(x);
+  return p ? `${p.dia}/${p.mes}/${p.anio}` : noEsFecha(x);
 }
 
-/** Solo hora:minuto — `hora()` de garita.html:240-241 (Adentro y Bitácora). */
-export function horaCorta(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" });
+/** «4:40 p. m.» (de un instante). */
+export function formatoHora(x: string | Date | null | undefined): string {
+  const p = partesDe(x);
+  if (!p || p.hora === null) return "";
+  return `${p.hora % 12 === 0 ? 12 : p.hora % 12}:${p.minuto} ${p.hora < 12 ? "a. m." : "p. m."}`;
+}
+
+/** «28/10/2026, 4:40 p. m.» (de un instante; de una fecha sola, solo la fecha). */
+export function formatoFechaHora(x: string | Date | null | undefined): string {
+  const p = partesDe(x);
+  if (!p) return noEsFecha(x);
+  return p.hora === null ? formatoFecha(x) : `${formatoFecha(x)}, ${formatoHora(x)}`;
 }
 
 /**

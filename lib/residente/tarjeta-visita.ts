@@ -1,3 +1,4 @@
+import { formatoFechaHora } from "@/lib/formato";
 /**
  * Portado de `armarTarjeta`/`componerTarjeta` en index.html:769-828 —
  * dibuja el QR de una invitación y lo compone en una tarjeta de 760×1060
@@ -84,12 +85,7 @@ export async function componerTarjetaVisita(inv: DatosTarjeta, qrUrl: string): P
 
   centro(inv.codigo || "", qy + lado + 58, "700 27px " + M, "#0A1128");
   if (inv.hasta) {
-    const d = new Date(inv.hasta).toLocaleString("es-VE", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const d = formatoFechaHora(inv.hasta);
     centro("Vence el " + d, qy + lado + 96, "400 21px " + F, "#92400E");
   }
   centro("Muéstrelo en la garita", qy + lado + 134, "400 20px " + F, "#64748B");

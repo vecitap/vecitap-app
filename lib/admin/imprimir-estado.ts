@@ -1,4 +1,4 @@
-import { nf, pct, usd } from "@/lib/formato";
+import { formatoFecha, formatoFechaHora, nf, pct, usd } from "@/lib/formato";
 
 type FilaImpresion = {
   fecha: string | null;
@@ -33,7 +33,7 @@ export function imprimirEstado(params: {
   const filasHtml = filas
     .map(
       (f) => `
-    <tr><td>${esc(f.fecha || "—")}</td>
+    <tr><td>${esc(formatoFecha(f.fecha) || "—")}</td>
     <td><b>${esc(f.concepto)}</b>${f.detalle ? `<br><span class="d">${esc(f.detalle)}</span>` : ""}</td>
     <td class="n">${f.cargo ? nf(2).format(f.cargo) : ""}</td>
     <td class="n ${f.tipo === "pendiente" ? "p" : "a"}">${
@@ -66,7 +66,7 @@ td{padding:7px 9px;border-bottom:1px solid #CBD5E1;vertical-align:top}
   <div><b>Propietario</b> ${esc(propietario || "sin registrar")}</div>
   ${inquilino ? `<div><b>Inquilino</b> ${esc(inquilino)}</div>` : ""}
   <div><b>Alícuota</b> ${esc(pct(unidad.alicuota))}</div>
-  <div><b>Emitido</b> ${new Date().toLocaleDateString("es-VE", { day: "2-digit", month: "long", year: "numeric" })}</div>
+  <div><b>Emitido</b> ${formatoFechaHora(new Date())}</div>
 </div>
 <table><thead><tr><th>Fecha</th><th>Concepto</th><th class="n">Cargo</th>
 <th class="n">Abono</th><th class="n">Saldo</th></tr></thead>

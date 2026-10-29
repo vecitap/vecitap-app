@@ -1,8 +1,11 @@
-import { fechaCorta } from "@/lib/formato";
+import { formatoFecha } from "@/lib/formato";
 import { nombreDe, vigente } from "@/lib/admin/personas";
 import { reciboEnPapel } from "@/lib/recibo-papel";
 import type { ReciboAdmin, TasaViva, Unidad } from "@/lib/admin/tipos";
-import type { CuentaPago } from "@/lib/datos-pago";
+import { tieneHonorarios, type CuentaPago } from "@/lib/datos-pago";
+
+/** Lo de `saldos_actuales` que necesita el papel. */
+export type SaldoHoy = { unidad_id: string | null; administracion: number | null; total: number | null };
 
 export type DatosRecibosAdmin = {
   edificio: { nombre: string; rif: string | null };
@@ -15,7 +18,27 @@ export type DatosRecibosAdmin = {
   cuentas?: CuentaPago[];
   /** La organización cobra solo en dólares (ronda 7, bloque 4). */
   soloUsd?: boolean;
+  /**
+   * Ronda 10 (B3): lo que debe hoy cada unidad (`saldos_actuales`), solo
+   * para el último mes cerrado: el papel dice «Hoy · Está al día» o «A favor»
+   * igual que el portal. Para un mes viejo no se pasa: ese papel es el del
+   * día de su cierre.
+   */
+  saldosHoy?: SaldoHoy[];
+  /** La fecha de hoy, ya escrita («28/10/2026»). */
+  fechaHoy?: string;
 };
+
+const dos = (x: number) => Math.round(x * 100) / 100;
+
+/** Lo que debe hoy la unidad, como lo arma el portal (`aPagarHoy` + `datos_pago_de`). */
+function pagarHoyDe(unidadId: string, d: DatosRecibosAdmin) {
+  const s = d.saldosHoy?.find((x) => x.unidad_id === unidadId);
+  if (!s || s.total === null) return null;
+  const monto = Math.abs(dos(Number(s.total))) < 0.005 ? 0 : dos(Number(s.total));
+  const hon = tieneHonorarios(d.cuentas ?? []) ? Math.min(Math.max(dos(Number(s.administracion ?? 0)), 0), Math.max(monto, 0)) : 0;
+  return { monto, fecha: d.fechaHoy ?? "", reparto: { condominio: Math.max(monto, 0) - hon, honorarios: hon } };
+}
 
 /**
  * Un recibo de Admin en papel. Salía de `armar()` dentro de Cortes.tsx; vive
@@ -34,10 +57,11 @@ export function reciboAdminEnPapel(r: ReciboAdmin, d: DatosRecibosAdmin): string
     logoOrg: d.organizacion.logo_url || "",
     unidad: u?.codigo,
     propietario: nombreDe(p) || nombreDe(q),
-    vence: fechaCorta(r.vence_el),
+    vence: formatoFecha(r.vence_el),
     tasaHoy: d.tasa && d.tasa.valor > 0 ? { valor: d.tasa.valor, fecha: d.tasa.actualizada } : null,
     cuentas: d.cuentas,
     soloUsd: d.soloUsd,
+    pagarHoy: pagarHoyDe(r.unidad_id, d),
     recibo: { ...r, etiqueta: d.etiqueta },
   });
 }

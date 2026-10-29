@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Aviso } from "@/components/ui";
 import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
-import { horaCorta } from "@/lib/formato";
+import { formatoHora } from "@/lib/formato";
 import type { VisitaDentro } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { mensajeDeError } from "@/lib/errores";
@@ -89,7 +89,7 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
                   <div className="garita-item-principal">{v.nombre}</div>
                   <div className="garita-item-secundario">
                     {v.unidad ? `Unidad ${v.unidad} · ` : ""}
-                    entró {horaCorta(v.entrada_en)}
+                    entró {formatoHora(v.entrada_en)}
                     {v.placa ? ` · ${v.placa}` : ""}
                     {v.documento ? ` · ${v.documento}` : ""}
                   </div>

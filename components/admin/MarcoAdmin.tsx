@@ -24,7 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Logo, Select } from "@/components/ui";
-import { nf } from "@/lib/formato";
+import { nf, formatoFecha } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { useTema } from "@/lib/theme/ThemeProvider";
 import { tasaDeReferencia, type TasaViva } from "@/lib/tasa";
@@ -291,7 +291,7 @@ function TasaCabecera({ inicial }: { inicial: TasaViva | null }) {
               : atrasada
                 ? `atrasada ${tasa?.dias} días`
                 : tasa?.actualizada
-                  ? `${tasa.fuente} · ${String(tasa.actualizada).slice(0, 10).split("-").reverse().join("/")}`
+                  ? `${tasa.fuente} · ${formatoFecha(tasa.actualizada)}`
                   : "referencia"}
         </div>
       </div>

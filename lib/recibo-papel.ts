@@ -1,7 +1,7 @@
 import { nf, usd } from "@/lib/formato";
 import { urlParaCompartir } from "@/lib/url-sitio";
 import { datosPagoEnPapel, repartoRecibo, type CuentaPago } from "@/lib/datos-pago";
-import type { CategoriaRecibo, ConceptoRecibo } from "@/lib/residente/tipos";
+import type { CargoRecibo, CategoriaRecibo, ConceptoRecibo } from "@/lib/residente/tipos";
 
 /**
  * Recibo en papel · UNA sola plantilla para Admin y para el portal del
@@ -46,8 +46,27 @@ export type ReciboPapel = {
   anterior_hon?: number | null;
   tasa_bcv?: number | null;
   conceptos?: ConceptoRecibo[] | unknown;
+  /** Ronda 10 (C): los cargos a esta unidad, con su motivo. */
+  cargos?: CargoRecibo[] | unknown;
   detalle?: CategoriaRecibo[] | unknown;
 };
+
+/**
+ * Las líneas de los cargos a una sola unidad (ronda 10, C): una por cargo,
+ * con su motivo («Multa por ruido · Acta del 12/10»). Un recibo emitido
+ * antes de la ronda 10 no los tiene por separado (`cargos` vacío): sale la
+ * suma, «Cargos de su unidad», como hasta hoy. La suma de las líneas es
+ * siempre `directos` (cerrar_periodo() sale de las mismas filas).
+ */
+export function lineasDeCargos(r: Pick<ReciboPapel, "directos" | "cargos">): { etiqueta: string; monto: number }[] {
+  const lista: CargoRecibo[] = Array.isArray(r.cargos) ? (r.cargos as CargoRecibo[]) : [];
+  if (lista.length)
+    return lista.map((c) => ({
+      etiqueta: [c.concepto?.trim() || "Cargo a su unidad", c.referencia?.trim()].filter(Boolean).join(" · "),
+      monto: Number(c.monto) || 0,
+    }));
+  return Number(r.directos) > 0 ? [{ etiqueta: "Cargos de su unidad", monto: Number(r.directos) }] : [];
+}
 
 export type DatosPapelRecibo = {
   edificio?: string | null;
@@ -112,15 +131,22 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
 
   const resumen = [
     ...con.map((l) => linea(l.nombre, l.monto)),
-    Number(r.directos) > 0 ? linea("Cargos de su unidad", Number(r.directos)) : "",
+    ...lineasDeCargos(r).map((l) => linea(l.etiqueta, l.monto)),
     Number(r.anterior) > 0 ? linea("Saldo del mes anterior", Number(r.anterior)) : "",
     Number(r.a_favor) > 0 ? linea("A su favor", -Number(r.a_favor)) : "",
     Number(r.mora) > 0 ? linea("Intereses de mora", Number(r.mora)) : "",
     favor > 0
       ? linea("Saldo a favor", favor, "tot") +
         `<tr class="nota-fav"><td colspan="2">Este mes no tiene que pagar</td></tr>`
-      : linea("Total", Number(r.total), "tot"),
+      : linea("Total del recibo", Number(r.total), "tot"),
   ].join("");
+
+  // Ronda 10 (B3): si el día en que se imprime no debe nada, arriba va lo
+  // mismo que «Mi recibo» del portal («Hoy · A favor $ 50,00 · no tiene que
+  // pagar», «Hoy · Está al día»), con el peso que tiene el total; el total
+  // del recibo queda al lado, como dato. Sin `pagarHoy` (un mes viejo en
+  // Cortes), el papel es el del día del cierre.
+  const hoyNoDebe = favor === 0 && d.pagarHoy != null && d.pagarHoy.monto <= 0.005;
 
   const renglones = det.reduce((n, c) => n + 1 + (c.lineas || []).length, 0);
   const anchoCompleto = renglones <= 14;
@@ -172,6 +198,9 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
   // pagar de menos creyendo que se pagó bien. Solo la frase y dónde ver el
   // monto exacto del día (el portal lo calcula con la tasa de hoy).
   const bloqueTasa = (() => {
+    if (hoyNoDebe)
+      return `<div><span class="et">Total del recibo</span><div class="cifra-s">${m(r.total)}</div>
+      <div class="nota-t">ya está pagado${d.pagarHoy?.fecha ? " al " + esc(d.pagarHoy.fecha) : ""}</div></div>`;
     if (favor > 0) return `<div><span class="et">Este mes</span><div class="cifra-s">No tiene que pagar</div></div>`;
     if (d.soloUsd) return "";
     return `<div>
@@ -285,13 +314,21 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
 <tbody><tr><td>
 
   <div class="plata">
-    <div class="fuerte">
-      <span class="et">${favor > 0 ? "Saldo a favor" : "Total a pagar"}</span>
+    ${
+      hoyNoDebe
+        ? `<div class="fuerte">
+      <span class="et">Hoy</span>
+      <div class="cifra">${d.pagarHoy!.monto < -0.005 ? "A favor " + m(-d.pagarHoy!.monto) : "Está al día"}</div>
+      <div class="nota-t" style="color:#A3B4D4">no tiene que pagar</div>
+    </div>`
+        : `<div class="fuerte">
+      <span class="et">${favor > 0 ? "Saldo a favor" : "Total del recibo"}</span>
       <div class="cifra">${m(favor > 0 ? favor : r.total)}</div>
-    </div>
+    </div>`
+    }
     ${bloqueTasa}
     ${
-      d.vence && favor === 0
+      d.vence && favor === 0 && !hoyNoDebe
         ? `<div>
       <span class="et">Vence</span>
       <div class="cifra-s vence">${esc(d.vence)}</div>

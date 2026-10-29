@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui";
-import { fechaHora } from "@/lib/formato";
+import { formatoFechaHora } from "@/lib/formato";
 import type { Database } from "@/types/supabase";
 
 type FilaVisita = Database["public"]["Functions"]["mis_visitas"]["Returns"][number];
@@ -34,13 +34,13 @@ export function QuienHaEntrado({ visitas }: { visitas: FilaVisita[] }) {
               <div>
                 <div style={{ fontSize: 14.5, fontWeight: 600 }}>{v.nombre}</div>
                 <div style={{ fontSize: 12, color: "var(--tenue)" }}>
-                  {fechaHora(v.entrada_en)}
+                  {formatoFechaHora(v.entrada_en)}
                   {v.placa ? ` · ${v.placa}` : ""}
                   {v.tipo === "anunciada" ? " · anunciada" : " · sin anunciar"}
                 </div>
               </div>
               <span style={{ fontSize: 12, fontWeight: 600, color: v.estado === "dentro" ? "var(--ambar)" : "var(--tenue)" }}>
-                {v.estado === "dentro" ? "Adentro" : "Salió " + fechaHora(v.salida_en)}
+                {v.estado === "dentro" ? "Adentro" : "Salió " + formatoFechaHora(v.salida_en)}
               </span>
             </div>
           ))}

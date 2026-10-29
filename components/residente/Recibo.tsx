@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui";
-import { bs, fechaLarga, nf, usd } from "@/lib/formato";
-import { favorQueQueda } from "@/lib/recibo-papel";
+import { bs, formatoFecha, nf, usd } from "@/lib/formato";
+import { favorQueQueda, lineasDeCargos } from "@/lib/recibo-papel";
 import { bolivaresExactos } from "@/lib/residente/monto-exacto";
 import type { RegistroRecibo } from "@/lib/residente/tipos";
 import type { APagarHoy } from "@/lib/residente/a-pagar";
@@ -79,9 +79,9 @@ export function Recibo({
   const debeHoy = hoy ? hoy.monto : favor > 0 ? 0 : Number(recibo.total);
   const cambioDesdeElRecibo = hoy !== null && favor === 0 && Math.abs(debeHoy - Number(recibo.total)) >= 0.005;
 
-  const fila = (etiqueta: string, valor: number, fuerte = false) => (
+  const fila = (etiqueta: string, valor: number, fuerte = false, clave = etiqueta) => (
     <div
-      key={etiqueta}
+      key={clave}
       style={{
         display: "flex",
         justifyContent: "space-between",
@@ -144,7 +144,7 @@ export function Recibo({
       </div>
 
       {recibo.conceptos.map((l) => fila(l.nombre, l.monto))}
-      {Number(recibo.directos) > 0 && fila("Cargos de su unidad", recibo.directos)}
+      {lineasDeCargos(recibo).map((l, i) => fila(l.etiqueta, l.monto, false, `cargo-${i}`))}
       {Number(recibo.anterior) > 0 && fila("Saldo del mes anterior", recibo.anterior)}
       {Number(recibo.a_favor) > 0 && fila("A su favor", -recibo.a_favor)}
       {Number(recibo.mora) > 0 && fila("Intereses de mora", recibo.mora)}
@@ -159,7 +159,7 @@ export function Recibo({
           </div>
         </>
       ) : (
-        fila("Total", recibo.total, true)
+        fila("Total del recibo", recibo.total, true)
       )}
 
       {/* Ronda 9 (A1): el recibo es del día en que se emitió; si después se
@@ -204,7 +204,7 @@ export function Recibo({
         <div
           style={{ marginTop: 12, padding: "10px 12px", borderRadius: 9, background: "var(--ambar-bg)", color: "var(--ambar)", fontSize: 13, fontWeight: 600 }}
         >
-          Vence el {fechaLarga(recibo.vence_el)}
+          Vence el {formatoFecha(recibo.vence_el)}
         </div>
       )}
 

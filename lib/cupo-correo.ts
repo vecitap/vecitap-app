@@ -1,3 +1,4 @@
+import { formatoHora, formatoFecha } from "@/lib/formato";
 /**
  * El cupo diario de correos (ronda 8): cómo decir cuándo sale lo que espera.
  * Lo calcula la base (`momento_cupo()`, en
@@ -20,9 +21,10 @@ export type CupoCorreo = {
 
 const CINCO_MIN = 6 * 60 * 1000;
 
-const hora = (d: Date) => d.toLocaleTimeString("es-VE", { timeZone: "America/Caracas", hour: "numeric", minute: "2-digit" });
+// Ronda 10 (B4): la misma hora que el resto de la app («4:40 p. m.»).
+const hora = (d: Date) => formatoHora(d);
 
-/** «hoy a las 11:45 p. m.», «mañana a las 7:10 a. m.» o «el 29 de octubre a las …». */
+/** «hoy a las 11:45 p. m.», «mañana a las 7:10 a. m.» o «el 29/10/2026 a las …». */
 export function momento(iso: string): string {
   const d = new Date(iso);
   const dia = (x: Date) => x.toLocaleDateString("en-CA", { timeZone: "America/Caracas" });
@@ -30,7 +32,7 @@ export function momento(iso: string): string {
   const manana = new Date(hoy.getTime() + 24 * 3600 * 1000);
   if (dia(d) === dia(hoy)) return `hoy a las ${hora(d)}`;
   if (dia(d) === dia(manana)) return `mañana a las ${hora(d)}`;
-  return `el ${d.toLocaleDateString("es-VE", { timeZone: "America/Caracas", day: "numeric", month: "long" })} a las ${hora(d)}`;
+  return `el ${formatoFecha(d)} a las ${hora(d)}`;
 }
 
 /** Para lo que espera en la cola: «en los próximos minutos» o «hoy a las …». null = más de un día. */

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso as AvisoUI, Badge, Button, Campo, Card, Input, Table } from "@/components/ui";
 import { cuandoSale, type CupoCorreo } from "@/lib/cupo-correo";
-import { hoyLocalISO, montoAlSalir, nf, num, usd, usd0 } from "@/lib/formato";
+import { hoyLocalISO, montoAlSalir, nf, num, usd, usd0, formatoFechaHora, formatoFecha } from "@/lib/formato";
 import { estadoSuscripcion } from "@/lib/estados-suscripcion";
 import { calcularMetricasCartera } from "@/lib/operador/metricas-cartera";
 import { csvCartera } from "@/lib/operador/exportar-cartera";
@@ -232,7 +232,7 @@ export function ConsolaOperador({
                   {nf(4).format(tasa.tasa)}
                 </div>
                 <div style={{ fontSize: 12.5, color: diasTasa && diasTasa > 2 ? "var(--rojo)" : "var(--tenue)" }}>
-                  del {tasa.fecha}
+                  del {formatoFecha(tasa.fecha)}
                   {diasTasa === 0 ? " · al día" : diasTasa === 1 ? " · de ayer" : ` · atrasada ${diasTasa} días`}
                 </div>
               </>
@@ -243,7 +243,7 @@ export function ConsolaOperador({
             )}
             {tasaTarea && (
               <div style={{ fontSize: 11.5, color: "var(--tenue)", marginTop: 4 }}>
-                Última corrida {new Date(tasaTarea.corrida_en).toLocaleString("es-VE")}
+                Última corrida {formatoFechaHora(tasaTarea.corrida_en)}
                 {(tasaTarea.detalle as { error?: string } | null)?.error
                   ? ` · ${(tasaTarea.detalle as { error?: string }).error}`
                   : ""}
@@ -282,7 +282,7 @@ export function ConsolaOperador({
                   const d = (tarea.detalle as { cobros_generados?: number; monto_total?: number; marcadas_vencidas?: number } | null) ?? {};
                   return (
                     <>
-                      Última corrida {new Date(tarea.corrida_en).toLocaleString("es-VE")} · <b>{d.cobros_generados ?? 0}</b> cobros
+                      Última corrida {formatoFechaHora(tarea.corrida_en)} · <b>{d.cobros_generados ?? 0}</b> cobros
                       generados por <b className="mono">{usd(d.monto_total)}</b>
                       {d.marcadas_vencidas ? ` · ${d.marcadas_vencidas} marcadas vencidas` : ""}
                     </>

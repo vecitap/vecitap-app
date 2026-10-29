@@ -11,6 +11,7 @@ import type { ConceptoCobro } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
 import { CuotasExtraordinarias } from "./CuotasExtraordinarias";
+import { CargosUnidad, type CargoDelMes } from "./CargosUnidad";
 
 type ActualizarConcepto = Database["public"]["Tables"]["conceptos_cobro"]["Update"];
 
@@ -41,12 +42,19 @@ export function Cobros({
   edificioId,
   conceptos: todos,
   avance,
+  mes,
+  unidades,
+  cargos,
 }: {
   orgId: string;
   edificioId: string;
   conceptos: ConceptoCobro[];
   /** Cuotas extraordinarias: cuántas ya se cobraron (ronda 7, bloque 5). */
   avance: Record<string, number>;
+  /** Ronda 10 (C): el mes abierto, las unidades y los cargos a una sola unidad de ese mes. */
+  mes: { id: string; etiqueta: string } | null;
+  unidades: { id: string; codigo: string }[];
+  cargos: CargoDelMes[];
 }) {
   // Las extraordinarias (con `cuotas`) van en su propia tarjeta.
   const conceptos = todos.filter((c) => c.cuotas === null);
@@ -184,6 +192,8 @@ export function Cobros({
       </div>
 
       <CuotasExtraordinarias orgId={orgId} edificioId={edificioId} extraordinarias={extraordinarias} avance={avance} />
+
+      <CargosUnidad orgId={orgId} mes={mes} unidades={unidades} cargos={cargos} />
 
       <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)", padding: 18 }}>
         <h2 style={{ margin: "0 0 4px", fontSize: 16, fontFamily: "var(--font-titulos)" }}>Agregar un cobro</h2>

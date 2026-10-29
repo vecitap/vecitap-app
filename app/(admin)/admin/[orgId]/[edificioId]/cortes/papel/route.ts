@@ -10,6 +10,7 @@ import { tasaDelDia } from "@/lib/tasa";
 import { esUuid } from "@/lib/validacion";
 import { ajustesCobroDe } from "@/lib/cobro";
 import { ordenarPorCodigo } from "@/lib/orden-unidades";
+import { formatoFecha, hoyLocalISO } from "@/lib/formato";
 
 const noEncontrado = () => new NextResponse("No encontrado", { status: 404 });
 
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   let consultaRecibos = supabase
     .from("recibos")
     .select(
-      "id,unidad_id,numero,cuota,directos,anterior,a_favor,mora,honorario,servicio,anterior_hon,anterior_serv,total,conceptos,detalle,tasa_bcv,vence_el,alicuota"
+      "id,unidad_id,numero,cuota,directos,anterior,a_favor,mora,honorario,servicio,anterior_hon,anterior_serv,total,conceptos,cargos,detalle,tasa_bcv,vence_el,alicuota"
     )
     .eq("periodo_id", periodoId);
   if (unidadId) consultaRecibos = consultaRecibos.eq("unidad_id", unidadId);
@@ -80,7 +81,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   const filas: ReciboAdmin[] = (recibos ?? []).slice().sort((a, b) => (orden.get(a.unidad_id) ?? 0) - (orden.get(b.unidad_id) ?? 0));
   if (!filas.length) return NextResponse.redirect(new URL(volver, req.url));
 
-  const html = recibosAdminEnPapel(filas, { edificio, organizacion: org, unidades: lista, etiqueta: periodo.etiqueta, tasa, cuentas: cuentas ?? [], soloUsd: cobro.soloUsd });
+  // Ronda 10 (B3): el último mes cerrado lleva lo que se debe hoy («Hoy ·
+  // Está al día»), como el portal; uno viejo sale como se emitió.
+  const [{ data: ultimo }, { data: saldos }] = await Promise.all([
+    supabase
+      .from("periodos")
+      .select("id")
+      .eq("edificio_id", edificioId)
+      .eq("estado", "cerrado")
+      .order("anio", { ascending: false })
+      .order("mes", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase.from("saldos_actuales").select("unidad_id,administracion,total").eq("edificio_id", edificioId),
+  ]);
+  const hoy = ultimo?.id === periodoId ? { saldosHoy: saldos ?? [], fechaHoy: formatoFecha(hoyLocalISO()) } : {};
+
+  const html = recibosAdminEnPapel(filas, {
+    edificio,
+    organizacion: org,
+    unidades: lista,
+    etiqueta: periodo.etiqueta,
+    tasa,
+    cuentas: cuentas ?? [],
+    soloUsd: cobro.soloUsd,
+    ...hoy,
+  });
   return new NextResponse(paraPantalla(html, volver), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" },
   });

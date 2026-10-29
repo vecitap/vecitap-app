@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { fechaCorta, hoyLocalISO } from "@/lib/formato";
+import { formatoFecha, hoyLocalISO } from "@/lib/formato";
 import { repartoRecibo } from "@/lib/datos-pago";
 import { paraPantalla, reciboEnPapel } from "@/lib/recibo-papel";
 import { ultimoReciboDe } from "@/lib/residente/recibo";
@@ -50,7 +50,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ uni
   const pagarHoy = hoy
     ? {
         monto: hoy.monto,
-        fecha: fechaCorta(hoyLocalISO()),
+        fecha: formatoFecha(hoyLocalISO()),
         reparto: conMonto
           ? {
               condominio: filas.filter((c) => c.destino !== "honorarios").reduce((s, c) => Math.max(s, Number(c.monto ?? 0)), 0),
@@ -64,7 +64,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ uni
     edificio: r.recibo.edificio || r.unidad.edificio,
     organizacion: r.unidad.organizacion,
     unidad: r.unidad.codigo,
-    vence: fechaCorta(r.recibo.vence_el),
+    vence: formatoFecha(r.recibo.vence_el),
     // La tasa viva viaja al papel: el documento se genera ahora, no el día
     // en que se emitió el recibo (index.html:1453-1455).
     tasaHoy: r.recibo.tasaHoy,

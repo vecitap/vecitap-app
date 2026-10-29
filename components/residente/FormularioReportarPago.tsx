@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Input, InputFecha, Select } from "@/components/ui";
-import { bs, fechaLarga, hoyLocalISO, montoAlSalir, nf, num, paraCampo, usd } from "@/lib/formato";
+import { bs, formatoFecha, hoyLocalISO, montoAlSalir, nf, num, paraCampo, usd } from "@/lib/formato";
 import { bolivaresExactos, bolivaresParaCopiar } from "@/lib/residente/monto-exacto";
 import type { APagarHoy } from "@/lib/residente/a-pagar";
 import {
@@ -422,7 +422,7 @@ export function FormularioReportarPago({
               {bs(exacto)}
             </div>
             <div style={{ fontSize: 12.5, color: "var(--tenue)" }}>
-              Tasa del Banco Central del {fechaLarga(tasa.fecha)}: <span className="mono">{nf(2).format(tasa.tasa)}</span>
+              Tasa del Banco Central del {formatoFecha(tasa.fecha)}: <span className="mono">{nf(2).format(tasa.tasa)}</span>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0 8px" }}>
               <Button
@@ -475,7 +475,7 @@ export function FormularioReportarPago({
               "No se pudo consultar la tasa: " + errorTasa
             ) : tasa ? (
               <>
-                Tasa del Banco Central del {fechaLarga(tasa.fecha)}: <b className="mono">{nf(2).format(tasa.tasa)}</b>
+                Tasa del Banco Central del {formatoFecha(tasa.fecha)}: <b className="mono">{nf(2).format(tasa.tasa)}</b>
                 {num(f.monto) ? (
                   <>
                     {" "}

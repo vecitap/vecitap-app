@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Badge, Button, Campo, Card, Input, InputFecha, Select, type TonoBadge } from "@/components/ui";
-import { bs, hoyLocalISO, montoAlSalir, nf, num, usd } from "@/lib/formato";
+import { bs, hoyLocalISO, montoAlSalir, nf, num, usd, formatoFecha } from "@/lib/formato";
 import { BOLSILLOS, DESTINOS_PAGO, METODOS, PIDE } from "@/lib/admin/constantes";
 import {
   detectarColumnas,
@@ -164,7 +164,7 @@ export function Pagos({
     setGuardandoTasa(false);
     if (error) return fallo(error);
     setHuecoTasa("");
-    notificar(`Tasa del ${f.fecha} guardada. Queda registrada a su nombre.`);
+    notificar(`Tasa del ${formatoFecha(f.fecha)} guardada. Queda registrada a su nombre.`);
     verTasa();
   }
 
@@ -452,7 +452,7 @@ export function Pagos({
               {visibles.map((p) => (
                 <tr key={p.id}>
                   <td className="mono" data-t="Fecha">
-                    {p.fecha}
+                    {formatoFecha(p.fecha)}
                   </td>
                   <td className="mono cabeza" style={{ fontWeight: 600 }}>
                     {codigo(p.unidad_id)}
@@ -653,7 +653,7 @@ export function Pagos({
                       ? "publicada ese día"
                       : "cargada a mano"
                     : tf
-                      ? `no hay publicación de ese día: se usa la del ${tf.fecha}`
+                      ? `no hay publicación de ese día: se usa la del ${formatoFecha(tf.fecha)}`
                       : "no hay ninguna tasa de ese día ni anterior"
                 }
               >
@@ -727,7 +727,7 @@ export function Pagos({
 
           {f.moneda === "VES" && montoVes !== null && tf && (
             <p style={{ fontSize: 12.5, color: "var(--tinta-2)", marginTop: 10, lineHeight: 1.6 }}>
-              Equivale a <b>{usd(montoVes / tf.tasa)}</b> a la tasa del BCV del {tf.fecha}. Vale esa
+              Equivale a <b>{usd(montoVes / tf.tasa)}</b> a la tasa del BCV del {formatoFecha(tf.fecha)}. Vale esa
               y no la de hoy: si el propietario transfirió el lunes y usted concilia el jueves,
               cobrarle a tasa de jueves sería cobrarle de más.
             </p>
@@ -746,13 +746,13 @@ export function Pagos({
               <div style={{ fontSize: 12.5, color: "var(--tinta-2)", marginBottom: 8, lineHeight: 1.55 }}>
                 {tf ? (
                   <>
-                    No hay tasa publicada del <b>{f.fecha}</b>. Si fue sábado, domingo o feriado está
-                    bien usar la del {tf.fecha}. Si fue día hábil y usted tiene la del BCV de ese
+                    No hay tasa publicada del <b>{formatoFecha(f.fecha)}</b>. Si fue sábado, domingo o feriado está
+                    bien usar la del {formatoFecha(tf.fecha)}. Si fue día hábil y usted tiene la del BCV de ese
                     día, cárguela.
                   </>
                 ) : (
                   <>
-                    No hay ninguna tasa del <b>{f.fecha}</b> ni anterior. Cargue la del BCV de ese
+                    No hay ninguna tasa del <b>{formatoFecha(f.fecha)}</b> ni anterior. Cargue la del BCV de ese
                     día para poder registrar el pago.
                   </>
                 )}
@@ -773,7 +773,7 @@ export function Pagos({
                   />
                 </div>
                 <Button type="button" variante="secundario" mini cargando={guardandoTasa} onClick={guardarHueco}>
-                  Guardar la tasa del {f.fecha}
+                  Guardar la tasa del {formatoFecha(f.fecha)}
                 </Button>
               </div>
             </div>
@@ -1035,7 +1035,7 @@ export function Pagos({
               <div>
                 <div style={{ fontWeight: 600 }}>Comprobante · {codigo(viendo.pago.unidad_id)}</div>
                 <div className="mono" style={{ fontSize: 12, color: "#64748B" }}>
-                  {viendo.pago.fecha} · {viendo.pago.metodo}
+                  {formatoFecha(viendo.pago.fecha)} · {viendo.pago.metodo}
                   {viendo.pago.referencia ? ` · ref ${viendo.pago.referencia}` : ""}
                 </div>
               </div>
