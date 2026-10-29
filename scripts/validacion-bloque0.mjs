@@ -34,8 +34,7 @@ let envLocal = {};
 try {
   envLocal = Object.fromEntries(
     readFileSync(path.join(__dirname, "..", ".env.local"), "utf8")
-      .split(/?
-/)
+      .split(/\r?\n/)
       .filter((l) => l.includes("=") && !l.startsWith("#"))
       .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()])
   );

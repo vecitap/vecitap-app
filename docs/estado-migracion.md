@@ -236,13 +236,21 @@ organización.
 | D7 | OK | Con una fila pendiente sin respuesta, «Traer ahora» del operador: «la API no respondió a tiempo» (sin «DELETE requires a WHERE clause») y la fila se borró; una administradora → «Solo el operador…» |
 | R7 / R8 | OK | El correo del recibo trae los datos para pagar (la cuenta) sin Bs. «Cobrar solo en dólares»: portal sin Bs y «Debe hoy $ 15,00»; papel y correo sin bolívares. Extracto con un pago → «Conciliar 1 pago» → conciliado; el mismo archivo otra vez se vuelve a leer (también en «Cargar saldos»). Pago agrupado $ 5 + $ 7 contra un movimiento de $ 12 → los dos conciliados |
 | Teléfono | OK | Portal a 390 × 844 (Mi recibo, Reportar un pago): nada se sale |
-| Sesión (recetario 28-sep) | SESION_PENDIENTE | |
+| Sesión J9 | OK | Pasada la hora, admin navega de Inicio a Propietarios sin pasar por /entrar |
+| Sesión J10 | OK | Pasada la segunda hora, F5 en Inicio: carga sin pedir clave |
+| Sesión J16 | OK | Pasada la hora, residente pide /operador: 307 **con set-cookie** (la cookie de sesión cambió), aterriza en /sin-acceso; vuelve a /mi sin pedir clave |
+| Sesión J17 | OK | Admin pide una organización ajena: 307 a /sin-acceso, sesión viva. Sin set-cookie esa vez: el token ya se había renovado en J9 un momento antes (el mecanismo del refresco en un rebote lo prueban J16 y J18) |
+| Sesión J18 | OK | Segundo vencimiento, el 16 otra vez en la misma pestaña: 307 con set-cookie, la sesión no se cierra |
+| Sesión G19 | OK | Salir: la cookie `sb-…-auth-token` desaparece |
+| Sesión G11 | OK | Después de Salir, Atrás → /entrar; F5 → /entrar; no muestra datos |
+| Sesión K1 | OK en Admin, /mi y /operador | Salir → POST **303**, aterriza en /, sin 405. **La garita no se probó:** no hay clave de `vigilante.prueba` en `.env.local` |
 
 **Arreglos hechos durante la validación:** (1) R9-7, `pagos_desde_cierre()`, para el
 inquilino con «solo el recibo»; (2) el total del resumen del portal en gris; (3) el
-texto del aviso de A4 (plural y punto doble). **Corrida dos veces:** la primera
-tanda de las pruebas de sesión la cortó Claude Code por falta de memoria en la
-máquina, antes del primer vencimiento; se volvió a correr entera.
+texto del aviso de A4 (plural y punto doble). **Pruebas de sesión:** reales, sin tocar la
+configuración de Auth ni las cookies (`scripts/validacion-ronda9-sesion.mjs`, 28-oct de 15:43 a
+17:50, y `scripts/validacion-ronda9-salir.mjs`). Una primera corrida la cortó Claude Code por falta
+de memoria en la máquina, antes del primer vencimiento; se volvió a correr entera.
 
 ### Riesgos para los primeros recibos
 

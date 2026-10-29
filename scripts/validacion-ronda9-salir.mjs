@@ -67,6 +67,9 @@ try {
     const page = await ctx.newPage();
     await login(page, cred);
     if (nombre === "/operador") await page.goto(`${BASE}/operador`, { waitUntil: "networkidle" });
+    // Con más de una administradora, admin.prueba entra a la lista /admin, que no tiene «Salir».
+    if (nombre === "Admin" && process.env.VALIDACION_ADMIN_INICIO)
+      await page.goto(`${BASE}/${process.env.VALIDACION_ADMIN_INICIO.replace(/^\/+/, "")}`, { waitUntil: "networkidle" });
     const antes = new URL(page.url()).pathname;
     const cookiesAntes = await sesion(ctx);
     const s = await salir(page);
