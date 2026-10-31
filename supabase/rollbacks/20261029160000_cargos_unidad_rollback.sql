@@ -4,8 +4,11 @@
 -- eaa0fce9… y 19b62999…) y borra `cargos_unidad` con su guarda. **Borra los
 -- cargos cargados en Cobros**: los de meses ya cerrados quedan en
 -- `recibos.cargos` y `recibos.directos` (el recibo emitido no cambia); los de
--- meses abiertos se pierden y habría que volver a cargarlos como gasto «Solo
--- a una unidad». Antes de correrlo, para anotarlos:
+-- meses abiertos se perderían y habría que volver a cargarlos como gasto «Solo
+-- a una unidad». Por eso (revisión cruzada, ronda 10b) **la guarda no lo deja
+-- correr si hay cargos en algún mes abierto**: ABORTADA con cuántos cargos y
+-- en cuántos meses. Los de meses cerrados no bloquean (ya están en el
+-- recibo). Para anotarlos antes de quitarlos o de cerrar el mes:
 --   select p.etiqueta, u.codigo, c.concepto, c.monto from cargos_unidad c
 --     join periodos p on p.id = c.periodo_id join unidades u on u.id = c.unidad_id
 --    where p.estado = 'abierto';
@@ -13,8 +16,18 @@
 begin;
 
 do $guarda$
-declare v text;
+declare v text; n_cargos int; n_meses int;
 begin
+  -- Ronda 10b: un cargo de un mes abierto todavía no está en ningún recibo.
+  select count(*), count(distinct c.periodo_id) into n_cargos, n_meses
+    from cargos_unidad c join periodos p on p.id = c.periodo_id
+   where p.estado = 'abierto';
+  if n_cargos > 0 then
+    raise exception 'ABORTADA: hay % en %: se perderían. Quítelos o cierre esos meses antes del rollback.',
+      n_cargos || case when n_cargos = 1 then ' cargo' else ' cargos' end,
+      n_meses || case when n_meses = 1 then ' mes abierto' else ' meses abiertos' end;
+  end if;
+
   select md5(prosrc) into v from pg_proc where oid = 'public.cerrar_periodo(uuid)'::regprocedure;
   if v is distinct from '2db1cb7be8c9a6d8330e29da8a6a7ac3' then
     raise exception 'ABORTADO: cerrar_periodo no es el de 20261029160000 (md5=%)', v;

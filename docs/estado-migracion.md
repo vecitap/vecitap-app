@@ -16,6 +16,229 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 10b del tramo 2 (31-oct) — correcciones de la revisión cruzada de las rondas 9 y 10
+
+Pedido de Nicolás del 31-oct (partes A a D), con una ampliación el mismo día (A2 en las
+tres funciones, A3, A4, `public/inicio.html` y «Para después del piloto»). En `dev`,
+**sin commit**. Para la revisión: `C:\Users\Nicolas\Downloads\revision-cruzada-ronda10b\`
+(la migración, su rollback, el rollback de `cargos_unidad` modificado con su `.diff`, el
+`.diff` de `public/inicio.html` y el script de la prueba de la Parte C). Código de la
+app: solo `public/inicio.html` (dos líneas); la Parte C no necesitó cambios.
+
+### Qué se hizo
+
+| Parte | Qué | Resultado |
+|---|---|---|
+| A1 | `pagos_desde_cierre(uuid)`: el control deja de usar `not in (select unidades_visibles())` y pasa a `p_unidad is null or not exists (… where v = p_unidad)` | md5 7b86d8ac… → **c17eb556849fb630e4f2e43b83318d2f**. Permisos iguales |
+| A2 | «hola@vecitap.com» → «info@vecitap.com» en `org_campos_del_operador()`, `exigir_org_al_dia(uuid)` y `edificio_dentro_del_tope()` (2 veces). No queda ninguno en `public` | 0b281102… → **c43fde43b1187e0c8894da9773f2d07c**; 61529947… → **b9c832365abf7318944d6c15f29593d7**; f1f555e8… → **dcdd9fecaaf51552794b5a0fa2d18268** |
+| A3 | `destinatarios_de(uuid)` devuelve el correo con `lower(btrim(…))` | 2be2e76b… → **2558c045144a6e72adfbd5b8632f4255** |
+| A4 | `esc_html(text)` escapa también `"` (`&quot;`) y `'` (`&#39;`) | a5f0a43b… → **dc4d15f24644035a3580d97ef58f5b67** |
+| — | `public/inicio.html` (la portada de vecitap.com: `next.config.ts` la sirve en `/`): el `mailto:` y el texto, a info@vecitap.com | 2 líneas (703 y 705) |
+| B | Rollback de `cargos_unidad`: la guarda aborta si hay cargos en meses abiertos («ABORTADA: hay 2 cargos en 1 mes abierto: se perderían…») | Probado en seco, tres casos (abajo) |
+| C | Escapado del motivo del cargo en el papel | Ya estaba escapado: sin cambios |
+| D | Comprobaciones de solo lectura en las dos bases | Tabla de abajo |
+
+**A1, lo que se encontró antes de cambiarlo.** `unidades_visibles()` devuelve `SETOF uuid`
+y es la misma en las dos bases (md5 b7adaa13…). **No puede devolver NULL**: las dos
+primeras ramas sacan `unidades.id` (clave primaria) y la tercera filtra
+`m.unidad_id is not null`. El único NULL posible era `p_unidad = NULL`, y ahí la función
+devolvía 0 y 0 (`unidad_id = NULL` no encuentra filas): no se filtraba nada ajeno. El
+cambio es preventivo. **El mismo `not in (select unidades_visibles())` está en
+`saldo_visible()` y en `datos_pago_de()`**: no se tocaron (va en «Para después del
+piloto», abajo).
+
+**A3, quién llama a `destinatarios_de()`.** En pruebas, y en producción después del paso
+23 (`20261027140000`), solo `garita_avisar()`, que usa el correo únicamente como
+`destino` de la cola: nada compara mayúsculas. En el código de la app nadie la llama (un
+comentario en `lib/admin/cargar-datos/analisis.ts`). En producción hoy también la llama
+`correo_recibo()`, pero ese cuerpo lo reemplaza el paso 13 y deja de llamarla en el 23:
+**la guarda del 39 comprueba que la única que la llama sea `garita_avisar()`**. Ninguna
+vista, índice ni restricción depende de `destinatarios_de()` ni de `esc_html()`.
+
+**A4, quién usa `esc_html()`:** `correo_recibo()`, `datos_pago_html()`,
+`enviar_mensaje()` y `garita_avisar()`, siempre dentro del HTML del correo (texto, o
+atributo entre comillas dobles).
+
+**Migración nueva:** `20261031120000_correcciones_revision_r9_r10.sql`. La primera
+versión (A1 y A2 en una sola función) se aplicó el 31-oct a la mañana; para la
+ampliación se revirtió con su rollback y se aplicó el archivo nuevo tal cual
+(`execute_sql`), así que pruebas tiene exactamente el archivo. Verificación (las
+escrituras de prueba, dentro de un bloque deshecho a propósito; sin restos después):
+- md5 y permisos de las seis funciones: los del archivo; los permisos, iguales a antes.
+  `hola@vecitap.com` en `public` → 0. `esc_html('<a href="x">O''Brien & co</a>')` →
+  `&lt;a href=&quot;x&quot;&gt;O&#39;Brien &amp; co&lt;/a&gt;`.
+- A1: una administradora de otra organización con una unidad ajena → «Sin acceso a esa
+  unidad»; con NULL, el mismo error. Un inquilino con «Solo el recibo del mes»
+  (`inquilino_ve = 'mes'`, puesto solo para la prueba), con un pago confirmado de 40 y
+  uno reportado de 15 del propietario → 40 / 15, y 0 pagos por RLS. Igual que antes.
+- A2, los tres mensajes, con el texto nuevo: cambiar el plan («… Escríbanos a
+  info@vecitap.com si necesita cambiarlos.»), una organización suspendida («… Escríbanos
+  a info@vecitap.com.») y un edificio más allá del tope («Su plan llega hasta 2
+  edificio(s). Escríbanos a info@vecitap.com para ampliarlo.»). La variante «Su cuenta es
+  de un solo condominio…» no se ejercitó (no había una cuenta de ese tipo a mano); su
+  reemplazo está en el conteo «exactamente una vez» y en el md5.
+- A3: con el correo de la persona puesto como `'  VECITAP.ADMIN@GMAIL.COM '`, el aviso de
+  la garita llega a la cola como `vecitap.admin@gmail.com`.
+- A4, **los correos se ven igual**: con «Administradora Union», el nombre de la
+  organización y del edificio con comillas (`"Q" O'Brien`, `«Torre "A"» D'Elia`) y un
+  mensaje con comillas en el asunto y el texto, se generaron el recibo
+  (`correo_recibo`), el mensaje (`enviar_mensaje`) y el aviso de garita
+  (`garita_avisar`) con el `esc_html()` viejo y con el nuevo. En los tres, el HTML nuevo
+  es **idéntico al viejo** si se cambian `&quot;` → `"` y `&#39;` → `'`: lo único
+  distinto son esas entidades, que el lector de correo muestra como el carácter.
+- **El rollback, en seco**: vuelve las seis a 7b86d8ac…, 0b281102…, 61529947…,
+  f1f555e8…, 2be2e76b… y a5f0a43b…. La base quedó con la migración aplicada.
+
+**«hola@vecitap.com» que queda:** solo citado en `20261028150000` y su rollback (el
+texto de antes, correcto que quede así), y en `esquema_inicial.sql` (histórico).
+`public/inicio.html` sí se usa: es la portada de vecitap.com, así que se corrigió.
+
+**B, prueba en seco** (cada caso dentro de una transacción deshecha):
+1. Dos cargos en un mes abierto → «ABORTADA: hay 2 cargos en 1 mes abierto: se
+   perderían. Quítelos o cierre esos meses antes del rollback.»
+2. Un cargo solo en un mes cerrado (metido con el trigger desactivado dentro de la
+   transacción, porque las guardas de cierre no dejaban cerrar un mes para la prueba) →
+   la guarda pasa y el `drop table` corre.
+3. Sin cargos → el rollback entero: `cerrar_periodo` eaa0fce9…, `simular_cierre`
+   19b62999…, sin la tabla.
+
+**C, lo que se revisó:**
+- `lib/recibo-papel.ts`: `linea()` ya escapa con `esc()` (`& < > "`); `lineasDeCargos()`
+  devuelve texto crudo y `linea()` lo escapa una sola vez. Los nombres de los conceptos
+  entran crudos a `linea()`: tampoco quedan escapados dos veces. Probado con un cargo
+  `<b>Multa</b> & "ruido"` y referencia `Acta <12/10> & "firma"` → la celda dice
+  `&lt;b&gt;Multa&lt;/b&gt; &amp; &quot;ruido&quot; · Acta &lt;12/10&gt; …` (se lee
+  literal, sin negrita), y no aparece ningún `&amp;lt;`.
+- `lib/admin/papel-recibos.ts` no arma HTML: pasa los datos a `reciboEnPapel()`.
+  `lib/datos-pago.ts` (cuentas en el papel) y `lib/admin/imprimir-estado.ts` (estado de
+  cuenta) escapan todo lo que escribe la administradora.
+- `correo_recibo()` **no lleva los cargos** (ni concepto ni referencia). Todo lo que
+  escribe la administradora (nota, nombre de la organización y del edificio, código de
+  la unidad, datos de pago vía `datos_pago_html()`) pasa por `esc_html()`.
+  **Una salvedad, corregida en A4:** `esc_html()` no escapaba la comilla doble, y
+  `ajustes_correo.enlace_base` entra en `href="%s"`. La política
+  `ajustes_correo_escribir` (`puede_operar`) deja escribirla a una administradora por la
+  API, aunque ninguna pantalla lo hace: con un `"`, se cortaba el atributo del enlace
+  (solo en los correos de su propia organización). Falta validar que empiece con
+  `https://` (en «Para después del piloto»).
+
+### Parte D: comprobaciones de solo lectura
+
+| | vecitap-pruebas | vecitap-produccion |
+|---|---|---|
+| D1 `inicio_dia_local(p_dia date) → timestamptz` (de `20260928140000_garita_bitacora_dia_local.sql`, ya aplicada en las dos) | existe, md5 7a5d4a83… | existe, md5 7a5d4a83… |
+| D1 `hoy_local() → date` (la misma migración) | existe, md5 6249fb2c… | existe, md5 6249fb2c… |
+| D1 `momento_cupo(p_n integer) → timestamptz` (de `20261027160000_correos_estado_y_cupo.sql`, **pendiente en producción**: paso 25) | existe, md5 9f7d811a… | **no existe** |
+| D1 `puesto_en_cola(p_mensaje boolean, p_encolado timestamptz) → integer` (la misma, **pendiente**) | existe, md5 1722c487… | **no existe** |
+| D2 `cola_correo` con `destino <> lower(btrim(destino))` | **0** (de 197) | **0** (la cola está vacía: 0 filas) |
+| D3 `server_version` | 17.6 | 17.6 |
+| D4 `DELETE`/`TRUNCATE` sobre `tareas_log` en funciones de `public` o en `cron.job` | ninguno (3 tareas: `vecitap_cobros`, `vecitap_tasa`, `vecitap_correos`); 16.217 filas | ninguno (las mismas 3 tareas); 10.087 filas |
+
+**D2, de dónde podría venir un destino sin normalizar.** Ningún trigger ni CHECK de
+`cola_correo` lo exige. `encolar_recibos`, `reenviar_recibo` y `encolar_prueba` encolan
+`lower(btrim(…))`; `enviar_mensaje` toma los correos de `destinatarios_mensaje()`, que ya
+los normaliza. **`garita_avisar()` encola `d.correo` de `destinatarios_de()`, que solo
+hace `btrim`, sin `lower`.** En pruebas el 0 sale de que ninguna persona tiene hoy un
+correo con mayúsculas. En producción hay **1 persona** con el correo sin normalizar: si
+esa unidad recibía un aviso de la garita, iba a la cola tal cual. **Corregido en A3.**
+
+**D4:** `tareas_log` no se poda en ninguna de las dos bases: crece con cada corrida del
+cron. En pruebas, casi todo es `despachar_correos` (15.540 filas) y `tasa_bcv` (593). En
+producción, `despachar_correos` (9.717), `tasa_bcv` (338) y `cobros_suscripcion` (34).
+Va en «Para después del piloto».
+
+### D5: lo que falta en producción — las 39 migraciones, en orden
+
+Comprobado el 31-oct por lectura: **producción sigue en
+`20260929120000_segunda_ronda_dia_local.sql`**, como el 29-oct. No está ninguna de las
+38 del Paso 8 (`unidades.paga` no existe, `crear_invitacion` f29847e7…, `correo_recibo`
+343c43e8…, `cerrar_periodo` 5f202965…, `simular_cierre` 334a723c…, `despachar_correos`
+9c5e5a39…, `org_campos_del_operador` 1aa49bce…, `saldo_unidad` 1396d408…; no existen
+`momento_cupo`, `pagos_desde_cierre`, `fecha_ve`, `cargos_unidad` ni `recibos.cargos`).
+Las guardas md5 de las migraciones que tocan esas funciones por primera vez coinciden con
+lo que hay hoy en producción (también `pagos_posible_duplicado` af337303…,
+`crear_organizacion` 443c0239…, `administra_algo` 80bd69fb…, `traer_tasa_bcv`
+1a8f607a…).
+
+**Reemplaza al Paso 8 de la ronda 10**: los mismos 38, en el mismo orden y con la misma
+verificación de esa tabla, más el **39**. Respaldo antes (docs/respaldo.md). Columna
+«Depende de»: la otra migración que exige su guarda o su cabecera. Si se aplican
+en este orden, se cumplen todas.
+
+| # | Migración | Depende de |
+|---|---|---|
+| 1 | `20260930120000_unidades_paga.sql` (correr su paso 0 antes) | — |
+| 2 | `20260930130000_puede_operar_search_path.sql` | nombra 1 |
+| 3 | `20260930140000_vinculos_org_coherente.sql` | nombra 1 y 2 |
+| 4 | `20261005120000_crear_invitacion_reemplaza_pendiente.sql` | — |
+| 5 | `20261008120000_reemplazar_inquilino.sql` | 1 |
+| 6 | `20261008130000_mis_cuotas.sql` | — |
+| 7 | `20261008140000_reemplazar_propietario.sql` | — |
+| 8 | `20261008150000_indices_saldo_unidad.sql` | — |
+| 9 | `20261018120000_periodo_cerrado_exige_tasa.sql` | — |
+| 10 | `20261018130000_unidades_tipo_correo_respaldo.sql` | — |
+| 11 | `20261018140000_importar_unidades.sql` | 1 |
+| 12 | `20261025120000_importar_unidades_plantilla.sql` | 11 |
+| 13 | `20261026120000_datos_pago.sql` | guarda md5 de `correo_recibo` (la de producción hoy); nombra 3 |
+| 14 | `20261026130000_invitacion_en_recibo.sql` | 4 y 13 |
+| 15 | `20261026140000_cobro_solo_usd.sql` | guarda md5: 14 |
+| 16 | `20261026150000_cuotas_extraordinarias.sql` | guarda md5 de `cerrar_periodo`/`simular_cierre` (los de producción hoy) |
+| 17 | `20261026160000_redondeo_cuotas.sql` | 15 y 16 |
+| 18 | `20261026170000_mensajes_masivos.sql` | guarda md5 de `despachar_correos` (la de producción hoy) |
+| 19 | `20261026180000_estado_financiero.sql` | — |
+| 20 | `20261026190000_pago_agrupado.sql` | guarda md5 de `pagos_posible_duplicado` (la de producción hoy) |
+| 21 | `20261027120000_importar_corrige_fichas.sql` | guarda md5: 12 |
+| 22 | `20261027130000_pago_agrupado_completo.sql` | guarda md5: 20 |
+| 23 | `20261027140000_recibo_titulares_sin_bs.sql` | 14 y 15 |
+| 24 | `20261027150000_redondeo_total.sql` | 17 |
+| 25 | `20261027160000_correos_estado_y_cupo.sql` (crea `momento_cupo` y `puesto_en_cola`) | 18 y 23 |
+| 26 | `20261028120000_redondeo_regla_gustavo.sql` | 24 |
+| 27 | `20261028130000_avisos_resend.sql` | 25 |
+| 28 | `20261028140000_cupo_por_organizacion.sql` | 25 |
+| 29 | `20261028150000_solo_operador_y_ajustes_seguridad.sql` | guarda md5 de 4 funciones (las de producción hoy) |
+| 30 | `20261028160000_saldo_unidad_control.sql` | guarda md5 de `saldo_unidad` (la de producción hoy) |
+| 31 | `20261028170000_permisos_sobrantes.sql` | — |
+| 32 | `20261028180000_pagos_desde_cierre.sql` | — |
+| 33 | `20261029120000_permisos_authenticated.sql` | 31 |
+| 34 | `20261029130000_estado_envio_periodo.sql` | 23 y 27 |
+| 35 | `20261029140000_cargos_en_recibo.sql` | guarda md5: 26 |
+| 36 | `20261029150000_fechas_ve.sql` | 28 |
+| 37 | `20261029160000_cargos_unidad.sql` | guarda md5: 35 |
+| 38 | `20261029170000_reenviar_sin_duplicar.sql` | guarda md5: 25 |
+| **39** | **`20261031120000_correcciones_revision_r9_r10.sql`** | **guarda md5: 29 y 32; y 23 (comprueba que solo `garita_avisar` llama a `destinatarios_de`)**. Las otras cuatro funciones que toca (`exigir_org_al_dia`, `edificio_dentro_del_tope`, `destinatarios_de`, `esc_html`) no las cambia ninguna del 1 al 38: su md5 de hoy en producción es el que exige la guarda |
+
+Verificación del 39: el punto 1 del archivo, las seis funciones con su md5
+(`pagos_desde_cierre` c17eb556849fb630e4f2e43b83318d2f, `org_campos_del_operador`
+c43fde43b1187e0c8894da9773f2d07c, `exigir_org_al_dia` b9c832365abf7318944d6c15f29593d7,
+`edificio_dentro_del_tope` dcdd9fecaaf51552794b5a0fa2d18268, `destinatarios_de`
+2558c045144a6e72adfbd5b8632f4255, `esc_html` dc4d15f24644035a3580d97ef58f5b67), y
+`select count(*) from pg_proc where pronamespace = 'public'::regnamespace and prosrc like
+'%hola@vecitap.com%';` → 0. La del 1 al 38: la tabla del Paso 8 de la ronda 10. Al final,
+la comparación de conjunto de md5 de `public` entre las dos bases (la corro yo por
+lectura).
+
+### Para después del piloto (anotado, sin tocar)
+
+- **`saldo_visible()` y `datos_pago_de()`** tienen el mismo `not in (select
+  unidades_visibles())` que tenía `pagos_desde_cierre()`. Hoy no se puede saltar
+  (`unidades_visibles()` no devuelve NULL), pero con `p_unidad = NULL` el control no
+  entra. Mismo arreglo que A1: `p_unidad is null or not exists (…)`, con guarda md5.
+- **Poda de `tareas_log`**: una tarea de cron que borre lo viejo (por ejemplo, más de 90
+  días de `despachar_correos` y `tasa_bcv`). **Nunca las filas `r9_permisos_sobrantes`
+  ni `r10_permisos_authenticated`**: son el respaldo de permisos que leen los rollbacks
+  de `20261028170000` y `20261029120000`, y la guarda de `20261029120000` exige la de r9.
+  Lo más seguro es podar por lista de tareas (las del cron), no «todo lo viejo menos
+  esas dos».
+- **`ajustes_correo.enlace_base` tiene que empezar con `https://`** (CHECK o trigger).
+  Hoy una administradora puede escribir cualquier texto por la API (política
+  `ajustes_correo_escribir`, `puede_operar`), y ese valor es el enlace «Ver mi recibo» y
+  el de los bolívares en todos los recibos de su organización. Con A4 ya no puede romper
+  el atributo, pero sí poner `javascript:` o el enlace a otro sitio.
+
+### Título del commit
+
+`Ronda 10b del tramo 2: correcciones de la revisión cruzada (pagos_desde_cierre sin NOT IN, contacto info@, correos en minúsculas y comillas escapadas en los correos, rollback de cargos con guarda)`
+
 ## Ronda 10 del tramo 2 (29-oct) — antes del primer envío de recibos de GRUPO ING3
 
 Pedido de Nicolás del 29-oct (bloques A a E), con los resultados de Gustavo de la
@@ -241,6 +464,7 @@ estaba enviado, el cambio es de texto y pasa tsc, lint y build). Ninguno cambia 
 **Visto y no tocado:** `exigir_org_al_dia()` (el aviso de cuenta suspendida) dice
 «Escríbanos a hola@vecitap.com»; el contacto acordado es info@vecitap.com. Es un texto
 dentro de una función de la base: va en una migración aparte si se decide cambiarlo.
+**(Corregido en la ronda 10b, `20261031120000`.)**
 Después de corregir un correo, la fila vieja que falló sigue en «Ver cuáles» (con la
 dirección vieja) hasta fin de mes: es lo que pasó, pero puede confundir.
 
