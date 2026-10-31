@@ -280,6 +280,7 @@ export type Database = {
           org_id: string
           periodo_id: string
           referencia: string | null
+          tipo: string
           unidad_id: string
         }
         Insert: {
@@ -291,6 +292,7 @@ export type Database = {
           org_id: string
           periodo_id: string
           referencia?: string | null
+          tipo?: string
           unidad_id: string
         }
         Update: {
@@ -302,6 +304,7 @@ export type Database = {
           org_id?: string
           periodo_id?: string
           referencia?: string | null
+          tipo?: string
           unidad_id?: string
         }
         Relationships: [
@@ -702,6 +705,7 @@ export type Database = {
           emitido: number
           id: string
           mora_acumulada: number
+          multas_acumuladas: number
           org_id: string
           periodo_id: string
           saldo_condominio: number
@@ -718,6 +722,7 @@ export type Database = {
           emitido?: number
           id?: string
           mora_acumulada?: number
+          multas_acumuladas?: number
           org_id: string
           periodo_id: string
           saldo_condominio: number
@@ -734,6 +739,7 @@ export type Database = {
           emitido?: number
           id?: string
           mora_acumulada?: number
+          multas_acumuladas?: number
           org_id?: string
           periodo_id?: string
           saldo_condominio?: number
@@ -2637,6 +2643,15 @@ export type Database = {
           nombre: string
         }[]
       }
+      deuda_por_orden: {
+        Args: { p_hasta?: string; p_unidad: string }
+        Returns: {
+          condominio: number
+          mora: number
+          multas: number
+          resto: number
+        }[]
+      }
       dia_local: { Args: { p_instante: string }; Returns: string }
       edificio_activo: { Args: { p_edificio: string }; Returns: boolean }
       edificios_de: {
@@ -3264,6 +3279,8 @@ export type Database = {
           anterior: number
           codigo: string
           condominio: number
+          cuotas_cargos: number
+          detalle_cargos: Json
           mora: number
           redondeo: number
           servicio: number

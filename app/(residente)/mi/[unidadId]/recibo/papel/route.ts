@@ -7,6 +7,7 @@ import { usuarioActual } from "@/lib/supabase/cache";
 import { esUuid } from "@/lib/validacion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { ajustesCobroDe } from "@/lib/cobro";
+import { nombreCompleto } from "@/lib/admin/personas";
 
 /**
  * "Descargar o imprimir mi recibo" (ronda 4, caso 53). Antes el botón abría
@@ -32,10 +33,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ uni
   if (!user) return NextResponse.redirect(new URL(`/entrar?volver=${encodeURIComponent(volver)}`, _req.url));
 
   const supabase = await crearClienteServidor();
-  const [r, { data: cuentas }] = await Promise.all([
+  const [r, { data: cuentas }, { data: vigentes }] = await Promise.all([
     ultimoReciboDe(unidadId),
     // Ronda 7: los datos para pagar de su edificio (la función solo responde por sus unidades).
     supabase.rpc("datos_pago_de", { p_unidad: unidadId }),
+    // Ronda 11 (D4): el propietario al lado de la alícuota, como en el papel de
+    // Admin. Antes este papel no lo pasaba y por eso el último recibo (el único
+    // que imprime el portal) salía sin él. Solo el nombre: RLS deja leer los
+    // vínculos y las personas de la propia unidad (vinculos_ver, personas_ver).
+    supabase
+      .from("vinculos")
+      .select("tipo,desde,personas(prefijo,nombre)")
+      .eq("unidad_id", unidadId)
+      .is("hasta", null)
+      .order("desde", { ascending: false }),
   ]);
   if (!r.unidad) return new NextResponse("No encontrado", { status: 404 });
   // Sin recibo (o sin poder traerlo): "Mi recibo" ya explica qué pasó.
@@ -60,10 +71,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ uni
       }
     : null;
 
+  // El mismo criterio que reciboAdminEnPapel(): el propietario vigente y, si
+  // no hay, el inquilino.
+  const deTipo = (t: string) => nombreCompleto(vigentes?.find((v) => v.tipo === t)?.personas ?? null);
   const html = reciboEnPapel({
     edificio: r.recibo.edificio || r.unidad.edificio,
     organizacion: r.unidad.organizacion,
     unidad: r.unidad.codigo,
+    propietario: deTipo("propietario") || deTipo("inquilino"),
     vence: formatoFecha(r.recibo.vence_el),
     // La tasa viva viaja al papel: el documento se genera ahora, no el día
     // en que se emitió el recibo (index.html:1453-1455).

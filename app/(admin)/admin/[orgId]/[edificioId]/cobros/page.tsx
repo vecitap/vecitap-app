@@ -40,15 +40,15 @@ export default async function PaginaCobros({
   let cargos: CargoDelMes[] = [];
   if (abierto) {
     const [{ data: deCobros, error: e1 }, { data: directos, error: e2 }] = await Promise.all([
-      supabase.from("cargos_unidad").select("id,unidad_id,concepto,referencia,monto,creado_en").eq("periodo_id", abierto.id).order("creado_en"),
+      supabase.from("cargos_unidad").select("id,unidad_id,concepto,referencia,monto,tipo,creado_en").eq("periodo_id", abierto.id).order("creado_en"),
       supabase.from("gastos").select("id,unidad_id,concepto,referencia,monto").eq("periodo_id", abierto.id).eq("tipo", "directo").order("orden"),
     ]);
     if (e1 || e2) throw e1 || e2;
     cargos = [
-      ...(deCobros ?? []).map((c) => ({ ...c, origen: "cargo" as const, monto: Number(c.monto) })),
+      ...(deCobros ?? []).map((c) => ({ ...c, origen: "cargo" as const, monto: Number(c.monto), multa: c.tipo === "multa" })),
       ...(directos ?? [])
         .filter((g) => g.unidad_id)
-        .map((g) => ({ id: g.id, unidad_id: g.unidad_id!, concepto: g.concepto ?? "", referencia: g.referencia, monto: Number(g.monto), origen: "gasto" as const })),
+        .map((g) => ({ id: g.id, unidad_id: g.unidad_id!, concepto: g.concepto ?? "", referencia: g.referencia, monto: Number(g.monto), origen: "gasto" as const, multa: false })),
     ];
   }
 

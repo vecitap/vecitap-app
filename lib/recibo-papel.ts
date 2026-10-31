@@ -68,6 +68,14 @@ export function lineasDeCargos(r: Pick<ReciboPapel, "directos" | "cargos">): { e
   return Number(r.directos) > 0 ? [{ etiqueta: "Cargos de su unidad", monto: Number(r.directos) }] : [];
 }
 
+/**
+ * ¿El recibo trae una multa? (ronda 11, B). Si además tiene mora, el papel y
+ * el portal aclaran debajo que las multas no generan mora.
+ */
+export function tieneMulta(r: Pick<ReciboPapel, "cargos">): boolean {
+  return Array.isArray(r.cargos) && (r.cargos as CargoRecibo[]).some((c) => c?.tipo === "multa");
+}
+
 export type DatosPapelRecibo = {
   edificio?: string | null;
   organizacion?: string | null;
@@ -135,6 +143,9 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
     Number(r.anterior) > 0 ? linea("Saldo del mes anterior", Number(r.anterior)) : "",
     Number(r.a_favor) > 0 ? linea("A su favor", -Number(r.a_favor)) : "",
     Number(r.mora) > 0 ? linea("Intereses de mora", Number(r.mora)) : "",
+    Number(r.mora) > 0 && tieneMulta(r)
+      ? `<tr><td colspan="2" style="font-size:7.4pt;color:#64748B;padding-top:0">Las multas no generan mora.</td></tr>`
+      : "",
     favor > 0
       ? linea("Saldo a favor", favor, "tot") +
         `<tr class="nota-fav"><td colspan="2">Este mes no tiene que pagar</td></tr>`
@@ -249,8 +260,11 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
   .plata > div + div{ border-left:1px solid #CBD5E1 }
   .plata .fuerte{ background:#0A1128; color:#F8FAFC; flex:0 0 34% }
   .plata .fuerte .et{ color:#A3B4D4 }
-  .cifra{ font-size:19pt; font-weight:700; letter-spacing:-.02em; line-height:1.15;
+  /* Ronda 11 (D3): la cifra no se parte en dos líneas («A favor $ 10,00» en 02D);
+     con «A favor», un poco más chica para que quepa en la columna. */
+  .cifra{ font-size:19pt; font-weight:700; letter-spacing:-.02em; line-height:1.15; white-space:nowrap;
           font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
+  .cifra.larga{ font-size:15pt }
   .cifra-s{ font-size:12pt; white-space:nowrap; font-weight:700; line-height:1.2;
             font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace }
   .nota-t{ font-size:7.4pt; color:#64748B; margin-top:2px }
@@ -318,7 +332,7 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
       hoyNoDebe
         ? `<div class="fuerte">
       <span class="et">Hoy</span>
-      <div class="cifra">${d.pagarHoy!.monto < -0.005 ? "A favor " + m(-d.pagarHoy!.monto) : "Está al día"}</div>
+      <div class="cifra${d.pagarHoy!.monto < -0.005 ? " larga" : ""}">${d.pagarHoy!.monto < -0.005 ? "A favor " + m(-d.pagarHoy!.monto) : "Está al día"}</div>
       <div class="nota-t" style="color:#A3B4D4">no tiene que pagar</div>
     </div>`
         : `<div class="fuerte">

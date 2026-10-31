@@ -2536,3 +2536,50 @@ Lo que pidió Gustavo para antes del primer envío de recibos de GRUPO ING3.
   unidad entra como ingreso. Una reparación que pagó el edificio se marca «El edificio
   pagó esto»: sale como egreso (lo que se le pagó al plomero) y lo que paga la unidad,
   como ingreso; el edificio queda en cero.
+
+## Ronda 11 del tramo 2 (31-oct)
+
+### 112. La mora se puede encender
+
+- **Antes (igual que en `main`):** el edificio tenía un «Interés de mora mensual %», pero
+  la mora solo se cobra si además está encendida (`mora_activa`), y ninguna pantalla la
+  encendía. Con porcentaje cargado, la mora salía siempre en $ 0,00, sin aviso. La ayuda
+  del campo decía que la mora del mes pasado también generaba interés, y no es así.
+- **Ahora:** en Ajustes, al lado del porcentaje, el interruptor «Cobrar mora» («Se aplica
+  desde el próximo cierre. Requiere aprobación de la asamblea.»). Con porcentaje y el
+  interruptor apagado: «La mora está apagada: no se cobrará aunque haya porcentaje.» Con
+  0 % no se puede encender (la pantalla pide el porcentaje y la base tampoco lo deja). El
+  cambio queda en la auditoría con quién, cuándo y de qué a qué. La ayuda dice lo que
+  hace: por mes, sobre la deuda de condominio vencida, sin contar la mora ya cobrada.
+
+### 113. «Cómo se reparte»: «Cuotas y cargos» aparte
+
+- **Antes:** la cuota extraordinaria, el gasto directo de la unidad y los cargos de Cobros
+  iban sumados en «Condominio» (08D, mayo: $ 65 sin saber de qué).
+- **Ahora:** «Condominio» es la cuota ordinaria (con el fondo de reserva por redondeo) y
+  «Cuotas y cargos» lo demás; al pasar el cursor o tocar el monto se ve cada línea con su
+  motivo. El total del recibo no cambia. El aviso «cuota de condominio en $ 0,00» mira
+  solo la cuota ordinaria.
+
+### 114. Detalles de la ronda 10
+
+- «Esta cuenta no administra ningún edificio»: «Para usar Vecitap como administradora,
+  ¡escríbanos!».
+- Volver a enviar un mes sin correos nuevos: solo «Entendido» (no hay nada que decidir).
+- Recibo impreso: «A favor $ 10,00» en una sola línea.
+- Recibo impreso desde el portal: ahora lleva el propietario al lado de la alícuota, como
+  el de Cortes. Antes no lo llevaba nunca; por eso el de marzo (impreso desde Cortes) lo
+  tenía y el de abril (desde el portal, que imprime el último recibo) no.
+- Ficha de la unidad: corregir el correo de la misma persona ya no pregunta «¿Cambia el
+  propietario?». Pregunta solo si cambia la cédula/RIF, o si cambian a la vez el nombre y
+  el correo. Con la misma cédula es la misma persona.
+
+### 115. Las multas no generan mora
+
+- **Antes:** todo lo que debía la unidad de condominio generaba mora, multas incluidas.
+- **Ahora (decisión de Gustavo):** al cargar «Cargo a una sola unidad» en Cobros se dice si
+  es una multa (sin respuesta por omisión). Una multa sin pagar no genera mora; las
+  cuotas, los consumos y las reparaciones sí. Un pago cubre primero la mora, después las
+  multas y al final lo demás. Las multas solo se cargan desde Cobros: el gasto «Solo a una
+  unidad» de Gastos del mes lo recuerda y sigue generando mora. En «Cómo se reparte» la
+  multa se marca, y el recibo con mora y una multa aclara «Las multas no generan mora.».

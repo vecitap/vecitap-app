@@ -27,6 +27,8 @@ export type CargoRecibo = {
   concepto: string | null;
   referencia: string | null;
   monto: number;
+  /** Ronda 11 (B): 'multa' no genera mora. Los recibos anteriores no lo traen. */
+  tipo?: string | null;
 };
 
 export type RegistroRecibo = {

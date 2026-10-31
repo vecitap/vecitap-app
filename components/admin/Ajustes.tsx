@@ -58,6 +58,9 @@ export function Ajustes({
     direccion: edificio.direccion ?? "",
     prefijo: edificio.prefijo_recibo,
     mora: paraCampo(edificio.interes_mora, 0),
+    // Ronda 11 (A): hasta hoy nadie escribía `mora_activa` y la mora no se
+    // cobraba nunca, aunque hubiera porcentaje.
+    moraActiva: edificio.mora_activa,
     tolerancia: paraCampo(edificio.tolerancia_alicuota, 0),
     redondeo: paraCampo(edificio.tolerancia_redondeo ?? 0.5, 0),
   });
@@ -65,6 +68,7 @@ export function Ajustes({
   const [pegado, setPegado] = useState("");
   const [catPorOmision, setCatPorOmision] = useState("");
   const [nuevoEd, setNuevoEd] = useState(false);
+  const [pidePorcentaje, setPidePorcentaje] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
 
@@ -77,6 +81,10 @@ export function Ajustes({
 
   // Bloque E: "Guardado ✓" al lado del botón, en vez del aviso de arriba.
   const guardarEdificio = useAccion(async () => {
+    // La base también lo rechaza (edificios_mora_con_porcentaje): acá se dice en palabras.
+    if (e.moraActiva && !(num0(e.mora) > 0)) {
+      throw new Error("Para cobrar mora hace falta el porcentaje: escríbalo, o apague «Cobrar mora».");
+    }
     const supabase = crearClienteNavegador();
     const { error } = await supabase
       .from("edificios")
@@ -86,6 +94,7 @@ export function Ajustes({
         direccion: e.direccion.trim() || null,
         prefijo_recibo: e.prefijo.trim().toUpperCase(),
         interes_mora: num0(e.mora),
+        mora_activa: e.moraActiva,
         tolerancia_alicuota: num0(e.tolerancia) || 0.01,
         tolerancia_redondeo: num0(e.redondeo),
       })
@@ -254,10 +263,44 @@ export function Ajustes({
           </Campo>
           <Campo
             etiqueta="Interés de mora mensual %"
-            ayuda="Se calcula sobre todo el saldo previo de condominio, así que el interés del mes pasado también genera interés."
+            ayuda="Por mes, sobre la deuda de condominio vencida, sin contar la mora ya cobrada."
           >
             <Input className="mono" value={e.mora} onChange={(x) => setE({ ...e, mora: x.target.value })} />
           </Campo>
+          {/* Ronda 11 (A): el interruptor que faltaba. Encender con 0 % no se deja: pide el porcentaje. */}
+          <div className="campo">
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14, cursor: "pointer", marginTop: 22 }}>
+              <input
+                type="checkbox"
+                checked={e.moraActiva}
+                onChange={(x) => {
+                  if (x.target.checked && !(num0(e.mora) > 0)) {
+                    setPidePorcentaje(true);
+                    return;
+                  }
+                  setPidePorcentaje(false);
+                  setE({ ...e, moraActiva: x.target.checked });
+                }}
+                style={{ marginTop: 3, width: 18, height: 18 }}
+              />
+              <span>
+                <b>Cobrar mora</b>
+                <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)", lineHeight: 1.5 }}>
+                  Se aplica desde el próximo cierre. Requiere aprobación de la asamblea.
+                </span>
+              </span>
+            </label>
+            {pidePorcentaje && !(num0(e.mora) > 0) && (
+              <p className="campo-error">Escriba primero el interés de mora mensual (mayor que 0).</p>
+            )}
+          </div>
+          {!e.moraActiva && num0(e.mora) > 0 && (
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Aviso tono="ambar" titulo="La mora está apagada: no se cobrará aunque haya porcentaje.">
+                Para cobrarla, encienda «Cobrar mora» y guarde.
+              </Aviso>
+            </div>
+          )}
           <Campo etiqueta="Tolerancia de alícuotas">
             <Input className="mono" value={e.tolerancia} onChange={(x) => setE({ ...e, tolerancia: x.target.value })} />
           </Campo>

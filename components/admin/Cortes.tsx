@@ -942,6 +942,8 @@ export function Cortes({
               titulo={yaSalio ? `${periodo?.etiqueta ?? "Este mes"} ya se envió` : `Enviar los recibos de ${periodo?.etiqueta ?? ""}`}
               texto={texto}
               boton={yaSalio ? (e.nuevos === 0 ? "Entendido" : "Sí, volver a enviar") : "Enviar"}
+              // Ronda 11 (D2): sin correos nuevos no hay nada que decidir: solo «Entendido».
+              soloAviso={yaSalio && e.nuevos === 0}
               onSi={() => {
                 setConfirmaEnvio(null);
                 if (e.nuevos > 0) enviarRecibos();

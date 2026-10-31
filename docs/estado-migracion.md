@@ -16,6 +16,238 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 11 del tramo 2 (31-oct) — mora que se puede encender, «Cuotas y cargos» y detalles de la ronda 10
+
+Pedido de Nicolás del 31-oct (partes A a D), y después tres ajustes de la revisión
+cruzada y la Parte B con tres cambios a la propuesta. En `dev`, **sin commit**. A, B, C y D
+aplicadas en vecitap-pruebas. Desvíos frente a `main`: casos **112 a 115** de
+`docs/casos-de-uso-mejorados.md`. Para la revisión:
+`C:\Users\Nicolas\Downloads\revision-cruzada-ronda11\`.
+
+### Qué se hizo
+
+| Parte | Qué | Dónde |
+|---|---|---|
+| A | Interruptor «Cobrar mora» en Ajustes, con su texto, el aviso «La mora está apagada…» y sin poder encender con 0 %. La ayuda del porcentaje corregida (decía que la mora previa generaba interés; no es así). La base rechaza `mora_activa` con 0 % | `components/admin/Ajustes.tsx`; migración R11-1 |
+| C | «Cómo se reparte»: «Condominio» (cuota ordinaria + redondeo) y «Cuotas y cargos» (extraordinarias de condominio, gasto directo de condominio, cargos de Cobros), con el detalle al pasar el cursor o al tocar. El total no cambia | `components/admin/CierreMes.tsx`; migración R11-2; `types/supabase.ts` |
+| D1 | «Para usar Vecitap como administradora, ¡escríbanos!» | `components/admin/SinAdministradora.tsx` |
+| D2 | Volver a enviar sin correos nuevos: solo «Entendido» (`Confirmar` con `soloAviso`) | `components/ui/Confirmar.tsx`, `components/admin/Cortes.tsx` |
+| D3 | La cifra grande del papel no se parte (`white-space:nowrap`); «A favor …» a 15 pt | `lib/recibo-papel.ts` |
+| D4 | El papel del portal lleva el propietario (antes nunca; el de Cortes sí). Causa del «marzo sí, abril no»: el portal imprime solo el último recibo (abril) y no pasaba el nombre; marzo salió de Cortes | `app/(residente)/mi/[unidadId]/recibo/papel/route.ts`, `lib/admin/personas.ts` (`nombreCompleto`) |
+| D5 | «¿Cambia el propietario?» salía con solo cambiar el correo (la condición era «el correo es otro»). Ahora: cédula/RIF distinta (las dos cargadas), o nombre **y** correo distintos; con la misma cédula, nunca | `components/admin/DatosUnidad.tsx` |
+| B | Las multas no generan mora. Cobros pregunta «¿Es una multa?» (sin respuesta por omisión) y la lista dice «Multa · no genera mora». El gasto «Solo a una unidad» avisa «¿Es una multa? Cárguela en Cobros, así no genera mora.». En «Cuotas y cargos» la multa lleva la etiqueta «multa · no genera mora». El recibo (papel y portal) con mora y una multa dice «Las multas no generan mora.» | `CargosUnidad.tsx`, `cobros/page.tsx`, `CierreMes.tsx`, `lib/recibo-papel.ts`, `Recibo.tsx`, `lib/residente/tipos.ts`; migración R11-3 |
+
+**Decidido por mi cuenta:** «Cuotas y cargos» no incluye las cuotas extraordinarias de
+administración o de servicio (ya tienen su columna). Un concepto «porcentaje de
+condominio» (si existiera) se calcula sobre todo `condominio`, extraordinarias incluidas,
+como hoy, y queda en «Condominio». `types/supabase.ts` editado a mano en las dos líneas de
+`simular_cierre` (no regenerado entero). En el papel, si la unidad no tiene propietario
+vigente, sale el inquilino bajo «Propietario», igual que en Cortes.
+
+### Migraciones nuevas — aplicadas en vecitap-pruebas el 31-oct
+
+| # | Migración | Qué deja |
+|---|---|---|
+| R11-1 | `20261031130000_mora_activa_con_porcentaje.sql` | CHECK `edificios_mora_con_porcentaje`: `not mora_activa or interes_mora > 0`. Sin funciones. Rollback probado en seco |
+| R11-2 | `20261031140000_cuotas_y_cargos_en_previa.sql` | `simular_cierre` c116e31f… → **d52802ecfebd69c0ad488af6a44079d7**, con `cuotas_cargos numeric` y `detalle_cargos jsonb` al final. Se borra y se recrea (cambia lo que devuelve); permisos iguales (`postgres=X/postgres,authenticated=X/postgres`). Rollback probado en seco (vuelve a c116e31f… sin las columnas) |
+
+| R11-3 | `20261031150000_multas_sin_mora.sql` | `cargos_unidad.tipo` ('multa' u 'otro', NOT NULL, por omisión 'otro'); `cortes_mensuales.multas_acumuladas` (NOT NULL, 0); `deuda_por_orden(uuid, date)` **e5d46aa2bd52c3af12d827555dd52410** (EXECUTE solo para postgres); `simular_cierre` d52802ec… → **5bb826a852dd38de42cfc7ca78bb59a4**; `cerrar_periodo` 2db1cb7b… → **cf6653ad5390d41bc5a4c579af0fd1a1**. Rollback probado en seco (vuelve a d52802ec… y 2db1cb7b…, sin la función ni las columnas) |
+
+**Paso 8: ahora 42.** Las 39 de la ronda 10b, y después:
+
+| # | Migración | Depende de |
+|---|---|---|
+| 40 | `20261031130000_mora_activa_con_porcentaje.sql` | — |
+| 41 | `20261031140000_cuotas_y_cargos_en_previa.sql` | guarda md5: 37 (`simular_cierre` c116e31f…) |
+| 42 | `20261031150000_multas_sin_mora.sql` | guarda md5: 41 (`simular_cierre` d52802ec…) y 37 (`cerrar_periodo` 2db1cb7b…) |
+
+Los rollbacks, al revés: primero 42, después 41 (su guarda exige d52802ec…, que deja el
+rollback de 42).
+
+### Ajustes de la revisión cruzada (31-oct)
+
+1. **R11-1 y NULL:** `edificios.mora_activa` (default false) e `interes_mora` (default
+   1) son **NOT NULL en las dos bases**: la restricción nunca da NULL. Sin cambios.
+   (Ojo: el porcentaje por omisión de un edificio nuevo es 1 %, con la mora apagada.)
+2. **R11-2, `v_extra` y `v_det` por unidad:** están en el `declare` del bloque interno
+   del `for r in … loop` (junto a `v_hechas`), con su valor inicial (`:= 0`, `:= '[]'`):
+   el bloque se vuelve a ejecutar en cada vuelta. Mayo 2027 de Edificio Gustavo, con
+   Pintura activa: 53 unidades, `cuotas_cargos` = suma del detalle en todas, diferencia
+   máxima **0,0000** (sin centavos); 52 con 1 línea (Pintura) y 08D con 3. Tal cual
+   (Pintura inactiva): 52 con **0 líneas** y 08D con 2 (55 = 55). El detalle redondea cada
+   monto a 2 decimales y `cuotas_cargos` guarda 4: con una cuota por alícuota podría haber
+   menos de medio centavo por línea; en estos datos no hay.
+3. **D4 y los titulares del recibo:** `20261027140000_recibo_titulares_sin_bs` **no guarda
+   titulares en el recibo**: decide a quién va el correo y quién recibe el código.
+   `recibos` no tiene ninguna columna de nombres. Se deja como está (el vínculo vigente,
+   en el papel del portal y en el de Cortes). Si se quisiera el dueño del momento sin
+   tocar el esquema: el vínculo propietario con `desde <= emitido_en` y `hasta` nulo o
+   posterior.
+
+### Parte B: lo que cambió frente a la propuesta
+
+- `cargos_unidad.tipo` acepta **'multa' u 'otro'** (no 'consumo'); por omisión 'otro'.
+- Las multas **solo desde Cobros**. El gasto «Solo a una unidad» no cambia en la base
+  (genera mora) y lleva la ayuda «¿Es una multa? Cárguela en Cobros, así no genera mora.».
+- `deuda_por_orden(unidad, fecha)` es la única copia de la fórmula (mora, multas y resto
+  a una fecha, con los abonos en ese orden) y la usan `simular_cierre()` y
+  `cerrar_periodo()`.
+- **Una diferencia con la propuesta, a propósito:** la base de la mora es la de hoy
+  (capital + pagos hechos tarde) **menos las multas sin pagar el día del vencimiento**
+  (`deuda_por_orden(unidad, vencimiento).multas`), en vez de reescribirla entera como
+  «lo que se debía al vencimiento − mora − multas». Las dos dan lo mismo en los ejemplos.
+  Pero la reescritura cambia la mora en un caso que no se pidió (mora previa + pago
+  tardío: hoy el pago tardío vuelve a la base entero, también lo que cubrió mora). Así,
+  **sin multas el resultado es idéntico al de hoy**.
+- `recibos.cargos` guarda el tipo de cada línea ('multa' u 'otro'; el gasto directo,
+  'otro'). El corte guarda `multas_acumuladas` = multas sin pagar hoy + multas de este
+  recibo, sin pasar de lo que queda de condominio después de la mora.
+- **No se hizo** (estaba en la propuesta): ver la base de la mora al pasar el cursor por
+  «Mora» en «Cómo se reparte». Haría falta otra columna en `simular_cierre()`.
+
+### Validación (31-oct)
+
+- **RLS de `mora_activa`:** una sola política para toda la fila (`edificios_escribir`,
+  `puede_operar(org_id)`) y UPDATE de columna para authenticated: quien escribe
+  `interes_mora` escribe `mora_activa`, nadie más. Una administradora de otra
+  organización: 0 filas.
+- **Auditoría:** el trigger `aud_edificios` ya guardaba la fila entera. Guardando desde la
+  pantalla: `admin.prueba@vecitap.com`, 20:40 UTC, `mora_activa` false → true.
+- **Edificio Gustavo al 1 %** (bloque deshecho): `simular_cierre` de Mayo 2027 → 10C mora
+  **9,50**, 08D **1,55**.
+- **La previa no cambia de montos:** huella (md5 de todas las columnas viejas de las 53
+  unidades) idéntica antes y después de R11-2 en tres estados: tal cual, con «Pintura»
+  activa, y con Pintura + mora al 1 %. En ninguna unidad `cuotas_cargos` difiere de la suma
+  de su detalle. 08D con Pintura activa (el caso de Gustavo): `condominio` 65 =
+  `cuotas_cargos` 65 = «Pintura (cuota 1 de 2)» 10 + «Multa por ruido · Acta 12/10» 15 +
+  «Reparacion de tuberia» 40.
+- **En el navegador** (`next start`, Torre Ida de Administradora Baja, con un cargo de
+  prueba de $ 15; todo vuelto a como estaba): aviso con 1 % y apagada; con 0 % no se
+  enciende y pide el porcentaje; al 1 % se enciende, se guarda y sigue encendida al
+  recargar; la previa muestra «Cuotas y cargos» $ 15,00 con el detalle al tocar, y la
+  mora $ 1,00 sobre $ 100 vencidos.
+- **B, Edificio Gustavo, 53 unidades** (bloque deshecho): huellas idénticas antes y después
+  de R11-3 en las tres situaciones (tal cual 7a888f8b…, con Pintura a89c99a1…, con Pintura
+  y mora al 1 % 462442ba…). Su «Multa por ruido» quedó con tipo 'otro' (genera mora, como
+  antes): para que no la genere hay que marcarla en Cobros.
+- **B, los ejemplos** (Torre Ida 01A, bloque deshecho: Agosto cerrado debiendo $ 100 de
+  cuota y $ 15 de multa, mora al 1 %, vence el 15/09, un gasto común de $ 50 para poder
+  cerrar). Iguales por `simular_cierre()` y por `cerrar_periodo()`:
+
+  | Paga | Mora antes de B | Mora con B | Base (recibo) | Multas en el corte |
+  |---|---|---|---|---|
+  | $ 0 | 1,15 | **1,00** | 100,00 | 15 |
+  | $ 10 el 10/09 | 1,05 | **1,00** | 100,00 | 5 |
+  | $ 50 el 10/09 | 0,65 | **0,65** | 65,00 | 0 |
+  | $ 50 el 20/09 (tarde) | 1,15 | **1,00** | 100,00 | 0 |
+  | $ 10 + una multa nueva de $ 7 | — | **1,00** | 100,00 | 12 |
+
+  En la última, `detalle_cargos` trae `{"tipo": "multa", "etiqueta": "R11 prueba multa"}`,
+  y **reabrir y volver a cerrar deja `multas_acumuladas` en 12**, igual. Cerrando con una
+  reparación, una multa y un consumo, `recibos.cargos` guarda 'otro', 'multa' y 'otro'.
+- **B en el navegador** (`next start`, Torre Ida): «¿Es una multa?» sin respuesta; sin
+  responder, «Diga si es una multa: las multas no generan mora.»; con «Sí», la lista dice
+  «Multa · no genera mora · no es un egreso»; la ayuda del gasto «Solo a una unidad»; en
+  «Cuotas y cargos», la etiqueta «multa · no genera mora».
+- **D5 en el navegador:** con un propietario de prueba, cambiar solo el correo guarda sin
+  preguntar; cambiar nombre y correo pregunta «¿Cambia el propietario?».
+- **D4:** como inquilino, RLS deja leer el nombre del propietario de su unidad y 0
+  vínculos de otra. El papel generado con `reciboEnPapel` lleva «Propietario» y
+  `<div class="cifra larga">A favor $ 10,00</div>`.
+- **No probado en el navegador:** D2 y el papel del portal (sí `tsc`, `lint` y `build`).
+
+### Prueba antes del commit: mora previa + multa + pago parcial (31-oct)
+
+Torre Ida 01A, bloque deshecho, mora al 1 %: Agosto cerrado debiendo $ 120 (100 de
+cuota, 15 de multa, 5 de mora previa: `mora_acumulada` 5, `multas_acumuladas` 15); paga
+$ 10 el 10/09 (vence el 15/09); septiembre con un gasto común de $ 50.
+
+| | Esperado | Resultado |
+|---|---|---|
+| Mora previa después del pago (`saldo_unidad`, = `r.previo_mora`) | 0 | 0 |
+| `deuda_por_orden` al vencimiento: mora / multas / resto | 0 / 10 / 100 | 0 / 10 / 100 |
+| Mora de `simular_cierre()` | 1,00 | 1,00 |
+| Mora de `cerrar_periodo()` (base) | 1,00 (100) | 1,00 (100,00) |
+| Corte nuevo: `mora_acumulada` / `multas_acumuladas` | 1 / 10 | 1 / 10 (saldo 161 = 110 + 50 + 1) |
+
+`r.previo_mora` sale de `saldo_unidad()` y ya viene neto de lo abonado (mora del corte
+menos pagos y ajustes de condominio sin cierre, sin pasar de la deuda): es lo mismo que
+la mora de `deuda_por_orden()` sin fecha. Solo difieren con un ajuste negativo (anotado
+en «Para después del piloto»).
+
+La primera corrida dio `multas_acumuladas` 25: quedaba en septiembre la «R11 prueba
+multa» de $ 15 de la prueba en el navegador, que no se llegó a borrar (el borrado pedía
+confirmación). Sin ese cargo, 10.
+
+### Título del commit
+
+`Ronda 11 del tramo 2: mora que se puede encender, multas sin mora, «Cuotas y cargos» en la previa y detalles de la ronda 10`
+
+### Propuesta B — las multas no generan mora (la propuesta original; implementada con los cambios de arriba)
+
+Decisión de Gustavo: las multas no generan mora; las reparaciones, los consumos y las
+cuotas sí. Todo va al bolsillo de condominio. Un pago cubre primero la mora, después las
+multas y al final las cuotas y los demás cargos.
+
+**1. ¿`cargos_unidad` distingue multa de consumo?** No: tiene `concepto`, `referencia` y
+`monto`, nada más. Las reparaciones no están ahí: son gastos directos (`gastos`,
+`tipo = 'directo'`, «El edificio pagó esto»), y esas generan mora siempre. Propuesta:
+- `cargos_unidad.tipo text not null default 'consumo' check (tipo in ('multa', 'consumo'))`.
+  En Cobros, «Cargo a una sola unidad» pregunta «¿Es una multa?» sin respuesta por
+  omisión (hay que elegir). El `default 'consumo'` es solo para la base: deja lo que ya
+  existe como hoy (genera mora).
+- `cerrar_periodo()` copia `tipo` a cada línea de `recibos.cargos`. Una línea sin `tipo`
+  (recibos anteriores) cuenta como consumo, como hoy.
+- Lo que ya existe: en producción no hay nada (no existe `cargos_unidad`, 0 recibos). En
+  pruebas hay 1 cargo («Multa por ruido», Edificio Gustavo, mayo abierto): quedaría
+  «consumo» y se cambia a mano en Cobros, o lo pongo como «multa» en la misma migración si
+  me lo pide.
+
+**2. «Multas pendientes» sin tabla de imputación.** Se sigue el mismo patrón que ya usa
+la mora: una foto por unidad en cada cierre y lo que pasó después.
+- `cortes_mensuales.multas_acumuladas numeric not null default 0`, escrita por
+  `cerrar_periodo()` junto a `mora_acumulada`.
+- Una función compartida, `deuda_por_orden(p_unidad uuid, p_hasta date)`, que devuelve
+  `(condominio, mora, multas)` a una fecha, con los pagos y ajustes de condominio
+  **hasta esa fecha** aplicados en orden:
+  ```
+  C  = deuda de condominio (lo mismo que saldo_unidad, con pagos/ajustes ≤ p_hasta)
+  Mo = mora acumulada del último corte + mora de los recibos posteriores
+  Mu = multas del último corte + multas de los recibos posteriores
+  A  = pagos conciliados + ajustes de condominio sin cierre, con fecha ≤ p_hasta
+  mora   = min(max(Mo − A, 0), max(C, 0))
+  multas = min(max(Mu − max(A − Mo, 0), 0), max(C − mora, 0))
+  ```
+- La base de la mora, igual en `simular_cierre()` y `cerrar_periodo()`, pasa a ser:
+  `base = max(C − mora − multas, 0)` con `p_hasta = día de vencimiento`. Reemplaza el
+  «capital + pagos hechos tarde» de hoy (es lo mismo dicho de otra forma: lo que se debía
+  el día del vencimiento), y le saca las multas.
+- Al cerrar: `multas_acumuladas` = las multas pendientes de hoy (`p_hasta` = hoy) + las
+  multas del recibo que se emite.
+- `saldo_unidad()` no cambia (la mora pendiente ya la calcula con «primero la mora»).
+
+**3. Tres ejemplos** (debe $ 100 de cuota y $ 15 de multa, sin mora previa; el pago
+antes del vencimiento):
+
+| Paga | Cubre | Queda | Base de mora hoy | Base propuesta | Mora al 1 % (hoy → propuesta) |
+|---|---|---|---|---|---|
+| $ 0 | — | multa 15, cuota 100 | 115 | **100** | 1,15 → **1,00** |
+| $ 10 | 10 de la multa | multa 5, cuota 100 | 105 | **100** | 1,05 → **1,00** |
+| $ 50 | la multa entera y 35 de la cuota | multa 0, cuota 65 | 65 | **65** | 0,65 → **0,65** |
+
+Si los $ 50 se pagan **después** del vencimiento: hoy la base es 65 + 50 = 115; con la
+propuesta, el día del vencimiento se debían 115 con 15 de multa: base **100**.
+
+**4. Qué cambia en pantalla.** Recibo (papel, portal, correo): la línea de la multa igual
+que hoy, con su motivo; debajo de «Intereses de mora», en letra chica, «Las multas no
+generan mora». «Cómo se reparte»: el detalle de «Cuotas y cargos» marca cada multa
+(«multa»), y al pasar el cursor por «Mora» se ve la base («sobre $ 100,00 vencidos; no
+cuenta $ 15,00 de multas»). Cobros: la pregunta «¿Es una multa?» al cargar y una
+etiqueta en la lista. Lo pagado y el saldo no cambian: solo cambia cuánto genera mora.
+
+**Riesgo a decidir:** tocar `cerrar_periodo()` y `simular_cierre()` otra vez (las dos con
+guarda md5 encadenada) y agregar una columna a `cortes_mensuales`. Va después de R11-2.
+
 ## Ronda 10b del tramo 2 (31-oct) — correcciones de la revisión cruzada de las rondas 9 y 10
 
 Pedido de Nicolás del 31-oct (partes A a D), con una ampliación el mismo día (A2 en las
@@ -234,6 +466,24 @@ lectura).
   `ajustes_correo_escribir`, `puede_operar`), y ese valor es el enlace «Ver mi recibo» y
   el de los bolívares en todos los recibos de su organización. Con A4 ya no puede romper
   el atributo, pero sí poner `javascript:` o el enlace a otro sitio.
+- **(Ronda 11) Un pago tardío mayor que la deuda infla la base de la mora.** La base es
+  «capital + pagos hechos después del vencimiento»: el capital no baja de 0, pero el pago
+  tardío suma entero. Debe 115 y paga 120 tarde: capital 0 + 120 = base 120, cuando lo
+  que se debía al vencimiento era 115. Viene de antes de la ronda 11 (ronda 8). Arreglo
+  posible: tope de la base en lo que se debía el día del vencimiento
+  (`deuda_por_orden(unidad, vencimiento)`).
+- **(Ronda 11) El rollback de `20261031150000_multas_sin_mora` no se detiene si hay
+  multas marcadas en meses abiertos** (el de `cargos_unidad` sí se detiene si hay
+  cargos). Al correrlo, esas multas vuelven a generar mora sin aviso. Arreglo: la misma
+  guarda («hay N multas en M meses abiertos»).
+- **(Ronda 11) Un edificio nuevo nace con `interes_mora` 1 % y la mora apagada**
+  (default de la columna): el aviso «La mora está apagada: no se cobrará aunque haya
+  porcentaje.» sale en Ajustes desde el primer día. Arreglo posible: default 0, o que
+  el alta del edificio pregunte si cobra mora.
+- **(Ronda 11) `saldo_unidad()` y `deuda_por_orden()` descuentan los abonos de la mora
+  distinto si hay un ajuste negativo** (uno descuenta pagos y ajustes por separado con
+  tope en 0; el otro, juntos). Hoy no hay ningún ajuste negativo en ninguna de las dos
+  bases, así que dan lo mismo.
 
 ### Título del commit
 

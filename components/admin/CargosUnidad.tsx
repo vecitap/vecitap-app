@@ -26,9 +26,12 @@ export type CargoDelMes = {
   concepto: string;
   referencia: string | null;
   monto: number;
+  /** Ronda 11 (B): una multa de Cobros no genera mora. Un gasto directo nunca es multa. */
+  multa: boolean;
 };
 
-const VACIO = { unidad: "", concepto: "", referencia: "", monto: "", lopago: false };
+// `multa` empieza sin respuesta (ronda 11, B): hay que decir si es una multa.
+const VACIO = { unidad: "", concepto: "", referencia: "", monto: "", lopago: false, multa: null as boolean | null };
 
 /**
  * «Cargo a una sola unidad» (ronda 10, bloque C, pedido de Gustavo). Va en
@@ -67,7 +70,7 @@ export function CargosUnidad({
   function empezarEdicion(c: CargoDelMes) {
     setError(null);
     setEditando(c);
-    setF({ unidad: c.unidad_id, concepto: c.concepto, referencia: c.referencia ?? "", monto: paraCampo(c.monto), lopago: c.origen === "gasto" });
+    setF({ unidad: c.unidad_id, concepto: c.concepto, referencia: c.referencia ?? "", monto: paraCampo(c.monto), lopago: c.origen === "gasto", multa: c.origen === "gasto" ? null : c.multa });
   }
 
   function cancelarEdicion() {
@@ -80,8 +83,11 @@ export function CargosUnidad({
     if (!mes) return false;
     const malo = numeroMalEscrito([["El monto", f.monto]]);
     const monto = num(f.monto);
+    const esGasto = (editando ? editando.origen : f.lopago ? "gasto" : "cargo") === "gasto";
     const problema = !f.unidad
       ? "Elija a qué unidad se le carga."
+      : !esGasto && f.multa === null
+        ? "Diga si es una multa: las multas no generan mora."
       : !f.concepto.trim()
         ? "Falta el motivo: es lo que se lee en el recibo."
         : malo || monto === null || monto <= 0
@@ -96,14 +102,18 @@ export function CargosUnidad({
       monto: Math.round(monto! * 100) / 100,
     };
     const supabase = crearClienteNavegador();
-    const tabla = (editando ? editando.origen : f.lopago ? "gasto" : "cargo") === "gasto" ? "gastos" : "cargos_unidad";
+    const tabla = esGasto ? "gastos" : "cargos_unidad";
+    // Ronda 11 (B): el tipo solo existe en cargos_unidad.
+    const tipo: "multa" | "otro" = f.multa ? "multa" : "otro";
     const { error: e } = editando
-      ? await supabase.from(tabla).update(campos).eq("id", editando.id)
+      ? esGasto
+        ? await supabase.from("gastos").update(campos).eq("id", editando.id)
+        : await supabase.from("cargos_unidad").update({ ...campos, tipo }).eq("id", editando.id)
       : tabla === "gastos"
         ? await supabase
             .from("gastos")
             .insert({ ...campos, org_id: orgId, periodo_id: mes.id, tipo: "directo", bolsillo: "condominio", categoria_id: null, orden: 10 })
-        : await supabase.from("cargos_unidad").insert({ ...campos, org_id: orgId, periodo_id: mes.id });
+        : await supabase.from("cargos_unidad").insert({ ...campos, tipo, org_id: orgId, periodo_id: mes.id });
     if (e) throw e;
     setEditando(null);
     setF(VACIO);
@@ -129,7 +139,8 @@ export function CargosUnidad({
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--tenue)", lineHeight: 1.5 }}>
         Una multa, un consumo o una reparación que se le cobra a una sola unidad. Sale en su próximo recibo como una
         línea propia, con el motivo, y se suma a lo que debe de condominio: si no lo paga, cuenta para la mora igual
-        que la cuota. Mientras el mes esté abierto se puede corregir o quitar; al cerrarlo, queda en el recibo.
+        que la cuota, salvo las multas, que no generan mora. Mientras el mes esté abierto se puede corregir o quitar; al
+        cerrarlo, queda en el recibo.
       </p>
 
       {!mes ? (
@@ -183,7 +194,11 @@ export function CargosUnidad({
                     </div>
                     <div style={{ marginTop: 3 }}>
                       <Badge tono={c.origen === "gasto" ? "azul" : "neutro"}>
-                        {c.origen === "gasto" ? "Lo pagó el edificio · es un egreso" : "Multa o cobro · no es un egreso"}
+                        {c.origen === "gasto"
+                          ? "Lo pagó el edificio · es un egreso"
+                          : c.multa
+                            ? "Multa · no genera mora · no es un egreso"
+                            : "Cobro · no es un egreso"}
                       </Badge>
                     </div>
                   </div>
@@ -247,6 +262,29 @@ export function CargosUnidad({
               </span>
             </span>
           </label>
+
+          {/* Ronda 11 (B, decisión de Gustavo): las multas no generan mora. Sin respuesta por omisión. */}
+          {!(editando ? editando.origen === "gasto" : f.lopago) && (
+            <fieldset style={{ border: 0, padding: 0, margin: "12px 0 0" }}>
+              <legend style={{ fontSize: 14, fontWeight: 700, padding: 0 }}>¿Es una multa?</legend>
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 6, fontSize: 14 }}>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                  <input type="radio" name="es-multa" checked={f.multa === true} onChange={() => cambiar({ ...f, multa: true })} style={{ marginTop: 3 }} />
+                  <span>
+                    Sí, es una multa
+                    <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)" }}>No genera mora si no se paga.</span>
+                  </span>
+                </label>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                  <input type="radio" name="es-multa" checked={f.multa === false} onChange={() => cambiar({ ...f, multa: false })} style={{ marginTop: 3 }} />
+                  <span>
+                    No (un consumo u otro cobro)
+                    <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)" }}>Genera mora si no se paga, como la cuota.</span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+          )}
 
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
             <Button type="button" cargando={guardar.enviando} onClick={() => guardar.ejecutar()}>

@@ -13,6 +13,9 @@ import { Dialog } from "./Dialog";
  * `otra` (08-oct): una tercera salida, para cuando la pregunta no es solo
  * sí/no — p. ej. la ficha de la unidad: "cambiar el inquilino" o "es el
  * mismo, solo corregir el correo".
+ *
+ * `soloAviso` (ronda 11, D2): no es una pregunta sino un aviso; sale solo el
+ * botón de `boton` («Entendido»), sin «No». Escape sigue cerrándolo.
  */
 export function Confirmar({
   titulo,
@@ -22,6 +25,7 @@ export function Confirmar({
   onSi,
   onNo,
   otra,
+  soloAviso = false,
 }: {
   titulo: string;
   texto: string;
@@ -30,6 +34,7 @@ export function Confirmar({
   onSi: () => void;
   onNo: () => void;
   otra?: { boton: string; onClick: () => void };
+  soloAviso?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -42,9 +47,11 @@ export function Confirmar({
       <h3 style={{ marginTop: 0, fontSize: 17, fontFamily: "var(--font-titulos)" }}>{titulo}</h3>
       <p style={{ fontSize: 13.5, color: "var(--tinta-2)", lineHeight: 1.6 }}>{texto}</p>
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 18 }}>
-        <Button type="button" variante="secundario" onClick={onNo}>
-          No
-        </Button>
+        {!soloAviso && (
+          <Button type="button" variante="secundario" onClick={onNo}>
+            No
+          </Button>
+        )}
         {otra && (
           <Button type="button" variante="secundario" onClick={otra.onClick}>
             {otra.boton}

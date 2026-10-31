@@ -40,11 +40,19 @@ export function leerTratamiento(celda: string): string | null | undefined | "mal
 }
 
 export function nombreDe(v: Vinculo | null): string {
-  if (!v?.personas) return "";
-  const nombre = v.personas.nombre ?? "";
+  return nombreCompleto(v?.personas ?? null);
+}
+
+/**
+ * El nombre con su tratamiento, a partir de solo esos dos datos. Lo usa el
+ * papel del portal (ronda 11, D4), que no trae el resto de la ficha.
+ */
+export function nombreCompleto(p: { prefijo: string | null; nombre: string | null } | null): string {
+  if (!p) return "";
+  const nombre = p.nombre ?? "";
   // Si el nombre ya trae su tratamiento, manda ese: no se le suma el prefijo.
   if (TRATAMIENTO_INICIAL.test(nombre)) return nombre;
-  return [v.personas.prefijo, nombre].filter(Boolean).join(" ");
+  return [p.prefijo, nombre].filter(Boolean).join(" ");
 }
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ReceiptText, RotateCcw, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Flechas, Input, Select } from "@/components/ui";
@@ -64,6 +64,8 @@ export function CierreMes({
   const [abrir, setAbrir] = useState({ anio: new Date().getFullYear(), mes: new Date().getMonth() + 1, tasa: "", presupuesto: "" });
   const [correccion, setCorreccion] = useState({ presupuesto: "", tasa: "" });
   const [previa, setPrevia] = useState<SimulacionCierre[] | null>(null);
+  // Ronda 11 (C): la unidad cuyo detalle de «Cuotas y cargos» está abierto.
+  const [detalleDe, setDetalleDe] = useState<string | null>(null);
   const [simulable, setSimulable] = useState(true);
   const [confirma, setConfirma] = useState<Confirma | null>(null);
   const [descartando, setDescartando] = useState(false);
@@ -146,9 +148,10 @@ export function CierreMes({
   // Ronda 8 (pedido de la ronda 6): con gastos cargados, una unidad cuya cuota
   // de condominio da $ 0,00 casi siempre es un error (alícuota en 0, un cobro
   // mal configurado). El cierre lo avisa y pide confirmar; no lo impide. Sin
-  // el redondeo, que se suma a condominio pero no es cuota.
+  // el redondeo, que se suma a condominio pero no es cuota, ni (ronda 11, C)
+  // las cuotas extraordinarias y los cargos de la unidad.
   const cuotaCero =
-    gastos.length > 0 && previa ? previa.filter((r) => Number(r.condominio) - Number(r.redondeo ?? 0) < 0.005).map((r) => r.codigo) : [];
+    gastos.length > 0 && previa ? previa.filter((r) => cuotaOrdinaria(r) < 0.005).map((r) => r.codigo) : [];
 
   useEffect(() => {
     if (!periodoAbierto || !simulable) return;
@@ -581,7 +584,7 @@ export function CierreMes({
 
               {nuevo.tipo === "directo" && (
                 <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginBottom: 14 }}>
-                  <Campo etiqueta="¿A qué unidad?">
+                  <Campo etiqueta="¿A qué unidad?" ayuda="¿Es una multa? Cárguela en Cobros, así no genera mora.">
                     <Select value={nuevo.unidad} onChange={(e) => setNuevo({ ...nuevo, unidad: e.target.value })}>
                       <option value="">Elija la unidad</option>
                       {unidades.map((u) => (
@@ -659,6 +662,9 @@ export function CierreMes({
                       <th>Unidad</th>
                       <th>Alícuota</th>
                       <th>Condominio</th>
+                      <th title="Cuotas extraordinarias, gastos directos de la unidad y cargos de Cobros. Ya están dentro del total.">
+                        Cuotas y cargos
+                      </th>
                       <th>Administración</th>
                       <th>Servicio</th>
                       <th>Anterior</th>
@@ -668,11 +674,42 @@ export function CierreMes({
                     </tr>
                   </thead>
                   <tbody>
-                    {previa.map((r) => (
-                      <tr key={r.codigo}>
+                    {previa.map((r) => {
+                      const lineas = lineasDeCargos(r);
+                      const abierta = detalleDe === r.codigo && lineas.length > 0;
+                      return (
+                      <Fragment key={r.codigo}>
+                      <tr>
                         <td className="mono" style={{ fontWeight: 600 }}>{r.codigo}</td>
                         <td className="mono">{nf(5).format(r.alicuota)}</td>
-                        <td className="mono">{usd(r.condominio)}</td>
+                        <td className="mono">{usd(cuotaOrdinaria(r) + Number(r.redondeo ?? 0))}</td>
+                        <td className="mono">
+                          {lineas.length > 0 ? (
+                            // Ronda 11 (C): al pasar el cursor, el detalle en el título;
+                            // al tocar (teléfono), se abre debajo de la fila.
+                            <button
+                              type="button"
+                              className="mono"
+                              title={lineas.map((l) => `${l.etiqueta}${l.tipo === "multa" ? " (multa, no genera mora)" : ""}: ${usd(l.monto)}`).join("\n")}
+                              aria-expanded={abierta}
+                              onClick={() => setDetalleDe(abierta ? null : r.codigo)}
+                              style={{
+                                background: "none",
+                                border: 0,
+                                padding: 0,
+                                font: "inherit",
+                                color: "inherit",
+                                cursor: "pointer",
+                                textDecoration: "underline dotted",
+                                textUnderlineOffset: 3,
+                              }}
+                            >
+                              {usd(r.cuotas_cargos)}
+                            </button>
+                          ) : (
+                            usd(0)
+                          )}
+                        </td>
                         <td className="mono">{usd(r.administracion)}</td>
                         <td className="mono">{usd(r.servicio)}</td>
                         <td className="mono">{usd(r.anterior)}</td>
@@ -682,7 +719,31 @@ export function CierreMes({
                         <td className="mono">{usd(r.mora)}</td>
                         <TotalPrevia fila={r} />
                       </tr>
-                    ))}
+                      {abierta && (
+                        <tr>
+                          <td />
+                          <td colSpan={9} style={{ fontSize: 12.5, color: "var(--tinta-2)", paddingTop: 0 }}>
+                            {lineas.map((l, k) => (
+                              <div key={k} style={{ display: "flex", gap: 12, justifyContent: "space-between", maxWidth: 420 }}>
+                                <span>
+                                  {l.etiqueta}
+                                  {/* Ronda 11 (B): la multa se distingue (no genera mora). */}
+                                  {l.tipo === "multa" && (
+                                    <>
+                                      {" "}
+                                      <Badge tono="ambar">multa · no genera mora</Badge>
+                                    </>
+                                  )}
+                                </span>
+                                <span className="mono">{usd(l.monto)}</span>
+                              </div>
+                            ))}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1014,6 +1075,23 @@ function AyudaTasa({ tasaValor, tasaFecha }: { tasaValor: number; tasaFecha: str
       )}
     </>
   );
+}
+
+/** Una línea de «Cuotas y cargos» (`simular_cierre().detalle_cargos`, ronda 11, C). */
+type LineaCargo = { tipo: string; etiqueta: string; monto: number };
+
+function lineasDeCargos(r: SimulacionCierre): LineaCargo[] {
+  const lista = Array.isArray(r.detalle_cargos) ? (r.detalle_cargos as unknown as LineaCargo[]) : [];
+  return lista.map((l) => ({ tipo: String(l.tipo ?? ""), etiqueta: String(l.etiqueta ?? ""), monto: Number(l.monto) || 0 }));
+}
+
+/**
+ * La cuota ordinaria de condominio: `condominio` sin el redondeo ni (ronda
+ * 11, C) las cuotas extraordinarias y los cargos de la unidad, que van en su
+ * columna. `condominio` los trae sumados y el total no cambia.
+ */
+function cuotaOrdinaria(r: SimulacionCierre): number {
+  return Number(r.condominio) - Number(r.redondeo ?? 0) - Number(r.cuotas_cargos ?? 0);
 }
 
 /**

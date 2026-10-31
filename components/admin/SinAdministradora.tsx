@@ -18,7 +18,7 @@ export function SinAdministradora() {
     <Card style={{ maxWidth: 480, width: "100%" }}>
       <h2 style={{ marginTop: 0, fontFamily: "var(--font-titulos)", fontSize: 18 }}>Esta cuenta no administra ningún edificio</h2>
       <p style={{ fontSize: 14, color: "var(--tinta-2)", lineHeight: 1.6 }}>
-        Para usar Vecitap como administradora, hay que escribirle a Vecitap.
+        Para usar Vecitap como administradora, ¡escríbanos!
       </p>
       <a
         href={enlaceWhatsappVecitap()}

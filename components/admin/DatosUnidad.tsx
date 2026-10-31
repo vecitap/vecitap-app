@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Confirmar, EstadoGuardado, Input, Select, Textarea } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
 import { formatoFecha, hoyLocalISO, montoAlSalir, num0, numeroMalEscrito, paraCampo } from "@/lib/formato";
-import { TRATAMIENTOS, correoValido, etiquetaTratamiento, nombreDe } from "@/lib/admin/personas";
+import { TRATAMIENTOS, TRATAMIENTO_INICIAL, correoValido, etiquetaTratamiento, nombreDe } from "@/lib/admin/personas";
 import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { LARGO_NOTA, TIPOS_UNIDAD, type TipoUnidad, type UnidadConPaga, type Vinculo } from "@/lib/admin/tipos";
@@ -24,6 +24,22 @@ type FormPersona = {
 type Tipo = "propietario" | "inquilino";
 /** Qué hacer con cada persona cuyo correo cambió (ver `guardar`). */
 type Decisiones = Partial<Record<Tipo, "reemplazar" | "corregir">>;
+
+/** Cédula o RIF comparable: «V-12.345.678» y «v12345678» son la misma. Vacío si no hay. */
+function normalizarDocumento(t: string | null | undefined): string {
+  return (t ?? "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+}
+
+/** Nombre comparable: sin tratamiento, sin tildes, sin mayúsculas ni espacios de más. */
+function normalizarNombre(t: string | null | undefined): string {
+  return (t ?? "")
+    .trim()
+    .replace(TRATAMIENTO_INICIAL, "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
 
 function aForm(v: Vinculo | null): FormPersona {
   return {
@@ -110,13 +126,23 @@ export function DatosUnidad({
   const otrosInquilinos = unidad.vinculos.filter((v) => v.tipo === "inquilino" && !v.hasta && v.id !== inq?.id).length;
   const pagaVuelve = pagaDe(unidad.paga) === "inquilino" && otrosInquilinos === 0;
 
-  // ¿Otra persona, no una corrección? El vigente tenía correo y se escribió
-  // uno distinto. Corregir el nombre, el teléfono o completar un correo que
-  // faltaba sigue editando a la misma persona, como antes.
+  // ¿Otra persona, no una corrección? Ronda 11 (D5): antes bastaba con que el
+  // correo fuera otro, así que corregir el correo de la misma persona
+  // preguntaba «¿Cambia el propietario?». Ahora es otra persona solo si:
+  //  - la cédula/RIF es otra (las dos cargadas), o
+  //  - cambian a la vez el nombre y el correo (los dos cargados antes).
+  // Con la misma cédula es la misma persona aunque cambie todo lo demás.
+  // Corregir solo el correo, solo el nombre o el teléfono, o completar un dato
+  // que faltaba, sigue editando a la misma persona.
   function cambiaPersona(actual: Vinculo | null, f: FormPersona) {
-    const viejo = (actual?.personas?.correo || "").trim().toLowerCase();
+    if (!actual?.personas || !f.nombre.trim()) return false;
+    const docViejo = normalizarDocumento(actual.personas.documento);
+    const docNuevo = normalizarDocumento(f.documento);
+    if (docViejo && docNuevo) return docViejo !== docNuevo;
+    const viejo = (actual.personas.correo || "").trim().toLowerCase();
     const nuevo = f.correo.trim().toLowerCase();
-    return !!actual && !!viejo && !!nuevo && nuevo !== viejo && !!f.nombre.trim();
+    const cambiaCorreo = !!viejo && !!nuevo && nuevo !== viejo;
+    return cambiaCorreo && normalizarNombre(actual.personas.nombre) !== normalizarNombre(f.nombre);
   }
   const cambia: Record<Tipo, boolean> = { propietario: cambiaPersona(prop, p), inquilino: cambiaPersona(inq, i) };
   const actualDe: Record<Tipo, Vinculo | null> = { propietario: prop, inquilino: inq };
@@ -500,20 +526,22 @@ export function DatosUnidad({
           <Confirmar
             titulo={`¿Cambia el ${tipo}?`}
             texto={[
-              `El correo ${f.correo.trim()} no es el de ${quien} (${actual.personas?.correo}).`,
+              normalizarDocumento(actual.personas?.documento) && normalizarDocumento(f.documento)
+                ? `La cédula o RIF ${f.documento.trim()} no es la de ${quien} (${actual.personas?.documento}).`
+                : `El nombre y el correo ya no son los de ${quien} (${actual.personas?.correo}).`,
               tipo === "inquilino"
                 ? `Si sigue, ${quien} deja de figurar como inquilino de ${unidad.codigo} desde hoy, ${formatoFecha(hoyLocalISO())}, igual que con «El inquilino ya no ocupa la unidad»: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes dejan de servir.`
                 : `Si sigue, ${quien} deja de figurar como propietario de ${unidad.codigo} desde hoy, ${formatoFecha(hoyLocalISO())}: si tiene cuenta en la app, pierde el acceso a esta unidad, y sus invitaciones pendientes para esta unidad dejan de servir. Si es propietario de otras unidades, esas no se tocan. Lo que se debía hasta hoy sigue en la cuenta de la unidad.`,
               `Y se registra como ${tipo} nuevo a ${[f.prefijo, f.nombre.trim()].filter(Boolean).join(" ")}, con ese correo.`,
               tipo === "inquilino" && pagaDe(unidad.paga) === "inquilino" ? "La unidad sigue en «paga el inquilino»." : "",
-              "Si es la misma persona y solo estaba mal el correo, use «Es el mismo, corregir el correo»: no se le quita el acceso.",
+              "Si es la misma persona y solo estaban mal sus datos, use «Es el mismo, corregir los datos»: no se le quita el acceso.",
             ]
               .filter(Boolean)
               .join(" ")}
             boton={`Sí, cambiar el ${tipo}`}
             onSi={() => guardar({ ...decisiones, [tipo]: "reemplazar" })}
             onNo={() => setPregunta(null)}
-            otra={{ boton: "Es el mismo, corregir el correo", onClick: () => guardar({ ...decisiones, [tipo]: "corregir" }) }}
+            otra={{ boton: "Es el mismo, corregir los datos", onClick: () => guardar({ ...decisiones, [tipo]: "corregir" }) }}
           />
         );
       })()}

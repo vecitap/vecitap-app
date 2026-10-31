@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card } from "@/components/ui";
 import { bs, formatoFecha, nf, usd } from "@/lib/formato";
-import { favorQueQueda, lineasDeCargos } from "@/lib/recibo-papel";
+import { favorQueQueda, lineasDeCargos, tieneMulta } from "@/lib/recibo-papel";
 import { bolivaresExactos } from "@/lib/residente/monto-exacto";
 import type { RegistroRecibo } from "@/lib/residente/tipos";
 import type { APagarHoy } from "@/lib/residente/a-pagar";
@@ -148,6 +148,9 @@ export function Recibo({
       {Number(recibo.anterior) > 0 && fila("Saldo del mes anterior", recibo.anterior)}
       {Number(recibo.a_favor) > 0 && fila("A su favor", -recibo.a_favor)}
       {Number(recibo.mora) > 0 && fila("Intereses de mora", recibo.mora)}
+      {Number(recibo.mora) > 0 && tieneMulta(recibo) && (
+        <div style={{ fontSize: 12, color: "var(--tenue)", paddingBottom: 6 }}>Las multas no generan mora.</div>
+      )}
       {favor > 0 ? (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0 2px", fontWeight: 700, color: "var(--a-favor)" }}>
