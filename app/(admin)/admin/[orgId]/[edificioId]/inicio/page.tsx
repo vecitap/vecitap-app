@@ -146,8 +146,8 @@ export default async function PaginaInicio({
 
       {!hayConceptos && (
         <Aviso tono="rojo" titulo="Este edificio no tiene cobros configurados">
-          Sin al menos un cobro activo el mes no se puede cerrar. Vaya a Cobros y defina qué se
-          le cobra a cada unidad.
+          Sin al menos un cobro activo el mes no se puede cerrar. Vaya a Ajustes, «Reglas de cobro
+          del edificio», y defina qué se le cobra a cada unidad.
         </Aviso>
       )}
       {periodoAbierto && usaPresupuesto && !periodoAbierto.presupuesto && (

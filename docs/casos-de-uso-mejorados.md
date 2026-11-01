@@ -2580,6 +2580,86 @@ Lo que pidió Gustavo para antes del primer envío de recibos de GRUPO ING3.
 - **Ahora (decisión de Gustavo):** al cargar «Cargo a una sola unidad» en Cobros se dice si
   es una multa (sin respuesta por omisión). Una multa sin pagar no genera mora; las
   cuotas, los consumos y las reparaciones sí. Un pago cubre primero la mora, después las
-  multas y al final lo demás. Las multas solo se cargan desde Cobros: el gasto «Solo a una
+  multas y al final lo demás (en la ronda 12 cambió: las multas van al final, caso 116). Las multas solo se cargan desde Cobros: el gasto «Solo a una
   unidad» de Gastos del mes lo recuerda y sigue generando mora. En «Cómo se reparte» la
   multa se marca, y el recibo con mora y una multa aclara «Las multas no generan mora.».
+
+## Ronda 12 del tramo 2 (31-oct)
+
+### 116. Un pago cubre las multas al final
+
+- **Antes (ronda 11):** un pago cubría primero la mora, después las multas y al final las
+  cuotas y lo demás.
+- **Ahora (decisión de Gustavo):** primero la mora, después las cuotas y demás cargos (de
+  la más antigua a la más reciente) y al final las multas. Las multas siguen sin generar
+  mora. Con mora al 1 %, $ 100 de cuota y $ 15 de multa, pagando antes del vencimiento:
+  paga $ 10 → mora sobre $ 90 (antes, sobre $ 100); paga $ 110 → sin mora y quedan $ 5 de
+  multa. Los gastos de cobranza y los honorarios, primeros en el orden de la ley, no
+  existen en la app (anotado para después del piloto).
+
+### 117. Una multa lleva su fundamento
+
+- **Antes:** la referencia de un cargo era opcional, también en una multa.
+- **Ahora (decisión de Gustavo):** al responder «Sí, es una multa», el campo se llama
+  «Fundamento (artículo del documento de condominio o acta de asamblea)» y es obligatorio;
+  la base también lo exige. Si no es multa, sigue «Referencia (opcional)». En el recibo y
+  en el papel el fundamento sale al lado de la multa, como la referencia.
+
+### 118. Las tablas anchas se deslizan con la primera columna fija
+
+- **Antes:** una tabla que no cabía (por ejemplo «Cómo se reparte» a 1280 px o en el
+  teléfono) estiraba su recuadro, y lo que sobraba quedaba cortado: no se veía «Total del
+  recibo».
+- **Ahora (pedido de Gustavo):** en el panel de la administradora, la tabla que no cabe se
+  desliza dentro de su recuadro y la primera columna (la unidad, el correo, la fecha) queda
+  fija. En «Pagos recibidos» la unidad pasó a ser la primera columna (antes la fecha), para
+  que sea la que queda fija. En el teléfono, el renglón para cargar un gasto en «Gastos del
+  mes» va de dos en dos (antes eran seis columnas que no entraban). Las tablas que en el
+  teléfono ya son tarjetas (Pagos, Cortes, Propietarios…) siguen siendo tarjetas.
+
+### 119. Un monto no se parte en dos líneas
+
+- **Antes:** en una tabla apretada, el «$» de la columna Mora (y de otras) quedaba arriba y
+  la cifra abajo.
+- **Ahora:** en las tablas, las cifras van siempre en una sola línea; si no cabe, la tabla se
+  desliza (caso 118).
+
+### 120. Una cuenta a la que no le toca nada no sale en «Datos para pagar»
+
+- **Antes:** con cuenta de condominio y cuenta de honorarios, el correo del recibo mostraba
+  las dos siempre, aunque a una le tocara $ 0,00 (04D, Abril 2027: «Honorarios de
+  administración: $ 0,00» con los datos del pago móvil). El papel hacía lo mismo, y el portal
+  mostraba la cuenta con «· $ 0,00».
+- **Ahora (pedido de Gustavo):** si a una cuenta le toca $ 0,00 o menos, no sale ni su monto
+  ni sus datos de pago, en el correo, en el portal y en el papel (portal y Cortes). Si se
+  debe en las dos, salen las dos, como antes. Si el recibo queda en $ 0,00 o a favor, el
+  portal y el papel siguen como antes («Al día» o «A favor»), y el correo pasa a decir lo
+  mismo que el papel: «Está al día · no tiene que pagar» o «A favor $ X · no tiene que pagar»
+  en lugar de «Total a pagar: $ 0,00», sin «Datos para pagar» ni vencimiento. Es solo lo que se muestra: ningún monto ni recibo cambia, y los
+  correos ya enviados quedan como salieron.
+
+### 121. El correo de un recibo solo lo ve quien administra esa organización
+
+- **Antes:** cualquier usuario con sesión que tuviera el número interno de un recibo ajeno
+  podía pedir su correo armado (nombres, correos, montos y el código de invitación de la
+  unidad).
+- **Ahora:** solo quien puede operar la organización del recibo (propietario de la cuenta o
+  administrador). A los demás les sale «Sin acceso a ese recibo». El envío del mes, el reenvío
+  y el correo de prueba siguen igual para la administradora. Contador y junta ya no ven el
+  botón «Probar el correo» en Cortes (enviar ya no podían).
+- **Y en el mismo cierre:** tres funciones internas que cualquiera podía llamar dejaron de
+  estar abiertas: la que daba nombre, correo y teléfono del propietario y el inquilino de
+  cualquier unidad (la sigue usando el aviso de la garita, que funciona igual), la que decía
+  si un correo tiene cuenta, y una ayuda de pruebas.
+
+### 122. «Cobros» sale del menú
+
+- **Antes (en `main` y hasta la ronda 11):** «Cobros» juntaba las reglas fijas del edificio,
+  las cuotas extraordinarias y el cargo a una sola unidad; y en Gastos del mes había además
+  un gasto «Solo a una unidad» (dos lugares para cargarle algo a una unidad).
+- **Ahora (decisión de Gustavo):** las reglas fijas y «Agregar un cobro» están en Ajustes,
+  «Reglas de cobro del edificio». Las cuotas extraordinarias y el cargo a una sola unidad
+  están en Gastos del mes, y ese cargo es el único lugar para cargarle algo a una unidad (sale
+  «Solo a una unidad»). Quien tenga guardado el enlace de Cobros llega a Gastos del mes. Nada
+  de lo emitido cambia y la base no cambió. El cargo que no es de condominio (recargo de
+  cobranza a Administración) queda para después del piloto.

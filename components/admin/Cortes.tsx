@@ -114,6 +114,7 @@ export function Cortes({
   soloUsd,
   saldosHoy,
   periodoInicial,
+  puedeOperar,
 }: {
   orgId: string;
   edificioId: string;
@@ -130,6 +131,11 @@ export function Cortes({
   saldosHoy: SaldoHoy[];
   /** `?periodo=` de la dirección: el mes que estaba elegido antes de imprimir. */
   periodoInicial?: string;
+  /**
+   * Ronda 12: propietario de la cuenta o administrador (`puede_operar`).
+   * Contador y junta no ven «Probar el correo»: `correo_recibo()` se lo niega.
+   */
+  puedeOperar: boolean;
 }) {
   const router = useRouter();
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
@@ -537,15 +543,17 @@ export function Cortes({
                 <Printer size={15} /> Imprimir los {recibos.length} recibos
               </a>
             )}
-            <Button
-              type="button"
-              variante="secundario"
-              mini
-              disabled={!recibos.length}
-              onClick={() => setPrueba(recibos[0]?.unidad_id ?? "")}
-            >
-              <Mail size={15} /> Probar el correo
-            </Button>
+            {puedeOperar && (
+              <Button
+                type="button"
+                variante="secundario"
+                mini
+                disabled={!recibos.length}
+                onClick={() => setPrueba(recibos[0]?.unidad_id ?? "")}
+              >
+                <Mail size={15} /> Probar el correo
+              </Button>
+            )}
             <Button type="button" mini cargando={enviando} disabled={!recibos.length} onClick={pedirEnvio}>
               <Send size={15} /> Enviar por correo
             </Button>

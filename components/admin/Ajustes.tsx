@@ -13,9 +13,10 @@ import { DatosAdministradora } from "./DatosAdministradora";
 import { NuevoEdificio } from "./NuevoEdificio";
 import { DatosPago } from "./DatosPago";
 import { AjustesCobro } from "./AjustesCobro";
+import { ReglasCobro } from "./ReglasCobro";
 import type { AjustesCobro as TipoAjustesCobro } from "@/lib/cobro-opciones";
 import type { CuentaPago } from "@/lib/datos-pago";
-import type { CategoriaConPartidas, EdificioAdmin, PartidaFija } from "@/lib/admin/tipos";
+import type { CategoriaConPartidas, ConceptoCobro, EdificioAdmin, PartidaFija } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
 
@@ -25,7 +26,7 @@ type Mensaje = { texto: string; tipo: "ok" | "error" };
 /**
  * Portado de Ajustes() en admin.html:5670-6031 (+ LogoOrg, + NuevoEdificio).
  *
- * Las partidas editables siguen el patrón que ya usan Cobros/CierreMes:
+ * Las partidas editables siguen el patrón que ya usan ReglasCobro/CierreMes:
  * cada campo es un subcomponente con su propio `useState(valorInicial)` y
  * el padre le pasa `key={`${id}:${valor}`}`, así que cuando el valor
  * guardado cambia React lo remonta con el valor fresco en vez de dejar un
@@ -41,6 +42,7 @@ export function Ajustes({
   cuentas,
   bancos,
   ajustesCobro,
+  conceptos,
 }: {
   orgId: string;
   organizacion: { nombre: string; rif: string | null; logo_url: string | null };
@@ -50,6 +52,8 @@ export function Ajustes({
   cuentas: CuentaPago[];
   bancos: { codigo: string; nombre: string }[];
   ajustesCobro: TipoAjustesCobro;
+  /** Ronda 12 (C): los cobros del edificio, para «Reglas de cobro del edificio». */
+  conceptos: ConceptoCobro[];
 }) {
   const router = useRouter();
   const [e, setE] = useState({
@@ -323,6 +327,9 @@ export function Ajustes({
           <EstadoGuardado estado={guardarEdificio.estado} error={guardarEdificio.error} />
         </div>
       </Card>
+
+      {/* Ronda 12 (C): las reglas fijas que estaban en «Cobros». */}
+      <ReglasCobro orgId={orgId} edificioId={edificio.id} conceptos={conceptos} />
 
       <DatosPago orgId={orgId} edificioId={edificio.id} cuentas={cuentas} bancos={bancos} />
 

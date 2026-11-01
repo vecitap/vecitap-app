@@ -22,6 +22,14 @@ export const ROLES_ADMIN = ["propietario_cuenta", "administrador", "contador", "
  */
 export const ROLES_GARITA_ADMIN_ORG = ["propietario_cuenta", "administrador"] as const;
 
+/**
+ * Los roles de `puede_operar()` en la base (propietario de la cuenta y
+ * administrador). Solo para decisiones de UI: esconder lo que la base igual
+ * rechazaría a contador y junta (ronda 12: «Probar el correo» de Cortes, que
+ * usa `correo_recibo()`). La autorización real es la de la base.
+ */
+export const ROLES_OPERAR = ["propietario_cuenta", "administrador"] as const;
+
 /** Portado de MESES/BOLSILLOS/MODOS_COBRO en app.html:131-154. */
 export const MESES = [
   "Enero",

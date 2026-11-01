@@ -26,7 +26,7 @@ export type CargoDelMes = {
   concepto: string;
   referencia: string | null;
   monto: number;
-  /** Ronda 11 (B): una multa de Cobros no genera mora. Un gasto directo nunca es multa. */
+  /** Ronda 11 (B): una multa no genera mora. Un gasto directo nunca es multa. */
   multa: boolean;
 };
 
@@ -34,8 +34,9 @@ export type CargoDelMes = {
 const VACIO = { unidad: "", concepto: "", referencia: "", monto: "", lopago: false, multa: null as boolean | null };
 
 /**
- * «Cargo a una sola unidad» (ronda 10, bloque C, pedido de Gustavo). Va en
- * Cobros hasta la reorganización del menú (después del piloto). Sale como
+ * «Cargo a una sola unidad» (ronda 10, bloque C, pedido de Gustavo). Desde la
+ * ronda 12 (C) va en Gastos del mes, solo con el mes abierto, y es el único
+ * lugar para cargarle algo a una unidad (salió «Solo a una unidad»). Sale como
  * línea propia, con su motivo, en el próximo recibo de esa unidad; entra en
  * la previa y en el cierre con el mismo cálculo (bolsillo condominio, antes
  * de la mora y del redondeo). Mientras el mes está abierto se corrige o se
@@ -48,8 +49,8 @@ export function CargosUnidad({
   cargos,
 }: {
   orgId: string;
-  /** El mes abierto del edificio, si hay uno. */
-  mes: { id: string; etiqueta: string } | null;
+  /** El mes abierto del edificio: la tarjeta solo sale con un mes abierto. */
+  mes: { id: string; etiqueta: string };
   unidades: { id: string; codigo: string }[];
   cargos: CargoDelMes[];
 }) {
@@ -60,6 +61,9 @@ export function CargosUnidad({
   const [error, setError] = useState<string | null>(null);
 
   const codigo = (id: string) => unidades.find((u) => u.id === id)?.codigo ?? "—";
+  // Ronda 12 (B, decisión de Gustavo): en una multa la referencia es su
+  // fundamento, y es obligatorio (la base también lo exige).
+  const pideFundamento = !(editando ? editando.origen === "gasto" : f.lopago) && f.multa === true;
   const lista = cargos.slice().sort((a, b) => compararCodigos(codigo(a.unidad_id), codigo(b.unidad_id)));
 
   function cambiar(v: typeof f) {
@@ -80,7 +84,6 @@ export function CargosUnidad({
   }
 
   const guardar = useAccion(async () => {
-    if (!mes) return false;
     const malo = numeroMalEscrito([["El monto", f.monto]]);
     const monto = num(f.monto);
     const esGasto = (editando ? editando.origen : f.lopago ? "gasto" : "cargo") === "gasto";
@@ -88,6 +91,8 @@ export function CargosUnidad({
       ? "Elija a qué unidad se le carga."
       : !esGasto && f.multa === null
         ? "Diga si es una multa: las multas no generan mora."
+      : !esGasto && f.multa && !f.referencia.trim()
+        ? "Escriba el fundamento de la multa: el artículo del documento de condominio o el acta de asamblea."
       : !f.concepto.trim()
         ? "Falta el motivo: es lo que se lee en el recibo."
         : malo || monto === null || monto <= 0
@@ -143,172 +148,172 @@ export function CargosUnidad({
         cerrarlo, queda en el recibo.
       </p>
 
-      {!mes ? (
-        <Aviso tono="ambar" titulo="No hay ningún mes abierto">
-          El cargo va en el recibo del mes que todavía no se cerró. Abra el mes en «Gastos del mes» y vuelva aquí.
-        </Aviso>
-      ) : (
-        <>
-          {error && (
-            <div style={{ marginBottom: 12 }}>
-              <Aviso tono="rojo" titulo="No se pudo guardar">
-                {error}
-              </Aviso>
-            </div>
-          )}
-          {guardar.error && !error && (
-            <div style={{ marginBottom: 12 }}>
-              <Aviso tono="rojo" titulo="No se pudo guardar">
-                {guardar.error}
-              </Aviso>
-            </div>
-          )}
-
-          <div style={{ fontSize: 13, color: "var(--tinta-2)", marginBottom: 10 }}>
-            Cargos del recibo de <b>{mes.etiqueta}</b>
+      <>
+        {error && (
+          <div style={{ marginBottom: 12 }}>
+            <Aviso tono="rojo" titulo="No se pudo guardar">
+              {error}
+            </Aviso>
           </div>
-          {lista.length === 0 ? (
-            <p style={{ fontSize: 13, color: "var(--tenue)", margin: "0 0 16px" }}>Este mes no hay cargos a una sola unidad.</p>
-          ) : (
-            <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
-              {lista.map((c) => (
-                <div
-                  key={c.origen + c.id}
-                  style={{
-                    border: `1px solid ${editando?.id === c.id ? "var(--acento)" : "var(--linea)"}`,
-                    borderRadius: "var(--radio-chico)",
-                    padding: "10px 12px",
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <b className="mono" style={{ minWidth: 48 }}>
-                    {codigo(c.unidad_id)}
-                  </b>
-                  <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-                    <div style={{ fontSize: 14, overflowWrap: "anywhere" }}>
-                      {c.concepto}
-                      {c.referencia && <span style={{ color: "var(--tenue)", fontSize: 12.5 }}> · {c.referencia}</span>}
-                    </div>
-                    <div style={{ marginTop: 3 }}>
-                      <Badge tono={c.origen === "gasto" ? "azul" : "neutro"}>
-                        {c.origen === "gasto"
-                          ? "Lo pagó el edificio · es un egreso"
-                          : c.multa
-                            ? "Multa · no genera mora · no es un egreso"
-                            : "Cobro · no es un egreso"}
-                      </Badge>
-                    </div>
+        )}
+        {guardar.error && !error && (
+          <div style={{ marginBottom: 12 }}>
+            <Aviso tono="rojo" titulo="No se pudo guardar">
+              {guardar.error}
+            </Aviso>
+          </div>
+        )}
+
+        <div style={{ fontSize: 13, color: "var(--tinta-2)", marginBottom: 10 }}>
+          Cargos del recibo de <b>{mes.etiqueta}</b>
+        </div>
+        {lista.length === 0 ? (
+          <p style={{ fontSize: 13, color: "var(--tenue)", margin: "0 0 16px" }}>Este mes no hay cargos a una sola unidad.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+            {lista.map((c) => (
+              <div
+                key={c.origen + c.id}
+                style={{
+                  border: `1px solid ${editando?.id === c.id ? "var(--acento)" : "var(--linea)"}`,
+                  borderRadius: "var(--radio-chico)",
+                  padding: "10px 12px",
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <b className="mono" style={{ minWidth: 48 }}>
+                  {codigo(c.unidad_id)}
+                </b>
+                <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                  <div style={{ fontSize: 14, overflowWrap: "anywhere" }}>
+                    {c.concepto}
+                    {c.referencia && <span style={{ color: "var(--tenue)", fontSize: 12.5 }}> · {c.referencia}</span>}
                   </div>
-                  <span className="mono" style={{ fontWeight: 600 }}>
-                    {usd(c.monto)}
-                  </span>
-                  <button type="button" onClick={() => empezarEdicion(c)} title="Corregir" style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}>
-                    <Pencil size={15} />
-                  </button>
-                  <button type="button" onClick={() => setQuitar(c)} title="Quitar" style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}>
-                    <Trash2 size={15} />
-                  </button>
+                  <div style={{ marginTop: 3 }}>
+                    <Badge tono={c.origen === "gasto" ? "azul" : "neutro"}>
+                      {c.origen === "gasto"
+                        ? "Lo pagó el edificio · es un egreso"
+                        : c.multa
+                          ? "Multa · no genera mora · no es un egreso"
+                          : "Cobro · no es un egreso"}
+                    </Badge>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", alignItems: "end" }}>
-            <Campo etiqueta="Unidad">
-              <Select value={f.unidad} onChange={(e) => cambiar({ ...f, unidad: e.target.value })}>
-                <option value="">Elija la unidad</option>
-                {unidades.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.codigo}
-                  </option>
-                ))}
-              </Select>
-            </Campo>
-            <Campo etiqueta="Motivo (sale en el recibo)">
-              <Input value={f.concepto} maxLength={120} onChange={(e) => cambiar({ ...f, concepto: e.target.value })} placeholder="Multa por ruido" />
-            </Campo>
-            <Campo etiqueta="Referencia (opcional)">
-              <Input value={f.referencia} maxLength={120} onChange={(e) => cambiar({ ...f, referencia: e.target.value })} placeholder="Acta del 12/10" />
-            </Campo>
-            <Campo etiqueta="Monto $">
-              <Input
-                className="mono"
-                inputMode="decimal"
-                value={f.monto}
-                onChange={(e) => cambiar({ ...f, monto: e.target.value })}
-                onBlur={() => setF({ ...f, monto: montoAlSalir(f.monto) })}
-              />
-            </Campo>
-          </div>
-
-          <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14, cursor: editando ? "default" : "pointer", marginTop: 12, opacity: editando ? 0.7 : 1 }}>
-            <input
-              type="checkbox"
-              checked={f.lopago}
-              disabled={!!editando}
-              onChange={(e) => cambiar({ ...f, lopago: e.target.checked })}
-              style={{ marginTop: 3, width: 18, height: 18 }}
-            />
-            <span>
-              <b>El edificio pagó esto</b>
-              <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)", lineHeight: 1.5 }}>
-                Márquelo para una reparación que el condominio le pagó a alguien y le cobra a esta unidad: sale como
-                egreso del edificio. Sin marcar (una multa, un consumo), no es un egreso; lo que pague la unidad entra
-                como ingreso.
-                {editando && " Para cambiarlo, quite el cargo y cárguelo de nuevo."}
-              </span>
-            </span>
-          </label>
-
-          {/* Ronda 11 (B, decisión de Gustavo): las multas no generan mora. Sin respuesta por omisión. */}
-          {!(editando ? editando.origen === "gasto" : f.lopago) && (
-            <fieldset style={{ border: 0, padding: 0, margin: "12px 0 0" }}>
-              <legend style={{ fontSize: 14, fontWeight: 700, padding: 0 }}>¿Es una multa?</legend>
-              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 6, fontSize: 14 }}>
-                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
-                  <input type="radio" name="es-multa" checked={f.multa === true} onChange={() => cambiar({ ...f, multa: true })} style={{ marginTop: 3 }} />
-                  <span>
-                    Sí, es una multa
-                    <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)" }}>No genera mora si no se paga.</span>
-                  </span>
-                </label>
-                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
-                  <input type="radio" name="es-multa" checked={f.multa === false} onChange={() => cambiar({ ...f, multa: false })} style={{ marginTop: 3 }} />
-                  <span>
-                    No (un consumo u otro cobro)
-                    <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)" }}>Genera mora si no se paga, como la cuota.</span>
-                  </span>
-                </label>
+                <span className="mono" style={{ fontWeight: 600 }}>
+                  {usd(c.monto)}
+                </span>
+                <button type="button" onClick={() => empezarEdicion(c)} title="Corregir" style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}>
+                  <Pencil size={15} />
+                </button>
+                <button type="button" onClick={() => setQuitar(c)} title="Quitar" style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}>
+                  <Trash2 size={15} />
+                </button>
               </div>
-            </fieldset>
-          )}
-
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <Button type="button" cargando={guardar.enviando} onClick={() => guardar.ejecutar()}>
-              {editando ? (
-                "Guardar cambios"
-              ) : (
-                <>
-                  <Plus size={15} /> Agregar cargo
-                </>
-              )}
-            </Button>
-            {editando && (
-              <Button type="button" variante="secundario" onClick={cancelarEdicion}>
-                Cancelar
-              </Button>
-            )}
+            ))}
           </div>
-        </>
-      )}
+        )}
+
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", alignItems: "end" }}>
+          <Campo etiqueta="Unidad">
+            <Select value={f.unidad} onChange={(e) => cambiar({ ...f, unidad: e.target.value })}>
+              <option value="">Elija la unidad</option>
+              {unidades.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.codigo}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+          <Campo etiqueta="Motivo (sale en el recibo)">
+            <Input value={f.concepto} maxLength={120} onChange={(e) => cambiar({ ...f, concepto: e.target.value })} placeholder="Multa por ruido" />
+          </Campo>
+          <Campo etiqueta={pideFundamento ? "Fundamento (artículo del documento de condominio o acta de asamblea)" : "Referencia (opcional)"}>
+            <Input
+              value={f.referencia}
+              maxLength={120}
+              required={pideFundamento}
+              onChange={(e) => cambiar({ ...f, referencia: e.target.value })}
+              placeholder={pideFundamento ? "Art. 25 del documento de condominio" : "Acta del 12/10"}
+            />
+          </Campo>
+          <Campo etiqueta="Monto $">
+            <Input
+              className="mono"
+              inputMode="decimal"
+              value={f.monto}
+              onChange={(e) => cambiar({ ...f, monto: e.target.value })}
+              onBlur={() => setF({ ...f, monto: montoAlSalir(f.monto) })}
+            />
+          </Campo>
+        </div>
+
+        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14, cursor: editando ? "default" : "pointer", marginTop: 12, opacity: editando ? 0.7 : 1 }}>
+          <input
+            type="checkbox"
+            checked={f.lopago}
+            disabled={!!editando}
+            onChange={(e) => cambiar({ ...f, lopago: e.target.checked })}
+            style={{ marginTop: 3, width: 18, height: 18 }}
+          />
+          <span>
+            <b>El edificio pagó esto</b>
+            <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)", lineHeight: 1.5 }}>
+              Márquelo para una reparación que el condominio le pagó a alguien y le cobra a esta unidad: sale como
+              egreso del edificio. Sin marcar (una multa, un consumo), no es un egreso; lo que pague la unidad entra
+              como ingreso.
+              {editando && " Para cambiarlo, quite el cargo y cárguelo de nuevo."}
+            </span>
+          </span>
+        </label>
+
+        {/* Ronda 11 (B, decisión de Gustavo): las multas no generan mora. Sin respuesta por omisión. */}
+        {!(editando ? editando.origen === "gasto" : f.lopago) && (
+          <fieldset style={{ border: 0, padding: 0, margin: "12px 0 0" }}>
+            <legend style={{ fontSize: 14, fontWeight: 700, padding: 0 }}>¿Es una multa?</legend>
+            <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 6, fontSize: 14 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                <input type="radio" name="es-multa" checked={f.multa === true} onChange={() => cambiar({ ...f, multa: true })} style={{ marginTop: 3 }} />
+                <span>
+                  Sí, es una multa
+                  <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)" }}>No genera mora si no se paga. Lleva su fundamento.</span>
+                </span>
+              </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                <input type="radio" name="es-multa" checked={f.multa === false} onChange={() => cambiar({ ...f, multa: false })} style={{ marginTop: 3 }} />
+                <span>
+                  No (un consumo u otro cobro)
+                  <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)" }}>Genera mora si no se paga, como la cuota.</span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <Button type="button" cargando={guardar.enviando} onClick={() => guardar.ejecutar()}>
+            {editando ? (
+              "Guardar cambios"
+            ) : (
+              <>
+                <Plus size={15} /> Agregar cargo
+              </>
+            )}
+          </Button>
+          {editando && (
+            <Button type="button" variante="secundario" onClick={cancelarEdicion}>
+              Cancelar
+            </Button>
+          )}
+        </div>
+      </>
 
       {quitar && (
         <Confirmar
           titulo="Quitar este cargo"
-          texto={`"${quitar.concepto}" (${usd(quitar.monto)}) a la unidad ${codigo(quitar.unidad_id)} no se cobra en el recibo de ${mes?.etiqueta ?? "este mes"}.`}
+          texto={`"${quitar.concepto}" (${usd(quitar.monto)}) a la unidad ${codigo(quitar.unidad_id)} no se cobra en el recibo de ${mes.etiqueta}.`}
           boton="Quitar"
           tono="peligro"
           onSi={confirmarQuitar}

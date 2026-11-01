@@ -24,7 +24,7 @@ export default async function PaginaAjustes({
   const { orgId, edificioId } = await params;
   const supabase = await crearClienteServidor();
 
-  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: cats, error: eC }, { data: puedeEditarOrg }, { data: cuentas }, { data: bancos }, ajustesCobro] = await Promise.all([
+  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: cats, error: eC }, { data: puedeEditarOrg }, { data: cuentas }, { data: bancos }, ajustesCobro, { data: conceptos, error: eK }] = await Promise.all([
     supabase.from("organizaciones").select("nombre,rif,logo_url").eq("id", orgId).single(),
     supabase.from("edificios").select("*").eq("id", edificioId).single(),
     supabase
@@ -39,10 +39,16 @@ export default async function PaginaAjustes({
     supabase.from("datos_pago").select("id,destino,tipo,banco,titular,documento,cuenta,nota,orden").eq("edificio_id", edificioId).order("orden"),
     supabase.from("bancos").select("codigo,nombre").eq("activo", true).order("orden"),
     ajustesCobroDe(orgId),
+    // Ronda 12 (C): «Reglas de cobro del edificio» (antes en Cobros).
+    supabase
+      .from("conceptos_cobro")
+      .select("id,nombre,bolsillo,modo,monto,iva,orden,activo,edificio_id,cuotas")
+      .or(`edificio_id.eq.${edificioId},edificio_id.is.null`)
+      .order("orden"),
   ]);
 
   if (eO || eE) notFound();
-  if (eC) throw eC;
+  if (eC || eK) throw eC || eK;
 
   const categorias: CategoriaConPartidas[] = (cats ?? []).map((c) => ({
     ...c,
@@ -59,6 +65,7 @@ export default async function PaginaAjustes({
       cuentas={cuentas ?? []}
       bancos={bancos ?? []}
       ajustesCobro={ajustesCobro}
+      conceptos={conceptos ?? []}
     />
   );
 }

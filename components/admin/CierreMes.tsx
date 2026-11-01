@@ -11,6 +11,8 @@ import type { CategoriaAdmin, ConceptoCobro, GastoAdmin, PeriodoAdmin, Simulacio
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
 import { ordenarPorCodigo } from "@/lib/orden-unidades";
+import { CuotasExtraordinarias } from "./CuotasExtraordinarias";
+import { CargosUnidad, type CargoDelMes } from "./CargosUnidad";
 
 type ActualizarGasto = Database["public"]["Tables"]["gastos"]["Update"];
 type InsertarGasto = Database["public"]["Tables"]["gastos"]["Insert"];
@@ -30,6 +32,10 @@ const serie = (a: number, m: number) => a * 12 + m;
  * usa inputs controlados (value + onChange), nunca defaultValue: la
  * lista se refresca con `cargarGastos()` después de cada escritura, así
  * que siempre refleja lo que quedó guardado.
+ *
+ * Ronda 12 (C): «Cobros» salió del menú. Aquí quedan los gastos comunes (sin
+ * el tipo «Solo a una unidad»), las cuotas extraordinarias y el cargo a una
+ * sola unidad, el único lugar para cargarle algo a una unidad.
  */
 export function CierreMes({
   orgId,
@@ -40,6 +46,8 @@ export function CierreMes({
   categorias,
   tasaValor,
   tasaFecha,
+  avance,
+  cargos,
 }: {
   orgId: string;
   edificioId: string;
@@ -51,16 +59,20 @@ export function CierreMes({
   tasaValor: number;
   /** Fecha de esa tasa: puede no ser hoy (fin de semana, feriado). */
   tasaFecha: string | null;
+  /** Cuotas extraordinarias: cuántas ya se cobraron (ronda 7, bloque 5). */
+  avance: Record<string, number>;
+  /** Los cargos a una sola unidad del mes abierto (ronda 10, C). */
+  cargos: CargoDelMes[];
 }) {
   const router = useRouter();
   const periodoAbierto = periodos.find((p) => p.estado === "abierto") ?? null;
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
   // Nota: app.html:2451 también calcula `usaGasto` acá y tampoco lo usa en
-  // este componente (solo en Cobros) — no es un olvido de la migración.
+  // este componente (solo en las reglas de cobro) — no es un olvido de la migración.
   const usaPresupuesto = conceptos.some((c) => c.activo && c.modo.startsWith("presupuesto"));
 
   const [gastos, setGastos] = useState<GastoAdmin[]>([]);
-  const [nuevo, setNuevo] = useState({ concepto: "", referencia: "", monto: "", tipo: "comun", unidad: "", bolsillo: "condominio", categoria: "" });
+  const [nuevo, setNuevo] = useState({ concepto: "", referencia: "", monto: "", categoria: "" });
   const [abrir, setAbrir] = useState({ anio: new Date().getFullYear(), mes: new Date().getMonth() + 1, tasa: "", presupuesto: "" });
   const [correccion, setCorreccion] = useState({ presupuesto: "", tasa: "" });
   const [previa, setPrevia] = useState<SimulacionCierre[] | null>(null);
@@ -153,6 +165,13 @@ export function CierreMes({
   const cuotaCero =
     gastos.length > 0 && previa ? previa.filter((r) => cuotaOrdinaria(r) < 0.005).map((r) => r.codigo) : [];
 
+  // Ronda 12 (C): los cargos y las cuotas extraordinarias se guardan desde sus
+  // tarjetas de esta página (router.refresh()); con esto la previa se vuelve a pedir.
+  const firmaCargos = [
+    ...cargos.map((c) => `${c.origen}:${c.id}:${c.unidad_id}:${c.monto}:${c.multa}`),
+    ...conceptos.filter((c) => c.cuotas !== null).map((c) => `x:${c.id}:${c.activo}:${c.monto}:${c.modo}:${c.cuotas}`),
+  ].join("|");
+
   useEffect(() => {
     if (!periodoAbierto || !simulable) return;
     const supabase = crearClienteNavegador();
@@ -168,7 +187,7 @@ export function CierreMes({
       setPrevia(data ? ordenarPorCodigo(data, (r) => r.codigo) : data);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodoAbierto?.id, gastos.length, periodoAbierto?.presupuesto]);
+  }, [periodoAbierto?.id, gastos.length, periodoAbierto?.presupuesto, firmaCargos]);
 
   /**
    * La tasa escrita a mano: vacía = 0, que `cerrar_periodo()` reemplaza por
@@ -267,7 +286,6 @@ export function CierreMes({
     // Ronda 3 (caso 49): "Falta" solo si está vacío; si hay algo escrito que
     // no es un número, se dice eso.
     if (monto === null) return notificar(nuevo.monto.trim() ? (numeroMalEscrito([["El monto", nuevo.monto]]) ?? "El monto no se entiende.") : "Falta el monto.", "error");
-    if (nuevo.tipo === "directo" && !nuevo.unidad) return notificar("Un gasto directo tiene que decir a qué unidad se le carga.", "error");
     const enEsaCat = gastos.filter((g) => (g.categoria_id || "") === (nuevo.categoria || ""));
     const ultimo = Math.max(0, ...enEsaCat.map((g) => g.orden || 0));
     const supabase = crearClienteNavegador();
@@ -279,9 +297,11 @@ export function CierreMes({
       concepto: nuevo.concepto.trim() || "Sin concepto",
       referencia: nuevo.referencia.trim() || null,
       monto,
-      tipo: nuevo.tipo,
-      unidad_id: nuevo.tipo === "directo" ? nuevo.unidad : null,
-      bolsillo: nuevo.tipo === "directo" ? nuevo.bolsillo : "condominio",
+      // Ronda 12 (C): aquí solo los gastos que se reparten entre todos; lo de
+      // una sola unidad va en «Cargo a una sola unidad».
+      tipo: "comun",
+      unidad_id: null,
+      bolsillo: "condominio",
     });
     if (error) return fallo(error);
     setNuevo({ ...nuevo, concepto: "", referencia: "", monto: "" });
@@ -406,15 +426,16 @@ export function CierreMes({
     return arr;
   }, [gastos, categorias]);
 
-  const directos = gastos.filter((g) => g.tipo === "directo");
-
   return (
-    <div style={{ display: "grid", gap: 20 }}>
+    // Ronda 12 (D): la columna no crece con lo que tiene adentro (minmax(0, 1fr)):
+    // una tabla o un formulario más anchos se deslizan o se acomodan en su recuadro.
+    <div style={{ display: "grid", gap: 20, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {mensaje && (
         <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>
       )}
 
       {!periodoAbierto ? (
+        <>
         <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)", padding: 18 }}>
           <h2 style={{ margin: "0 0 4px", fontSize: 16, fontFamily: "var(--font-titulos)" }}>Abrir un mes</h2>
           <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
@@ -458,6 +479,10 @@ export function CierreMes({
             </Button>
           </div>
         </div>
+        {/* Ronda 12 (C): sin mes abierto, las cuotas extraordinarias se configuran
+            igual (la primera sale en el próximo mes que se cierre). */}
+        <CuotasExtraordinarias orgId={orgId} edificioId={edificioId} extraordinarias={conceptos.filter((c) => c.cuotas !== null)} avance={avance} />
+        </>
       ) : (
         <>
           <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)", padding: 18 }}>
@@ -542,8 +567,8 @@ export function CierreMes({
                 <div>
                   <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Gastos del mes</h2>
                   <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "var(--tenue)" }}>
-                    Los gastos comunes se reparten entre todos. Los directos se le cargan solo a
-                    una unidad.
+                    Se reparten entre todas las unidades. Lo que se le cobra a una sola unidad va en
+                    «Cargo a una sola unidad», más abajo.
                   </p>
                 </div>
                 <Button type="button" variante="secundario" mini onClick={traerFijas}>
@@ -551,7 +576,7 @@ export function CierreMes({
                 </Button>
               </div>
 
-              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "2fr 1.4fr 1.4fr 1.2fr 1fr auto", alignItems: "end", margin: "14px 0" }}>
+              <div className="gasto-nuevo" style={{ display: "grid", gap: 10, gridTemplateColumns: "2fr 1.4fr 1.4fr 1fr auto", alignItems: "end", margin: "14px 0" }}>
                 <Campo etiqueta="Concepto">
                   <Input value={nuevo.concepto} onChange={(e) => setNuevo({ ...nuevo, concepto: e.target.value })} placeholder="Vigilancia" />
                 </Campo>
@@ -568,12 +593,6 @@ export function CierreMes({
                     ))}
                   </Select>
                 </Campo>
-                <Campo etiqueta="Tipo">
-                  <Select value={nuevo.tipo} onChange={(e) => setNuevo({ ...nuevo, tipo: e.target.value })}>
-                    <option value="comun">Se reparte entre todos</option>
-                    <option value="directo">Solo a una unidad</option>
-                  </Select>
-                </Campo>
                 <Campo etiqueta="Monto USD">
                   <Input className="mono" value={nuevo.monto} onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} onBlur={() => setNuevo({ ...nuevo, monto: montoAlSalir(nuevo.monto) })} />
                 </Campo>
@@ -582,26 +601,6 @@ export function CierreMes({
                 </Button>
               </div>
 
-              {nuevo.tipo === "directo" && (
-                <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginBottom: 14 }}>
-                  <Campo etiqueta="¿A qué unidad?" ayuda="¿Es una multa? Cárguela en Cobros, así no genera mora.">
-                    <Select value={nuevo.unidad} onChange={(e) => setNuevo({ ...nuevo, unidad: e.target.value })}>
-                      <option value="">Elija la unidad</option>
-                      {unidades.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.codigo}
-                        </option>
-                      ))}
-                    </Select>
-                  </Campo>
-                  <Campo etiqueta="¿De quién es ese dinero?" ayuda="Una reparación es del condominio. Un recargo por gestión de cobranza es de quien administra.">
-                    <Select value={nuevo.bolsillo} onChange={(e) => setNuevo({ ...nuevo, bolsillo: e.target.value })}>
-                      <option value="condominio">Condominio</option>
-                      <option value="administracion">Administración</option>
-                    </Select>
-                  </Campo>
-                </div>
-              )}
             </div>
 
             <div className="tabla-scroll">
@@ -627,10 +626,7 @@ export function CierreMes({
                       onQuitar={quitarGasto}
                     />
                   ))}
-                  {directos.length > 0 && (
-                    <FilasDirectas gastos={directos} unidades={unidades} onEditar={editarGasto} onQuitar={quitarGasto} />
-                  )}
-                  {gastos.length === 0 && (
+                  {grupos.length === 0 && (
                     <tr>
                       <td colSpan={5} style={{ padding: 26, textAlign: "center", color: "var(--tenue)", fontSize: 13.5 }}>
                         Todavía no hay gastos cargados en este mes.
@@ -647,6 +643,10 @@ export function CierreMes({
             </div>
           </div>
 
+          {/* Ronda 12 (C): pasaron de «Cobros». */}
+          <CuotasExtraordinarias orgId={orgId} edificioId={edificioId} extraordinarias={conceptos.filter((c) => c.cuotas !== null)} avance={avance} />
+          <CargosUnidad orgId={orgId} mes={{ id: periodoAbierto.id, etiqueta: periodoAbierto.etiqueta }} unidades={unidades} cargos={cargos} />
+
           {previa && previa.length > 0 && (
             <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)" }}>
               <div style={{ padding: "18px 18px 0" }}>
@@ -662,7 +662,7 @@ export function CierreMes({
                       <th>Unidad</th>
                       <th>Alícuota</th>
                       <th>Condominio</th>
-                      <th title="Cuotas extraordinarias, gastos directos de la unidad y cargos de Cobros. Ya están dentro del total.">
+                      <th title="Cuotas extraordinarias y cargos a una sola unidad. Ya están dentro del total.">
                         Cuotas y cargos
                       </th>
                       <th>Administración</th>
@@ -760,7 +760,7 @@ export function CierreMes({
           {cuotaCero.length > 0 && (
             <Aviso tono="ambar" titulo={`${cuotaCero.length === 1 ? "1 unidad queda" : `${cuotaCero.length} unidades quedan`} con la cuota de condominio en $ 0,00`}>
               {cuotaCero.join(", ")}. Hay gastos cargados, así que casi siempre es un error: revise la alícuota de esas unidades en
-              Propietarios o los cobros en Cobros. Se puede cerrar igual.
+              Propietarios o las reglas de cobro en Ajustes. Se puede cerrar igual.
             </Aviso>
           )}
 
@@ -913,48 +913,6 @@ function FragmentoGrupo({
   );
 }
 
-function FilasDirectas({
-  gastos,
-  unidades,
-  onEditar,
-  onQuitar,
-}: {
-  gastos: GastoAdmin[];
-  unidades: { id: string; codigo: string }[];
-  onEditar: (id: string, campos: ActualizarGasto) => void;
-  onQuitar: (id: string) => void;
-}) {
-  return (
-    <>
-      <tr style={{ background: "var(--fondo)" }}>
-        <td colSpan={3} style={{ fontWeight: 700, fontSize: 13 }}>
-          Cargos a una sola unidad
-          <span style={{ fontWeight: 400, color: "var(--tenue)", marginLeft: 8 }}>no entran en el reparto</span>
-        </td>
-        <td className="mono" style={{ textAlign: "right", fontWeight: 700 }}>
-          {usd(gastos.reduce((sum, g) => sum + Number(g.monto), 0))}
-        </td>
-        <td />
-      </tr>
-      {gastos.map((g) => (
-        <tr key={g.id}>
-          <CampoTexto key={`concepto:${g.concepto}`} valor={g.concepto ?? ""} onGuardar={(v) => onEditar(g.id, { concepto: v || "Sin concepto" })} />
-          <CampoTexto key={`referencia:${g.referencia}`} mono valor={g.referencia ?? ""} onGuardar={(v) => onEditar(g.id, { referencia: v || null })} />
-          <td style={{ fontSize: 12.5 }}>
-            {unidades.find((u) => u.id === g.unidad_id)?.codigo || "—"}
-          </td>
-          <CampoMonto key={`monto:${g.monto}`} valor={Number(g.monto)} onGuardar={(v) => onEditar(g.id, { monto: v })} />
-          <td style={{ width: 34 }}>
-            <button onClick={() => onQuitar(g.id)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--tenue)" }}>
-              <Trash2 size={15} />
-            </button>
-          </td>
-        </tr>
-      ))}
-    </>
-  );
-}
-
 function FilaGasto({
   g,
   categorias,
@@ -1008,7 +966,7 @@ function FilaGasto({
 /**
  * Input controlado con guardado al salir del campo. Sembrado con `valor`
  * solo al montar — quien lo llama le pasa un `key` que incluye `valor`
- * (ver FilaGasto/FilasDirectas más arriba), así que un cambio externo
+ * (ver FilaGasto más arriba), así que un cambio externo
  * remonta este componente con el valor fresco en vez de dejar un buffer
  * local desactualizado.
  */
@@ -1021,14 +979,6 @@ function CampoTextoInline({ valor, mono, onGuardar }: { valor: string; mono?: bo
       onChange={(e) => setV(e.target.value)}
       onBlur={() => v !== valor && onGuardar(v)}
     />
-  );
-}
-
-function CampoTexto({ valor, mono, onGuardar }: { valor: string; mono?: boolean; onGuardar: (v: string) => void }) {
-  return (
-    <td>
-      <CampoTextoInline valor={valor} mono={mono} onGuardar={onGuardar} />
-    </td>
   );
 }
 

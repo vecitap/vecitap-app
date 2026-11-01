@@ -7,7 +7,6 @@ import {
   Building2,
   ChartColumn,
   KeyRound,
-  ListChecks,
   Mail,
   FileSpreadsheet,
   LogOut,
@@ -50,8 +49,9 @@ import { mensajeDeError } from "@/lib/errores";
 
 // Mismos íconos que el menú de admin.html:1189-1199 (caso 13). Orden y nombres
 // de Gustavo (ronda 5, caso 70): «Pagos» se llama «Pagos recibidos» y «Cierre
-// del mes», «Gastos del mes»; las rutas no cambian (/pagos, /mes). Cobros queda
-// al final hasta que sus reglas pasen a Ajustes (después del piloto).
+// del mes», «Gastos del mes»; las rutas no cambian (/pagos, /mes). Ronda 12
+// (C): «Cobros» salió del menú; sus reglas fijas están en Ajustes y lo demás en
+// Gastos del mes (/cobros redirige ahí).
 const SECCIONES: { seg: string; etiqueta: string; icono: LucideIcon; modulo?: string }[] = [
   { seg: "inicio", etiqueta: "Inicio", icono: House },
   { seg: "propietarios", etiqueta: "Propietarios", icono: Users },
@@ -64,7 +64,6 @@ const SECCIONES: { seg: string; etiqueta: string; icono: LucideIcon; modulo?: st
   // Ronda 7 (bloque 8): estado financiero descargable.
   { seg: "estado", etiqueta: "Estado financiero", icono: FileSpreadsheet },
   { seg: "accesos", etiqueta: "Accesos", icono: KeyRound },
-  { seg: "cobros", etiqueta: "Cobros", icono: ListChecks },
 ];
 
 export function MarcoAdmin({

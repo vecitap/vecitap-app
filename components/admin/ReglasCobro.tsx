@@ -10,8 +10,6 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { ConceptoCobro } from "@/lib/admin/tipos";
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
-import { CuotasExtraordinarias } from "./CuotasExtraordinarias";
-import { CargosUnidad, type CargoDelMes } from "./CargosUnidad";
 
 type ActualizarConcepto = Database["public"]["Tables"]["conceptos_cobro"]["Update"];
 
@@ -27,6 +25,11 @@ const etiquetaMonto = (modo: string) => (esPorcentaje(modo) ? "Porcentaje %" : "
 const montoSinUso = (modo: string) => modo.startsWith("presupuesto") || modo.startsWith("gasto");
 
 /**
+ * «Reglas de cobro del edificio», en Ajustes (ronda 12, parte C: «Cobros»
+ * salió del menú). Son los cobros fijos del edificio (`conceptos_cobro` sin
+ * `cuotas`) y, al pie, «Agregar un cobro». Las cuotas extraordinarias y el
+ * cargo a una sola unidad pasaron a Gastos del mes.
+ *
  * Portado de Cobros() en app.html:2271-2427. A diferencia del original
  * (defaultValue + onBlur sobre un input no controlado, ver
  * docs/inventario-admin.md 5a), cada campo editable es un input
@@ -37,28 +40,17 @@ const montoSinUso = (modo: string) => modo.startsWith("presupuesto") || modo.sta
  * cuando su valor guardado cambia — el reset de estado al cambiar una
  * prop que React recomienda (https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes).
  */
-export function Cobros({
+export function ReglasCobro({
   orgId,
   edificioId,
   conceptos: todos,
-  avance,
-  mes,
-  unidades,
-  cargos,
 }: {
   orgId: string;
   edificioId: string;
+  /** Todos los cobros del edificio; las extraordinarias (con `cuotas`) van en Gastos del mes. */
   conceptos: ConceptoCobro[];
-  /** Cuotas extraordinarias: cuántas ya se cobraron (ronda 7, bloque 5). */
-  avance: Record<string, number>;
-  /** Ronda 10 (C): el mes abierto, las unidades y los cargos a una sola unidad de ese mes. */
-  mes: { id: string; etiqueta: string } | null;
-  unidades: { id: string; codigo: string }[];
-  cargos: CargoDelMes[];
 }) {
-  // Las extraordinarias (con `cuotas`) van en su propia tarjeta.
   const conceptos = todos.filter((c) => c.cuotas === null);
-  const extraordinarias = todos.filter((c) => c.cuotas !== null);
   const router = useRouter();
   const [nuevo, setNuevoEstado] = useState({ nombre: "", bolsillo: "condominio", modo: "presupuesto_alicuota", monto: "0,00", iva: "0" });
   const [borrar, setBorrar] = useState<ConceptoCobro | null>(null);
@@ -121,85 +113,81 @@ export function Cobros({
   const tituloMonto = mezcla ? "Monto $ o porcentaje %" : hayPct ? "Porcentaje %" : "Monto $";
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
-      {error && (
-        <Aviso tono="rojo" titulo="No se pudo guardar">
-          {error}
-        </Aviso>
-      )}
-
-      <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)" }}>
-        <div style={{ padding: "18px 18px 0" }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Qué se le cobra a cada unidad</h2>
-          <p style={{ margin: "3px 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
-            Todo lo que aparece en el recibo sale de esta lista. Agregar un cobro nuevo es agregar
-            una fila, no programar.
-          </p>
-          {!hayActivo && (
-            <div style={{ marginBottom: 14 }}>
-              <Aviso tono="rojo" titulo="Sin cobros activos el mes no se puede cerrar">
-                Un edificio necesita al menos un cobro encendido.
-              </Aviso>
-            </div>
-          )}
-          {usaPresupuesto && usaGasto && (
-            <div style={{ marginBottom: 14 }}>
-              <Aviso tono="ambar" titulo="Este edificio mezcla presupuesto y gasto ejecutado">
-                Se puede hacer, pero conviene revisarlo: normalmente un condominio cobra de una
-                forma o de la otra, no de las dos a la vez.
-              </Aviso>
-            </div>
-          )}
-        </div>
-
-        <div className="tabla-scroll">
-          <table className="tabla">
-            <thead>
-              <tr>
-                <th>Nombre en el recibo</th>
-                <th>Bolsillo</th>
-                <th>Cómo se calcula</th>
-                <th style={{ textAlign: "right" }}>{tituloMonto}</th>
-                <th style={{ textAlign: "right" }}>IVA %</th>
-                <th></th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {conceptos.map((c) => (
-                <FilaConcepto
-                  key={`${c.id}:${c.nombre}:${c.monto}:${c.iva}`}
-                  concepto={c}
-                  conUnidad={mezcla}
-                  onEditar={editar}
-                  onEliminar={() => setBorrar(c)}
-                  onError={setError}
-                  onCorrige={() => setError(null)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {conceptos.some((c) => c.bolsillo === "servicio") && (
-          <div style={{ padding: "0 18px 18px" }}>
-            <p style={{ fontSize: 12, color: "var(--tenue)" }}>
-              El cobro del servicio lo define Vecitap desde su consola y no se puede editar ni
-              apagar desde aquí. Aparece en el recibo para que el propietario sepa qué paga.
-            </p>
+    <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)" }}>
+      <div style={{ padding: "18px 18px 0" }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Reglas de cobro del edificio</h2>
+        <p style={{ margin: "3px 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
+          Qué se le cobra a cada unidad todos los meses. Todo lo que aparece en el recibo sale
+          de esta lista. Agregar un cobro nuevo es agregar una fila, no programar.
+        </p>
+        {error && (
+          <div style={{ marginBottom: 14 }}>
+            <Aviso tono="rojo" titulo="No se pudo guardar">
+              {error}
+            </Aviso>
+          </div>
+        )}
+        {!hayActivo && (
+          <div style={{ marginBottom: 14 }}>
+            <Aviso tono="rojo" titulo="Sin cobros activos el mes no se puede cerrar">
+              Un edificio necesita al menos un cobro encendido.
+            </Aviso>
+          </div>
+        )}
+        {usaPresupuesto && usaGasto && (
+          <div style={{ marginBottom: 14 }}>
+            <Aviso tono="ambar" titulo="Este edificio mezcla presupuesto y gasto ejecutado">
+              Se puede hacer, pero conviene revisarlo: normalmente un condominio cobra de una
+              forma o de la otra, no de las dos a la vez.
+            </Aviso>
           </div>
         )}
       </div>
 
-      <CuotasExtraordinarias orgId={orgId} edificioId={edificioId} extraordinarias={extraordinarias} avance={avance} />
+      <div className="tabla-scroll">
+        <table className="tabla">
+          <thead>
+            <tr>
+              <th>Nombre en el recibo</th>
+              <th>Bolsillo</th>
+              <th>Cómo se calcula</th>
+              <th style={{ textAlign: "right" }}>{tituloMonto}</th>
+              <th style={{ textAlign: "right" }}>IVA %</th>
+              <th></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {conceptos.map((c) => (
+              <FilaConcepto
+                key={`${c.id}:${c.nombre}:${c.monto}:${c.iva}`}
+                concepto={c}
+                conUnidad={mezcla}
+                onEditar={editar}
+                onEliminar={() => setBorrar(c)}
+                onError={setError}
+                onCorrige={() => setError(null)}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <CargosUnidad orgId={orgId} mes={mes} unidades={unidades} cargos={cargos} />
+      {conceptos.some((c) => c.bolsillo === "servicio") && (
+        <div style={{ padding: "0 18px" }}>
+          <p style={{ fontSize: 12, color: "var(--tenue)" }}>
+            El cobro del servicio lo define Vecitap desde su consola y no se puede editar ni
+            apagar desde aquí. Aparece en el recibo para que el propietario sepa qué paga.
+          </p>
+        </div>
+      )}
 
-      <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)", padding: 18 }}>
-        <h2 style={{ margin: "0 0 4px", fontSize: 16, fontFamily: "var(--font-titulos)" }}>Agregar un cobro</h2>
+      {/* Ronda 12 (C): «Agregar un cobro», al pie de la misma tarjeta. */}
+      <div style={{ padding: 18, borderTop: "1px solid var(--linea)" }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: 14.5, fontFamily: "var(--font-titulos)" }}>Agregar un cobro</h3>
         <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--tenue)" }}>
           Un fondo de reserva, vigilancia adicional: se cobra todos los meses mientras esté encendido. Para un
-          cobro que se termina (una cuota extraordinaria), use la tarjeta de arriba.
+          cobro que se termina (una cuota extraordinaria), cárguela en Gastos del mes.
         </p>
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", alignItems: "end" }}>
           <Campo etiqueta="Nombre en el recibo">

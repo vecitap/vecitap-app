@@ -20,7 +20,8 @@ export type ConceptoRecibo = {
 
 /**
  * Un cargo a una sola unidad, con su motivo (`recibos.cargos`, ronda 10,
- * C): una multa o un consumo de Cobros, o un gasto «Solo a una unidad».
+ * C): una multa o un consumo, o lo que pagó el edificio («Cargo a una sola
+ * unidad», en Gastos del mes desde la ronda 12).
  * Los recibos emitidos antes de la ronda 10 lo tienen vacío.
  */
 export type CargoRecibo = {

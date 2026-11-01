@@ -35,7 +35,7 @@ const TONO_ESTADO: Record<string, TonoBadge> = { conciliado: "neutro", anulado: 
  *
  * `pagos`/`bancos`/`comprobantes` vienen del Server Component como props
  * (una carga menos en el navegador), pero las mutaciones refrescan con
- * `router.refresh()` — mismo patrón que Cobros/Operador. Lo que sí es
+ * `router.refresh()` — mismo patrón que ReglasCobro/Operador. Lo que sí es
  * estado propio es el archivo del banco: nunca sale del navegador.
  *
  * `monto_usd: 0` y `tasa_aplicada` sin mandar son deliberados, igual que en
@@ -77,7 +77,7 @@ export function Pagos({
   // `tfCargada` es lo último que respondió la base; `tf` (más abajo) es lo
   // que la pantalla usa — en dólares no hay tasa que mostrar, y derivarlo
   // en vez de poner `null` desde el efecto evita el setState sincrónico que
-  // el lint de este proyecto rechaza (mismo patrón que Cobros/CierreMes).
+  // el lint de este proyecto rechaza (mismo patrón que ReglasCobro/CierreMes).
   const [tfCargada, setTfCargada] = useState<TasaDeFecha | null>(null);
   const [huecoTasa, setHuecoTasa] = useState("");
   const [guardandoTasa, setGuardandoTasa] = useState(false);
@@ -437,8 +437,9 @@ export function Pagos({
           <table className="tabla apila">
             <thead>
               <tr>
-                <th>Fecha</th>
+                {/* Ronda 12 (D): la unidad primero, que es la columna que queda fija al deslizar. */}
                 <th>Unidad</th>
+                <th>Fecha</th>
                 <th>Método</th>
                 <th>Ref.</th>
                 <th>Origen</th>
@@ -451,13 +452,10 @@ export function Pagos({
             <tbody>
               {visibles.map((p) => (
                 <tr key={p.id}>
-                  <td className="mono" data-t="Fecha">
-                    {formatoFecha(p.fecha)}
-                  </td>
                   <td className="mono cabeza" style={{ fontWeight: 600 }}>
                     {codigo(p.unidad_id)}
                     {p.grupo_id && grupos[p.grupo_id] && (
-                      <div style={{ fontWeight: 400, fontSize: 11.5, color: "var(--tinta-2)" }}>
+                      <div style={{ fontWeight: 400, fontSize: 11.5, color: "var(--tinta-2)", whiteSpace: "normal", maxWidth: 200 }}>
                         Agrupado con{" "}
                         {grupos[p.grupo_id]
                           .filter((x) => x.id !== p.id)
@@ -466,6 +464,9 @@ export function Pagos({
                         · total {usd(grupos[p.grupo_id].reduce((s, x) => s + Number(x.monto_usd), 0))}
                       </div>
                     )}
+                  </td>
+                  <td className="mono" data-t="Fecha">
+                    {formatoFecha(p.fecha)}
                   </td>
                   <td data-t="Método">
                     {p.metodo}

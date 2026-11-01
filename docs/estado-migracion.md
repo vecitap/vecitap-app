@@ -16,6 +16,247 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Ronda 12 del tramo 2 (31-oct) — multas al final, multas con fundamento, tablas anchas, cuentas en $ 0,00 y «Cobros» fuera del menú
+
+Pedido de Nicolás del 31-oct con las decisiones de Gustavo sobre la ronda 11 (partes A a E),
+y las partes F y C del 01-nov. En `dev`, **sin commit**. A, B, D, E y F aplicadas en
+vecitap-pruebas; **C implementada** (solo pantalla, sin migración) según la propuesta
+(`propuesta-C.md`, en la carpeta de revisión) con las decisiones de Nicolás.
+Desvíos frente a `main`: casos **116 a 122** de
+`docs/casos-de-uso-mejorados.md`. Para la revisión:
+`C:\Users\Nicolas\Downloads\revision-cruzada-ronda12\`.
+
+### Qué se hizo
+
+| Parte | Qué | Dónde |
+|---|---|---|
+| A | Un pago cubre 1° la mora, 2° las cuotas y cargos, 3° las multas. Solo cambia la línea de las multas en `deuda_por_orden()` (la única copia de la fórmula): `multas = menor(multas, deuda − mora)`. `simular_cierre()` y `cerrar_periodo()` no cambian | migración R12-1 |
+| B | Con «Sí, es una multa», el campo pasa a «Fundamento (artículo del documento de condominio o acta de asamblea)», obligatorio; sin él: «Escriba el fundamento de la multa: …». La base lo exige (CHECK), con su mensaje propio en `mensajeDeError`. El recibo y el papel ya lo muestran al lado de la multa (es la misma columna `referencia`) | `CargosUnidad.tsx`, `lib/errores.ts`; migración R12-2 |
+| D | La tabla que no cabe se desliza en su recuadro con la primera columna fija (CSS en `.tabla-scroll`, para todas las tablas del panel). **Causa de que no se deslizara:** el recuadro tomaba el ancho de la tabla (grilla de Gastos del mes) y `html { overflow-x: hidden }` cortaba lo que sobraba; ahora `contain: inline-size`. En Pagos recibidos la unidad pasó a primera columna. El renglón «nuevo gasto» va de dos en dos en el teléfono (estiraba la página a 447 px) | `components/ui/ui.css`, `CierreMes.tsx`, `Pagos.tsx` |
+| E1 | Las cifras de las tablas (`td.mono`) no se parten: «$» y monto en la misma línea, en Mora y en todas las columnas de montos | `components/ui/ui.css` |
+| E2 | El aviso «… unidades quedan con la cuota de condominio en $ 0,00» manda ahora a «las reglas de cobro en Ajustes» (hecho con la Parte C) | `CierreMes.tsx` |
+| C | **«Cobros» sale del menú** (01-nov). Las reglas fijas y «Agregar un cobro» pasan a Ajustes, tarjeta **«Reglas de cobro del edificio»**, debajo de «Datos del edificio». Las **cuotas extraordinarias** y el **cargo a una sola unidad** pasan a Gastos del mes, en este orden: gastos comunes → cuotas extraordinarias → cargo a una sola unidad → cómo se reparte → cerrar. Sin mes abierto, las cuotas extraordinarias se configuran igual y el cargo no sale. Sale el tipo «Solo a una unidad» del renglón de gasto (con «¿A qué unidad?» y «¿De quién es ese dinero?»); los gastos directos del mes abierto se ven y se corrigen en «Cargo a una sola unidad» y no salen repetidos en la tabla de gastos. La previa se vuelve a calcular al guardar un cargo o una cuota extraordinaria. `/cobros` redirige a Gastos del mes. Textos: los de la tabla del punto 5 de la propuesta. Sin migración | `ReglasCobro.tsx` (antes `Cobros.tsx`), `Ajustes.tsx` y su página, `CierreMes.tsx` y su página, `CargosUnidad.tsx`, `MarcoAdmin.tsx`, `cobros/page.tsx`, `inicio/page.tsx` |
+| F | Una cuenta (condominio u honorarios) a la que le toca $ 0,00 o menos no sale en «Datos para pagar», ni su monto ni sus datos, **si a la otra le toca algo**: en el correo del recibo, en el portal y en el papel (portal y Cortes). **Ajuste del 01-nov:** con el recibo en $ 0,00 o a favor, el correo hace lo mismo que el papel: sin «Datos para pagar» y, en lugar de «Total a pagar: $ 0,00», «Está al día · no tiene que pagar» o «A favor $ X · no tiene que pagar». Solo lo que se muestra: ningún monto ni recibo cambia | migración R12-3 (`datos_pago_html()`, `datos_pago_texto()`, `correo_recibo()`); `gruposDePago()` en `lib/datos-pago.ts`, que usan el portal y los dos papeles |
+
+**Decidido por mi cuenta:** el fundamento se guarda en la misma columna `referencia` (hasta
+120 letras, como hoy), sin columna nueva. La columna fija tiene una línea fina a la derecha,
+también cuando la tabla cabe. Una celda que ocupa varias columnas (fila de total, detalle
+abierto) no se fija. Estado financiero no tiene tablas en pantalla (solo en el papel): no se
+tocó.
+
+### Migraciones nuevas — aplicadas en vecitap-pruebas el 31-oct
+
+| # | Migración | Qué deja |
+|---|---|---|
+| R12-1 | `20261031160000_multas_al_final.sql` | `deuda_por_orden` e5d46aa2… → **766beca27abf363f4b78b3d21db6654e** (permisos iguales: solo postgres). Comentarios de la función y de `cortes_mensuales.multas_acumuladas` con el orden nuevo. Guarda: `simular_cierre` 5bb826a8… y `cerrar_periodo` cf6653ad… sin cambios. Rollback probado en seco (vuelve a e5d46aa2…) |
+| R12-2 | `20261031170000_multa_con_fundamento.sql` | CHECK `cargos_unidad_multa_con_fundamento`: `tipo <> 'multa' or nullif(btrim(referencia), '') is not null`. Si hay multas sin referencia, la migración se detiene y dice cuántas (no inventa un fundamento). Rollback probado en seco |
+| R12-3 | `20261031180000_cuentas_en_cero.sql` (01-nov; revertida, corregida y vuelta a aplicar dos veces el mismo día: el recibo sin nada que pagar y el control de seguridad) | `datos_pago_html` 78cc1d2e… → **fdf7692914e87a3c31df7a4168770b46**; `datos_pago_texto` 5be588ad… → **2a6fa6a5dffba8ab25fa031f65bacf9c** (permisos: solo postgres); `correo_recibo` fc342ae7… → **76eed05ec00d037400bd624bdf1dfd2d** (permisos iguales: postgres y authenticated), con el control de quién la llama (ver «Seguridad» abajo). Rollback probado en seco (vuelve a las tres) |
+| R12-4 | `20261031190000_cerrar_funciones_expuestas.sql` (01-nov) | `destinatarios_de`, `_usr` y `_entrar` quedan con permisos `postgres=X/postgres` (antes: `destinatarios_de` también authenticated; `_usr` y `_entrar` PUBLIC, también anon). Sin cambios de cuerpo. Rollback probado en seco (ver «Seguridad» abajo) |
+
+**Las multas que ya existen sin referencia:** ninguna. En pruebas hay una sola multa (08D de
+Edificio Gustavo, «Multa por ruido · Acta 12/10») y tiene referencia; su recibo de Mayo 2027
+(ya emitido) también. En producción la tabla `cargos_unidad` todavía no existe. Si al
+aplicarla hubiera alguna, la migración se detiene con «hay N multa(s) sin fundamento»: se
+escribe el fundamento en Gastos del mes, «Cargo a una sola unidad» (o se pasa a 'otro'), y
+se vuelve a correr. Los recibos
+emitidos no se tocan.
+
+**Paso 8: ahora 46.** Las 42 de la ronda 11, y después:
+
+| # | Migración | Depende de |
+|---|---|---|
+| 43 | `20261031160000_multas_al_final.sql` | guarda md5: 42 (`deuda_por_orden` e5d46aa2…) |
+| 44 | `20261031170000_multa_con_fundamento.sql` | 42 (`cargos_unidad.tipo`) |
+| 45 | `20261031180000_cuentas_en_cero.sql` | guarda md5: `datos_pago_html` y `datos_pago_texto` de `20261026120000_datos_pago.sql`, y `correo_recibo` de `20261027140000_recibo_titulares_sin_bs.sql` (ninguna migración posterior las toca) |
+| 46 | `20261031190000_cerrar_funciones_expuestas.sql` | guarda md5: `destinatarios_de` de `20261031120000_correcciones_revision_r9_r10.sql` (2558c045…; hoy producción tiene 2be2e76b…, la de antes de esa migración); `_usr` y `_entrar` de `esquema_inicial.sql` |
+
+Los rollbacks, al revés: 46, 45, 44, 43 y después 42 (su guarda exige e5d46aa2…, que deja el de 43). Los de 45 y 46 son independientes de los otros.
+
+### Validación (31-oct)
+
+- **A, ejemplos de Gustavo** (Torre Ida 01A, bloque deshecho: Agosto cerrado debiendo $ 100
+  de cuota y $ 15 de multa, mora al 1 %, vence el 15/09). Iguales por `simular_cierre()` y
+  por `cerrar_periodo()`; reabrir y volver a cerrar da lo mismo:
+
+  | Caso | Al vencer: mora / multas / resto | Mora (base) | Corte: mora / multas |
+  |---|---|---|---|
+  | Paga $ 0 | 0 / 15 / 100 | 1,00 (100) | 1 / 15 |
+  | Paga $ 10 | 0 / 15 / 90 | **0,90 (90)** | 0,90 / 15 |
+  | Paga $ 50 | 0 / 15 / 50 | **0,50 (50)** | 0,50 / 15 |
+  | Paga $ 110 | 0 / **5** / 0 | **0,00 (0)** | 0 / **5** |
+  | Mora previa 5, paga $ 10 | **0** / 15 / **95** | **0,95 (95)** | 0,95 / 15 |
+  | Paga $ 50 tarde (20/09) | 0 / 15 / 100 | 1,00 (100) | 1 / 15 |
+
+- **A, Edificio Gustavo, 53 unidades, Junio 2027** (bloque deshecho): tal cual, huella de
+  `simular_cierre()` idéntica antes y después (8b19344e…; la mora del edificio está
+  apagada). Con la mora al 1 % y un pago de $ 20 el 10/06 en cada unidad, la versión vieja
+  contra la nueva: **52 idénticas** (47 con mora); solo cambia **08D**, la única con multa
+  ($ 15, Mayo 2027): mora 1,93 → 1,78, porque el pago ya no cubre la multa y la base baja
+  $ 15.
+- **B en la base** (bloque deshecho): multa con referencia de espacios → rechazada; multa
+  sin referencia → rechazada; 'otro' sin referencia → entra; multa con «Art. 12» → entra.
+- **B en el navegador** (`next start`, Torre Ida): sin responder, «Referencia
+  (opcional)»; con «Sí», «Fundamento (…)»; sin fundamento no guarda y lo pide; con «No»
+  vuelve «Referencia (opcional)». Captura `b-fundamento.png`.
+- **D y E en el navegador**, a 1280 px y en un iPhone 13 (390 px): «Cómo se reparte» se
+  desliza (1013 px en 978 a 1280; 1065 en 356 en el teléfono), «Unidad» queda a 0 px del
+  borde y «Total del recibo» se ve al final; ningún monto partido; nada fuera de la
+  pantalla en Gastos del mes. Cobros en el teléfono también se desliza con la primera
+  columna fija. Cortes, Pagos y Propietarios caben (en el teléfono son tarjetas). Capturas
+  `d-reparte-1280.png`, `d-reparte-movil.png`, `d-cortes-*.png`, `d-pagos-*.png`.
+- **F, correo** (Edificio Gustavo, que tiene cuenta de condominio y de honorarios pero ningún
+  recibo con honorarios): el de **04D, Abril 2027** ($ 70,00, honorario $ 0) antes decía
+  «Honorarios de administración: $ 0,00» y el pago móvil; ahora solo «Condominio: $ 70,00» y
+  su transferencia, en el HTML y en el texto. Los **397** recibos del edificio con monto
+  quedan igual que 04D; los **27** en $ 0,00 o a favor dan **el mismo correo que antes**
+  (huella 093a3714… antes y después). **Con las dos cuentas** (04D con $ 10 de honorario, en
+  un bloque deshecho): salen las dos, «Condominio: $ 60,00» y «Honorarios de
+  administración: $ 10,00». Con montos sueltos: 70/0 → solo condominio; 0/10 → solo
+  honorarios; 60/10 → las dos; 0/0 → las dos con $ 0,00, el mismo HTML que antes; sin monto
+  → las dos sin monto.
+- **F en el navegador** (`next start`, Torre Ida 01A, que debe $ 100 de condominio y $ 0 de
+  honorarios, con dos cuentas de prueba que después se borraron, y el acceso de
+  residente.prueba a 01A activado mientras duró la prueba y vuelto a dejar inactivo): el
+  portal, el papel del portal y el papel de Cortes muestran solo la cuenta del condominio;
+  ni «Honorarios de administración» ni el pago móvil. Capturas `f-portal.png`,
+  `f-papel-portal.png`, `f-papel-cortes.png`. Las mismas seis combinaciones de arriba,
+  sobre `gruposDePago()` y `datosPagoEnPapel()`: el mismo resultado que el correo.
+- **F, cuando a ninguna cuenta le toca nada:** el portal dice «Al día» (o «A favor») y muestra
+  las cuentas sin montos (ronda 9); el papel dice «No tiene que pagar» (saldo a favor) o «Hoy ·
+  Está al día» y no trae «Datos para pagar». Eso no cambió. Solo el papel de un mes viejo de
+  Cortes con el recibo justo en $ 0,00 y nada a favor (sin «hoy») lista las cuentas con
+  «$ 0,00», como antes (no hay ninguno así en pruebas con correo).
+- **F, ajuste del correo con el recibo en $ 0,00 o a favor** (01-nov): antes decía «Total a
+  pagar: $ 0,00» con las dos cuentas en «$ 0,00»; ahora «Este mes · A favor $ X · no tiene
+  que pagar» (o «Está al día»), sin «Datos para pagar», sin «Vence el» y sin la frase de los
+  bolívares; en el texto, «A favor $ X · no tiene que pagar». X es lo que le queda a favor,
+  la misma cuenta que el papel. **02D de Mayo 2027**: «A favor $ 8,51 · no tiene que pagar»
+  (muestra en `f-correo-02D-mayo-a-favor.html`). **«Al día»**: ningún recibo de pruebas con
+  correo está en $ 0,00 sin nada a favor; simulado en un bloque deshecho (02D de Mayo con el
+  a favor igual a los cargos): «Está al día · no tiene que pagar», sin datos. Los **27**
+  recibos de pruebas en $ 0,00 o a favor que tienen a quién mandar el correo salen todos así.
+  **02C y 02D de Abril 2027 no son de este caso:** deben $ 35,00 y $ 19,00 en ese recibo
+  (02D pagó después; hoy 02C debe $ 1,63 y 02D tiene $ 8,51 a favor, que es su recibo de
+  Mayo). Su correo sigue con «Total a pagar», igual que antes. **04D** queda igual que con la
+  primera versión de F. Los **451** recibos con algo que pagar: con el `correo_recibo` nuevo y
+  las funciones de datos originales (en seco), la huella es la misma de antes (44d66f6e…): el
+  ajuste no toca ningún correo con monto.
+- `tsc`, `lint` y `build` en verde.
+- **No confirmado:** Accesos (Torre Ida no tiene filas); las tablas de conciliación de Pagos
+  (hace falta un archivo del banco); con muchas unidades (Torre Ida tiene una, Edificio
+  Gustavo no es de admin.prueba). Ni el CHECK de B ni el orden nuevo en producción: allí no
+  hay `cargos_unidad` todavía. F en el navegador con las dos cuentas a la vez (ningún recibo de
+  pruebas tiene honorarios; probado en la base y sobre las funciones del código). Nada de F en
+  producción: allí todavía no existe `datos_pago`.
+
+### Parte C en el navegador (01-nov)
+
+`next start`, Torre Ida (mes abierto Septiembre 2026), a 1280 px y en un iPhone 13:
+
+- **Menú:** sin «Cobros» (Inicio · Propietarios · Pagos recibidos · Gastos del mes · Cortes
+  de cuenta · Mensajes · Estadísticas · Estado financiero · Accesos · Ajustes) y ningún
+  enlace a `/cobros`. `/cobros` lleva a Gastos del mes.
+- **Ajustes:** «Reglas de cobro del edificio» con «Agregar un cobro» al pie. A 1280 px se
+  agregó «R12 Fondo prueba», se le cambió el nombre (quedó guardado al recargar) y se apagó
+  (el botón pasa a «Encender»).
+- **Gastos del mes:** «Cuotas extraordinarias» y «Cargo a una sola unidad»; ningún «Solo a
+  una unidad», ni «Tipo» ni «¿A qué unidad?» en el renglón de gasto. Se agregaron una cuota
+  extraordinaria ($ 12 por unidad, 1 cuota), una multa (sin fundamento no guarda; con «R12
+  Art. 1», sí: «Multa · no genera mora») y un «El edificio pagó esto» ($ 3: «Lo pagó el
+  edificio · es un egreso», no sale repetido en la tabla de gastos). La previa se actualizó
+  sola en cada paso ($ 12 → $ 17 → $ 20 en «Cuotas y cargos»).
+- **«Cómo se reparte» da lo mismo:** lo calcula la base (`simular_cierre` sigue en
+  5bb826a8…) y la tabla de la pantalla no cambió (solo la ayuda de una columna). Con los
+  datos de prueba, la pantalla dice 01A · Condominio $ 0,00 · Cuotas y cargos $ 20,00 ·
+  Anterior $ 100,00 · Total $ 120,00, y `simular_cierre()` da lo mismo (condominio 20 con 20
+  de cuotas y cargos, anterior 100, total 120, y las tres líneas del detalle).
+- Nada se sale de la pantalla en el teléfono (Ajustes y Gastos del mes).
+- Capturas `c-menu-*`, `c-ajustes-reglas-*`, `c-mes-*`.
+- **No probado:** un edificio con muchas unidades (Torre Ida tiene una; Edificio Gustavo no
+  es de admin.prueba), y contador o junta (ven Ajustes y Gastos del mes; lo que guardan lo
+  decide RLS, como antes).
+- **Datos de prueba:** las reglas «R12 Fondo prueba» y «R12 Fondo prueba editado», la cuota
+  extraordinaria «R12 Cuota prueba», la multa «R12 Multa prueba» y el gasto directo «R12
+  Reparación prueba» de Torre Ida se borraron el 01-nov con el visto bueno de Nicolás
+  (filtrando por 'R12 %' y por Torre Ida; quedan 0).
+
+### Seguridad: correo_recibo() y otras funciones (01-nov)
+
+**El hueco.** `correo_recibo()` es SECURITY DEFINER, authenticated la puede ejecutar y no
+controlaba quién la llama: cualquier usuario con sesión y el id de un recibo ajeno recibía su
+correo (nombres, correos, montos y el código de invitación). **Está así hoy en producción**
+(su `correo_recibo`, 343c43e8…, tiene el permiso y ningún control): se cierra con el Paso 8.
+
+**Quién la llama.** La app, directo: «Probar el correo» de Cortes
+(`components/admin/Cortes.tsx:387`); por eso el permiso de authenticated **se queda**. En la
+base: `encolar_recibos`, `reenviar_recibo`, `encolar_prueba` y `estado_envio_periodo`, las
+cuatro SECURITY DEFINER y con `puede_operar()` sobre la organización del recibo con la sesión de
+quien las llama. Ningún cron la llama (`despachar_correos` manda lo que ya está en la cola).
+
+**El control** (R12-3): «Sin acceso a ese recibo» salvo que quien llama pueda operar la
+organización del recibo (`puede_operar`), o que sea una llamada sin sesión y fuera de la API
+(cron, SQL de mantenimiento: `auth.uid()` nulo y `session_user` distinto de `authenticator`).
+**No se usó `current_user = postgres` como en `saldo_unidad()`:** `saldo_unidad` es SECURITY
+INVOKER; dentro de una SECURITY DEFINER, `current_user` es siempre su dueño (postgres), así que
+ese control habría dejado pasar a todos.
+
+**Validación** (en seco, como la sesión de cada uno, y por la API real):
+
+| Quién | `correo_recibo` 04D | `reenviar_recibo` 04D | `encolar_recibos` Abril 2027 | `estado_envio_periodo` | `encolar_prueba` |
+|---|---|---|---|---|---|
+| Gustavo (propietaria de la cuenta) | 3 correos | 3 encolados | 83 encolados (con la cola de Abril vaciada en el bloque; sin vaciar, 83 «ya estaban») | responde | encola |
+| admin.prueba (otra organización) | «Sin acceso a ese recibo» | «Sin permiso» | «Sin permiso» | «Sin permiso» | «Sin acceso a ese recibo» |
+| residente.prueba | «Sin acceso a ese recibo» | «Sin permiso» | «Sin permiso» | «Sin permiso» | «Sin acceso a ese recibo» |
+
+Por la API (PostgREST): sin sesión, «permission denied»; admin.prueba con un recibo de **su**
+organización (Torre Ida 01A) pasa (0 correos: 01A no tiene destinatarios), con el de 04D «Sin
+acceso a ese recibo»; residente.prueba, «Sin acceso» con los dos (también con su propia
+organización: un residente no puede operar). Sin sesión (SQL), los 451 recibos con monto dan
+el mismo correo que antes del control (huella 44d66f6e… con las funciones de datos
+originales).
+
+**Cambia para contador y junta:** entran a Cortes pero ya no ven «Probar el correo»
+(`correo_recibo()` se lo negaría). En la página, con `tieneRolOrganizacion(orgId,
+ROLES_OPERAR)` (los roles de `puede_operar`). Probado en el navegador: admin.prueba como
+administrador lo ve; con su membresía pasada a «contador» un momento (y devuelta a
+«administrador»), no lo ve. «Enviar por correo» sigue visible para ellos y la base se lo
+rechaza («Sin permiso»), como antes de la ronda.
+
+**Otras funciones SECURITY DEFINER que authenticated o anon pueden ejecutar** (revisadas en
+pruebas; las mismas existen en producción con los mismos permisos):
+
+| Función | Qué deja ver | Gravedad | Qué se hizo |
+|---|---|---|---|
+| `destinatarios_de(p_unidad)` | Sin ningún control: nombre, correo, teléfono y «recibe corte» del propietario y el inquilino de **cualquier** unidad. Probado por la API: residente.prueba leía los de 04D de Gustavo. La usa `garita_avisar` (que controla con `permitir_garita`); la app no la llama | **Alta** (datos personales de otra organización) | **Cerrada** (R12-4) |
+| `_usr(p_correo)` | Sin permisos puestos (PUBLIC, también **anon**): devuelve el id de usuario de cualquier correo registrado. Sirve para saber si un correo tiene cuenta. La usa `_entrar` | **Media** | **Cerrada** (R12-4) |
+| `_entrar(p_correo)` | Ayuda de pruebas (PUBLIC, no SECURITY DEFINER): pone los claims de cualquier usuario. Por la API no sirve para hacerse pasar (los claims duran solo esa llamada) | Baja | **Cerrada** (R12-4) |
+| `hay_secreto(p_nombre)` | Cualquier usuario con sesión sabe si existe un secreto, cuándo se cambió y su largo | Baja | Después del piloto |
+| `cuota_mensual(p_org)` | Precio de la suscripción y, por unidad, cuántas unidades activas tiene cualquier organización | Baja | Después del piloto |
+| `edificio_activo`, `org_al_dia` | Si un edificio está activo / una organización al día | Muy baja | Después del piloto |
+
+**R12-4, el cierre de permisos** (`20261031190000_cerrar_funciones_expuestas.sql`): quita
+EXECUTE a public, anon y authenticated en `destinatarios_de`, `_usr` y `_entrar`; quedan solo
+para postgres (su dueño). Ninguna cambia de cuerpo. Antes se confirmó quién las llama: la app,
+ninguna; en la base, solo `garita_avisar()` (SECURITY DEFINER de postgres, corre como su dueño)
+a `destinatarios_de`, y `_entrar` (SECURITY INVOKER, que también se cierra) a `_usr`; ninguna
+vista, regla ni política. La guarda comprueba md5, permisos y que nadie más las llame; la de
+después, que anon y authenticated ya no las ejecutan y que `garita_avisar` sigue siendo DEFINER
+de postgres. Pruebas: por la API, sin sesión, como residente.prueba y como admin.prueba, las
+tres dan «permission denied»; el aviso de garita (como el vigilante de Edificio Gustavo, visita
+de 02A, en un bloque que se deshace) encola 1 correo antes y 1 después. Rollback probado en
+seco (vuelve a abrirlas; `_usr` y `_entrar` quedan con `=X/postgres`, lo mismo que el
+PUBLIC por omisión de antes, dicho explícito).
+
+Las demás (las de estadísticas con `permitir_estadisticas`, garita con `permitir_garita`,
+`mi_recibo`, `pagos_desde_cierre`, `pagos_por_origen`, `residentes_de`, `invitaciones_de`,
+`estado_correos_periodo`…) tienen su control atado a la unidad o a la organización. Las que
+devuelven `trigger` no se pueden llamar por la API. `codigo_invitacion_vigente` solo la ejecuta
+postgres.
+
+### Título del commit
+
+`Ronda 12 del tramo 2: las multas se pagan al final, multa con fundamento, tablas anchas que se deslizan con la primera columna fija, montos en una línea, cuentas en $ 0,00 fuera de los datos para pagar, correo_recibo() con control de acceso, cierre de permisos de destinatarios_de, _usr y _entrar, y «Cobros» fuera del menú`
+
 ## Ronda 11 del tramo 2 (31-oct) — mora que se puede encender, «Cuotas y cargos» y detalles de la ronda 10
 
 Pedido de Nicolás del 31-oct (partes A a D), y después tres ajustes de la revisión
@@ -484,6 +725,25 @@ lectura).
   distinto si hay un ajuste negativo** (uno descuenta pagos y ajustes por separado con
   tope en 0; el otro, juntos). Hoy no hay ningún ajuste negativo en ninguna de las dos
   bases, así que dan lo mismo.
+- **(Ronda 12) Gastos de cobranza y honorarios** (primeros en el orden de imputación de
+  la ley, antes que la mora) no existen en la app. Hoy un pago cubre mora → cuotas y
+  cargos → multas. Si se agregan, van antes de la mora en `deuda_por_orden()`.
+- **(Ronda 12, decisión de Nicolás) El cargo que no es de condominio** (el «recargo por
+  gestión de cobranza», a Administración): desde la Parte C no tiene pantalla (salió «Solo a
+  una unidad», que dejaba elegir Condominio o Administración). Va junto con gastos de
+  cobranza y honorarios, después del piloto: pide una pregunta «¿De quién es ese dinero?» en
+  el cargo, una columna nueva en `cargos_unidad` y tocar `simular_cierre()` y
+  `cerrar_periodo()`. Hoy no hay ninguno en ninguna de las dos bases. Un gasto directo de
+  Administración que existiera en un mes abierto se cobraría igual y saldría en «Cargo a una
+  sola unidad» (para corregirlo o quitarlo).
+- **(Ronda 12, decisión de Nicolás) Cuatro funciones SECURITY DEFINER que cualquier usuario
+  con sesión puede ejecutar** sin control de organización (ver «Seguridad» en la ronda 12):
+  `hay_secreto(p_nombre)` (si existe un secreto, cuándo se cambió y su largo),
+  `cuota_mensual(p_org)` (precio y unidades activas de cualquier organización),
+  `edificio_activo(p_edificio)` y `org_al_dia(p_org)` (estados). Antes de quitarles el
+  permiso, revisar quién las llama (la app y las políticas: `edificio_activo` y `org_al_dia`
+  pueden estar en reglas de RLS) y, si hace falta, darles un control como el de
+  `correo_recibo()`.
 
 ### Título del commit
 

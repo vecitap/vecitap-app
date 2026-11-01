@@ -81,7 +81,12 @@ export function gruposDePago(cuentas: CuentaPago[], reparto: { condominio: numbe
       monto: reparto ? reparto.honorarios : null,
       cuentas: ordenadas.filter((c) => c.destino === "honorarios"),
     });
-  return grupos;
+  // Ronda 12 (F): una cuenta a la que le toca $ 0,00 o menos no sale (ni su
+  // monto ni sus datos), si a otra le toca algo. Si a ninguna, salen todas,
+  // como antes. La misma regla que datos_pago_html() en el correo
+  // (supabase/migrations/20261031180000_cuentas_en_cero.sql).
+  const conMonto = (g: GrupoPago) => g.monto !== null && g.monto >= 0.005;
+  return grupos.some(conMonto) ? grupos.filter((g) => g.monto === null || conMonto(g)) : grupos;
 }
 
 const esc = (t: unknown) =>
