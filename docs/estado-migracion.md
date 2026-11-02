@@ -67,8 +67,8 @@ Confirmado en la revisión de cierre: el remitente del SMTP de Auth es
 ## Auditoría de seguridad (02-nov) — permisos de funciones
 
 `20261102130000_permisos_funciones_auditoria.sql`, con su rollback. **Aplicada en
-vecitap-pruebas el 02-nov; en producción, pendiente** (la aplica Nicolás con psql,
-después del respaldo, a continuación de `20261102120000`).
+vecitap-pruebas el 02-nov y en producción el 02-nov** (Nicolás, con psql, después del
+respaldo con `pg_dump`, a continuación de `20261102120000`).
 
 Lo que queda cerrado:
 - `cuota_mensual`, `org_al_dia`, `exigir_org_al_dia` y `edificio_activo`: ya no se
@@ -85,6 +85,9 @@ Lo que queda cerrado:
 **Validado en pruebas:** por la API, sin sesión y con sesión (cuenta común y operador);
 en el navegador contra `next start`, el inicio de sesión, `/admin`, `/mi`, `/operador` y
 `/garita`, sin errores. El rollback se ensayó en una transacción que se deshizo.
+
+**Verificado en producción** (solo lectura, 02-nov): el mismo resultado que en pruebas,
+0 funciones con «\r», y las llamadas sin sesión por la API, rechazadas.
 
 ## Ronda 12 del tramo 2 (31-oct) — multas al final, multas con fundamento, tablas anchas, cuentas en $ 0,00 y «Cobros» fuera del menú
 

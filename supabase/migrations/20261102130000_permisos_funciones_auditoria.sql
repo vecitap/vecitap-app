@@ -1,8 +1,9 @@
 -- Permisos de funciones: ajustes de la auditoría de seguridad del 02-nov.
 --
--- Aplicada en vecitap-pruebas el 02-nov. SIN APLICAR en vecitap-produccion:
--- la aplica Nicolás, con respaldo previo, con
---   psql $DB -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261102130000_permisos_funciones_auditoria.sql
+-- APLICADA: en vecitap-pruebas el 02-nov, por el asistente con execute_sql;
+-- en vecitap-produccion el 02-nov, DESPUÉS, por Nicolás con psql, con
+-- respaldo previo (pg_dump). En las dos bases quedaron 0 funciones con «\r»,
+-- y la verificación del final de este archivo dio lo mismo en las dos.
 -- Va después de 20261102120000_funciones_sin_retorno_de_carro.sql (las
 -- guardas comparan md5 sin «\r»). Rollback:
 -- supabase/rollbacks/20261102130000_permisos_funciones_auditoria_rollback.sql.
