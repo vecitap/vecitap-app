@@ -809,7 +809,10 @@ Recién ahora, con las siete tandas en OK:
 
 ## 8. Prueba corta en el sitio
 
-Con la cuenta de GRUPO ING3 (o la del operador), en `https://vecitap.com`:
+Con la cuenta de GRUPO ING3, en `https://vecitap.com`. **La del operador no sirve para esta
+tabla:** Admin exige una membresía en la organización (`tiene_rol`), y el operador no la tiene.
+Con el operador solo se comprueba `/operador`: GRUPO ING3 aparece en la cartera, con 53
+unidades.
 
 | Qué | Esperado |
 |---|---|
