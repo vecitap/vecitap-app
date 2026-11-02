@@ -64,6 +64,28 @@ Confirmado en la revisión de cierre: el remitente del SMTP de Auth es
 `no-reply@envios.vecitap.com`, y el de la cola, `avisos@envios.vecitap.com`
 (ver la nota en «Salida a producción — 29-sep»).
 
+## Auditoría de seguridad (02-nov) — permisos de funciones
+
+`20261102130000_permisos_funciones_auditoria.sql`, con su rollback. **Aplicada en
+vecitap-pruebas el 02-nov; en producción, pendiente** (la aplica Nicolás con psql,
+después del respaldo, a continuación de `20261102120000`).
+
+Lo que queda cerrado:
+- `cuota_mensual`, `org_al_dia`, `exigir_org_al_dia` y `edificio_activo`: ya no se
+  ejecutan sin sesión.
+- Las 14 funciones de disparador: ya no se ejecutan sin sesión (los disparadores
+  funcionan igual).
+- `search_path` fijo en todas las funciones SECURITY INVOKER: 0 sin fijar.
+- `_entrar` (ayuda de pruebas), borrada.
+- `hay_secreto`: solo el operador.
+
+`crear_organizacion()` no cambia: solo la usa el operador desde el 28-oct
+(`20261028150000_solo_operador_y_ajustes_seguridad.sql`).
+
+**Validado en pruebas:** por la API, sin sesión y con sesión (cuenta común y operador);
+en el navegador contra `next start`, el inicio de sesión, `/admin`, `/mi`, `/operador` y
+`/garita`, sin errores. El rollback se ensayó en una transacción que se deshizo.
+
 ## Ronda 12 del tramo 2 (31-oct) — multas al final, multas con fundamento, tablas anchas, cuentas en $ 0,00 y «Cobros» fuera del menú
 
 Pedido de Nicolás del 31-oct con las decisiones de Gustavo sobre la ronda 11 (partes A a E),
@@ -283,9 +305,9 @@ pruebas; las mismas existen en producción con los mismos permisos):
 | `destinatarios_de(p_unidad)` | Sin ningún control: nombre, correo, teléfono y «recibe corte» del propietario y el inquilino de **cualquier** unidad. Probado por la API: residente.prueba leía los de 04D de Gustavo. La usa `garita_avisar` (que controla con `permitir_garita`); la app no la llama | **Alta** (datos personales de otra organización) | **Cerrada** (R12-4) |
 | `_usr(p_correo)` | Sin permisos puestos (PUBLIC, también **anon**): devuelve el id de usuario de cualquier correo registrado. Sirve para saber si un correo tiene cuenta. La usa `_entrar` | **Media** | **Cerrada** (R12-4) |
 | `_entrar(p_correo)` | Ayuda de pruebas (PUBLIC, no SECURITY DEFINER): pone los claims de cualquier usuario. Por la API no sirve para hacerse pasar (los claims duran solo esa llamada) | Baja | **Cerrada** (R12-4) |
-| `hay_secreto(p_nombre)` | Cualquier usuario con sesión sabe si existe un secreto, cuándo se cambió y su largo | Baja | Después del piloto |
-| `cuota_mensual(p_org)` | Precio de la suscripción y, por unidad, cuántas unidades activas tiene cualquier organización | Baja | Después del piloto |
-| `edificio_activo`, `org_al_dia` | Si un edificio está activo / una organización al día | Muy baja | Después del piloto |
+| `hay_secreto(p_nombre)` | Cualquier usuario con sesión sabe si existe un secreto, cuándo se cambió y su largo | Baja | **Cerrada** (`20261102130000`: solo el operador) |
+| `cuota_mensual(p_org)` | Precio de la suscripción y, por unidad, cuántas unidades activas tiene cualquier organización | Baja | Sin sesión: **cerrada** (`20261102130000`). Con sesión: después del piloto |
+| `edificio_activo`, `org_al_dia` | Si un edificio está activo / una organización al día | Muy baja | Sin sesión: **cerrada** (`20261102130000`). Con sesión: después del piloto |
 
 **R12-4, el cierre de permisos** (`20261031190000_cerrar_funciones_expuestas.sql`): quita
 EXECUTE a public, anon y authenticated en `destinatarios_de`, `_usr` y `_entrar`; quedan solo
@@ -789,9 +811,9 @@ lectura).
   `cerrar_periodo()`. Hoy no hay ninguno en ninguna de las dos bases. Un gasto directo de
   Administración que existiera en un mes abierto se cobraría igual y saldría en «Cargo a una
   sola unidad» (para corregirlo o quitarlo).
-- **(Ronda 12, decisión de Nicolás) Cuatro funciones SECURITY DEFINER que cualquier usuario
-  con sesión puede ejecutar** sin control de organización (ver «Seguridad» en la ronda 12):
-  `hay_secreto(p_nombre)` (si existe un secreto, cuándo se cambió y su largo),
+- **(Ronda 12, decisión de Nicolás) Tres funciones SECURITY DEFINER que cualquier usuario
+  con sesión puede ejecutar** sin control de organización (ver «Seguridad» en la ronda 12;
+  la cuarta, `hay_secreto`, se cerró en `20261102130000`):
   `cuota_mensual(p_org)` (precio y unidades activas de cualquier organización),
   `edificio_activo(p_edificio)` y `org_al_dia(p_org)` (estados). Antes de quitarles el
   permiso, revisar quién las llama (la app y las políticas: `edificio_activo` y `org_al_dia`
@@ -5595,14 +5617,9 @@ datos reales en la base de producción nueva vía el Preview de Vercel:
   sirve la app Next) seguía con los viejos del 09-sep, porque `optimization`
   nunca había tocado esos archivos. Verificado por hash (`sha256sum`): los 4
   archivos quedaron idénticos raíz ↔ `public/`.
-- [ ] **Saber que el alta de organización queda abierta.** Con el registro
-  (`signUp`) reactivado, cualquiera que cree una cuenta y entre a `/admin`
-  ve el formulario de crear administradora, y la organización que cree
-  aparece en la cartera del operador. Es el mismo comportamiento que
-  `app.html` siempre tuvo, y se acepta para el piloto (Preview protegido,
-  un solo condominio) — pero conviene mirar la cartera antes de la reunión
-  con el socio, por si aparece algo que nadie creó a propósito. Registrado
-  en `docs/casos-de-uso-mejorados.md` (caso 19).
+- [x] **Alta de organización: ya no aplica.** Desde el 28-oct solo el
+  operador crea organizaciones (`20261028150000_solo_operador_y_ajustes_seguridad.sql`);
+  una cuenta sin organización ve en `/admin` cómo escribirle a Vecitap.
 
 ---
 
@@ -5697,7 +5714,8 @@ Necesita una cuenta **sin ninguna organización**: crear una a propósito
   crear una administradora) verificar el enlace nuevo **"¿Viene a registrar su
   administradora?"** al pie de esa pantalla — debe llevar a `/admin` (caso 20 de
   `casos-de-uso-mejorados.md`).
-- [ ] **Crear administradora** desde `/admin`: nombre y RIF. Usar un nombre que
+- [ ] *(Ya no aplica desde el 28-oct: `/admin` no ofrece crear
+  administradoras; solo el operador las crea.)* **Crear administradora** desde `/admin`: nombre y RIF. Usar un nombre que
   se reconozca como basura después (p. ej. `ZZZ Prueba Alta 27-sep`).
   **Irreversible desde la app.** Además **aparece en la cartera del operador**
   (ver caso 19 de `casos-de-uso-mejorados.md`) — verificar que aparece ahí, y
