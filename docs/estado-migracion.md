@@ -48,8 +48,8 @@ están hechos en este mismo commit.
   - AGENTS.md: «Cómo se aplica una migración».
   - `.gitattributes` con `eol=lf`. El índice ya tenía todo en LF, así que no hizo falta renormalizar. Las copias de trabajo con CRLF de esta máquina se pasaron a LF, sin cambios de contenido.
 
-**El paso 8 queda ABIERTO.** Falta revisar Admin con la cuenta de GRUPO ING3
-(info.ing3@gmail.com): el menú sin «Cobros», las 53 unidades, que Gastos del
+**El paso 8 queda ABIERTO.** Falta revisar Admin con la cuenta de ING3:
+el menú sin «Cobros», las 53 unidades, que Gastos del
 mes abra sin error, y Ajustes con «Reglas de cobro del edificio». El operador
 no puede hacerlo, porque Admin exige una membresía en la organización. **Es
 condición antes de avisarle al cliente que el sistema nuevo está en
@@ -236,10 +236,9 @@ las rondas anteriores.
 
 ### Seguridad: correo_recibo() y otras funciones (01-nov)
 
-**El hueco.** `correo_recibo()` es SECURITY DEFINER, authenticated la puede ejecutar y no
-controlaba quién la llama: cualquier usuario con sesión y el id de un recibo ajeno recibía su
-correo (nombres, correos, montos y el código de invitación). **Está así hoy en producción**
-(su `correo_recibo`, 343c43e8…, tiene el permiso y ningún control): se cierra con el Paso 8.
+**Corregido.** `correo_recibo()` controla quién la llama desde el 01-nov en vecitap-pruebas y
+desde el 02-nov en vecitap-produccion (`20261031180000_cuentas_en_cero.sql`, aplicada en el
+paso a producción del tramo 2).
 
 **Quién la llama.** La app, directo: «Probar el correo» de Cortes
 (`components/admin/Cortes.tsx:387`); por eso el permiso de authenticated **se queda**. En la
@@ -604,8 +603,8 @@ escrituras de prueba, dentro de un bloque deshecho a propósito; sin restos desp
   edificio(s). Escríbanos a info@vecitap.com para ampliarlo.»). La variante «Su cuenta es
   de un solo condominio…» no se ejercitó (no había una cuenta de ese tipo a mano); su
   reemplazo está en el conteo «exactamente una vez» y en el md5.
-- A3: con el correo de la persona puesto como `'  VECITAP.ADMIN@GMAIL.COM '`, el aviso de
-  la garita llega a la cola como `vecitap.admin@gmail.com`.
+- A3: con el correo de la persona puesto como el de la cuenta del operador, en mayúsculas y
+  con espacios alrededor, el aviso de la garita llega a la cola en minúsculas y sin espacios.
 - A4, **los correos se ven igual**: con «Administradora Union», el nombre de la
   organización y del edificio con comillas (`"Q" O'Brien`, `«Torre "A"» D'Elia`) y un
   mensaje con comillas en el asunto y el texto, se generaron el recibo
@@ -2342,7 +2341,8 @@ ruta `/garita/<edificio>` deja entrar solo a vigilantes
 (`edificios_del_vigilante()`), no a la administradora. Hoy hay dos, y son de
 otros edificios (Edificio Administradora Unión y Torre Ida). Propuesta: cuando
 se active, la administradora de Gustavo invita como vigilante del Edificio
-Gustavo a una cuenta nueva suya (por ejemplo `gustavobricenob+garita@…`).
+Gustavo a una cuenta nueva suya (por ejemplo, una variante con «+garita» del correo de
+Gustavo).
 **Activada el 26-oct** en el Edificio Gustavo de pruebas (Nicolás, cuando
 Gustavo terminó la ronda 5): una fila en `modulos_org` para ese edificio, con
 la nota «Ronda 5: pruebas G1–G10…». El Edificio Prueba Carga sigue sin ella.
@@ -2364,7 +2364,7 @@ vigilante, que se crea en G6):
 | G3 | `+propietario` → 02A → Mis visitas → Invitar a alguien (nombre, cédula, placa, hasta mañana) | Sale la tarjeta con el código QR y el código escrito. «Enviar por WhatsApp» abre el mensaje con el código. La invitación aparece en «Invitaciones activas» |
 | G4 | Lo mismo con `+inquilino` → 04D | Igual. Las invitaciones de 04D no aparecen en las unidades de `+propietario` |
 | G5 | Mis vehículos: agregar una placa, quitarla | Queda y se quita |
-| G6 | **Crear la cuenta de vigilante.** (1) `+admin` → Edificio Gustavo → **Accesos** → pestaña **«Vigilantes»** (solo aparece con la garita activa) → «Edificio de la garita»: Edificio Gustavo → «Correo del vigilante»: una cuenta nueva de Gustavo, por ejemplo `gustavobricenob+garita@gmail.com` → **«Generar la invitación»** → «Copiar el código» (se muestra una sola vez). (2) En **otro navegador o una ventana privada**, abrir **la dirección del Preview** seguida de `/garita` (el enlace de «Copiar el mensaje completo» sirve si empieza con la misma dirección del Preview; si empieza con vecitap.com, no usarlo y avisar: ver «Los enlaces de Accesos», arriba). La app pide entrar: **«No tengo cuenta todavía»** → «Crear mi cuenta» con el correo de (1) y una clave nueva (si pide confirmar el correo, abrir el enlace que llega a ese correo y volver a `/garita`). (3) La garita muestra «Código de invitación»: pegar el código de (1) → **«Usar la invitación»** | La cuenta entra a la garita del **Edificio Gustavo, y solo a ese**. En Accesos → Vigilantes aparece la cuenta, activa |
+| G6 | **Crear la cuenta de vigilante.** (1) `+admin` → Edificio Gustavo → **Accesos** → pestaña **«Vigilantes»** (solo aparece con la garita activa) → «Edificio de la garita»: Edificio Gustavo → «Correo del vigilante»: una cuenta nueva de Gustavo, por ejemplo una variante con «+garita» del correo de Gustavo → **«Generar la invitación»** → «Copiar el código» (se muestra una sola vez). (2) En **otro navegador o una ventana privada**, abrir **la dirección del Preview** seguida de `/garita` (el enlace de «Copiar el mensaje completo» sirve si empieza con la misma dirección del Preview; si empieza con vecitap.com, no usarlo y avisar: ver «Los enlaces de Accesos», arriba). La app pide entrar: **«No tengo cuenta todavía»** → «Crear mi cuenta» con el correo de (1) y una clave nueva (si pide confirmar el correo, abrir el enlace que llega a ese correo y volver a `/garita`). (3) La garita muestra «Código de invitación»: pegar el código de (1) → **«Usar la invitación»** | La cuenta entra a la garita del **Edificio Gustavo, y solo a ese**. En Accesos → Vigilantes aparece la cuenta, activa |
 | G7 | Garita → Entrada → leer con la cámara el QR de G3 (desde otro teléfono, o impreso) | Veredicto verde con el nombre y la unidad. «Registrar entrada». En «Adentro» aparece |
 | G8 | En la garita, una visita sin invitación a 02A con «Avisar». Después, `+propietario` → 02A → «Quién ha entrado» | Llega el correo «Tiene una visita en la puerta · 02A» a la ficha de 02A (a todos los de la unidad con correo: el aviso de visita **no mira «recibe corte»**, ver la pregunta para Gustavo). En «Quién ha entrado» aparecen las visitas de G7 y G8, con hora |
 | G9 | `+propietario` → anular la invitación de G3 → la garita lee el mismo QR | Veredicto rojo: no deja entrar con esa invitación |
@@ -3186,9 +3186,10 @@ pestaña cambia la sesión de todas. Eso causó los problemas 2 y 3 del 04-oct.
      anulado" y no es verdad.
    - Hay que aplicarla junto con las otras tres, o antes del merge.
 3. Merge de `dev` a `integration` (publica vecitap.com).
-4. El script de borrado de las dos organizaciones de prueba
-   (`supabase/scripts/20261004_borrar_orgs_prueba_piloto.sql`), primero en
-   modo ensayo.
+4. El script de borrado de las dos organizaciones de prueba, primero en
+   modo ensayo. (**Se eliminó del repo el 02-nov:** era de una sola vez, y
+   su lista incluía el UUID de la organización que hoy es GRUPO ING3. Ver
+   «Borrado de las dos organizaciones de prueba en producción».)
 
 ## Decisiones de arquitectura ya tomadas
 
@@ -7273,11 +7274,11 @@ y disparadores (25). Diferencias:
 
 - `aceptar_invitacion`, `crear_invitacion`: mismo contenido, solo cambia el fin
   de línea (CRLF en pruebas, LF en producción).
-- **Permisos de tabla:** en producción `anon` tiene `Dxtm` (TRUNCATE,
-  REFERENCES, TRIGGER, MAINTAIN) en casi todas las tablas, y `secretos` le da
-  `Dxtm` a `authenticated`; en pruebas no. Ninguno lee ni escribe filas y
-  PostgREST no hace TRUNCATE, así que no es explotable por la API. Candidato
-  para la Fase 5: quitarlos.
+- **Permisos de tabla:** corregido. Las dos bases quedaron con los mismos
+  permisos el 02-nov, cuando se aplicaron en producción
+  `20261028170000_permisos_sobrantes.sql` y
+  `20261029120000_permisos_authenticated.sql` (en pruebas desde el 28 y el
+  29-oct).
 
 ### Chequeos previos (las dos bases, iguales)
 
@@ -7418,7 +7419,13 @@ paga".
 
 ### Borrado de las dos organizaciones de prueba en producción
 
-`supabase/scripts/20261004_borrar_orgs_prueba_piloto.sql`. No es una
+> **Script eliminado del repo el 02-nov.** Era de una sola vez, y su lista
+> incluía el UUID de la organización que hoy es GRUPO ING3: no hay que
+> correrlo nunca. Si hace falta borrar una organización, se escribe un script
+> nuevo con la lista revisada contra producción ese mismo día. Lo de abajo
+> queda como registro de lo que hacía.
+
+`supabase/scripts/20261004_borrar_orgs_prueba_piloto.sql` (eliminado). No era una
 migración (borra datos, no cambia el esquema) y no tiene rollback: el reverso
 es el respaldo. Por omisión corre en **modo ensayo**: hace todo, informa y
 termina con un error que deshace la transacción. Solo borra de verdad con

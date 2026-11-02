@@ -133,28 +133,27 @@ mismo con el que se ensayó el borrado.
 
 ### Qué se borra
 
-| Organización | Id | Qué tiene (lectura del 01-nov) |
+| Organización | Cuenta | Qué tiene (lectura del 01-nov) |
 |---|---|---|
-| **Guachu** (de Gustavo, `gustavobricenor@gmail.com`) | `2828082e-02f0-4693-bb94-d5604ea9c169` | 1 edificio «Edificio Isabella», 0 unidades, 1 membresía (la dueña), 1 cobro, 3 filas de auditoría |
-| **Edificio arauca** (`guasimo.eventos@gmail.com`) | `304b9a43-2a04-4cc5-85bd-9c00d78772e4` | 1 edificio «Edificio Arauca II», 2 unidades, 2 personas, 2 vínculos, 1 membresía (la dueña), 4 categorías, 1 cobro, 22 partidas fijas, 6 filas de auditoría |
+| **Guachu** | el correo de Gustavo | Un edificio de prueba, sin unidades; solo la membresía de la dueña |
+| **Edificio arauca** | la cuenta de la dueña de Edificio arauca | Un edificio de prueba con unas pocas unidades y la configuración inicial; solo la membresía de la dueña |
 
 Ninguna tiene pagos, meses, invitaciones, correos ni comprobantes.
 
 **Lo que NO está en producción (nada que borrar):**
 - **Organizaciones A y B:** no existen. Producción tiene solo tres organizaciones: Guachu, GRUPO
   ING3 y Edificio arauca. Tampoco están en pruebas.
-- **El usuario de prueba de la Fase 3:** no existe. Producción tiene 4 cuentas:
-  `vecitap.admin@gmail.com` (operador de Vecitap), `gustavobricenor@gmail.com` (Guachu),
-  `info.ing3@gmail.com` (GRUPO ING3) y `guasimo.eventos@gmail.com` (Edificio arauca). Ninguna es
-  de prueba.
+- **El usuario de prueba de la Fase 3:** no existe. Producción tiene 4 cuentas: la cuenta del
+  operador (Vecitap), el correo de Gustavo (Guachu), la cuenta de ING3 (GRUPO ING3) y la cuenta
+  de la dueña de Edificio arauca. Ninguna es de prueba.
 
 Si con «Organizaciones A y B» o con el usuario de la Fase 3 querías decir otra cosa, avísame antes
 de borrar nada.
 
 **GRUPO ING3 no se toca.**
 
-**Las cuentas no se borran con esto.** `gustavobricenor@gmail.com` y `guasimo.eventos@gmail.com`
-quedan sin ninguna organización: al entrar ven «Esta cuenta no administra ningún edificio».
+**Las cuentas no se borran con esto.** El correo de Gustavo y la cuenta de la dueña de Edificio
+arauca quedan sin ninguna organización: al entrar ven «Esta cuenta no administra ningún edificio».
 Borrarlas es otra decisión (Supabase → Authentication → Users). Yo dejaría la de Gustavo.
 
 ### 3.1 Comprobación antes
@@ -171,14 +170,12 @@ select o.nombre,
   (select count(*) from invitaciones where org_id = o.id) invitaciones,
   (select count(*) from storage.objects s where s.bucket_id = 'comprobantes' and split_part(s.name, '/', 1) = o.id::text) comprobantes
 from organizaciones o
-where o.id in ('2828082e-02f0-4693-bb94-d5604ea9c169', '304b9a43-2a04-4cc5-85bd-9c00d78772e4')
+where o.nombre in ('Guachu', 'Edificio arauca')
 order by 1;
 ```
 
-| nombre | edificios | unidades | personas | vinculos | membresias | pagos | meses | invitaciones | comprobantes |
-|---|---|---|---|---|---|---|---|---|---|
-| Edificio arauca | 1 | 2 | 2 | 2 | 1 | 0 | 0 | 0 | 0 |
-| Guachu | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
+**Esperado:** dos filas, Edificio arauca y Guachu, cada una con 1 edificio y 1 membresía, y **0**
+en pagos, meses, invitaciones y comprobantes.
 
 **Si no coincide:** alguien usó esas cuentas desde el 01-nov. No borrar; avisarme.
 
@@ -191,19 +188,16 @@ error a propósito que deshace todo.
 do $borrar$
 declare
   v_confirmar boolean := false;   -- false = ENSAYO (no borra nada). true = borra de verdad.
-  v_orgs uuid[] := array[
-    '2828082e-02f0-4693-bb94-d5604ea9c169',   -- Guachu (edificio «Edificio Isabella»)
-    '304b9a43-2a04-4cc5-85bd-9c00d78772e4'    -- Edificio arauca (edificio «Edificio Arauca II»)
-  ]::uuid[];
   v_nombres text[] := array['Guachu', 'Edificio arauca'];
+  v_orgs uuid[];
   n bigint;
   t text;
   v_antes text := '';
   v_despues text := '';
 begin
   -- 1. Guardas: si algo no es lo esperado, no borra nada.
-  select count(*) into n from public.organizaciones
-   where id = any (v_orgs) and nombre = any (v_nombres);
+  select array_agg(id) into v_orgs from public.organizaciones where nombre = any (v_nombres);
+  n := coalesce(array_length(v_orgs, 1), 0);
   if n <> 2 then
     raise exception 'ABORTADO: se esperaban 2 organizaciones (Guachu y Edificio arauca) y hay %. No se borró nada.', n;
   end if;
@@ -252,8 +246,9 @@ $borrar$;
 ```
 
 **Esperado (sale como error rojo, es lo normal):**
-`ENSAYO, nada quedó escrito. Se borrarían: auditoria=9 categorias=4 conceptos_cobro=2 edificios=2 membresias=2 partidas_fijas=22 personas=2 unidades=2 vinculos=2`
-(auditoría puede dar algo más si alguien entró a esas cuentas; lo demás, igual).
+`ENSAYO, nada quedó escrito. Se borrarían: …` con la lista de tablas y sus conteos: auditoría,
+categorías, cobros, edificios, membresías, partidas fijas, personas, unidades y vínculos; ninguna
+de pagos, meses ni invitaciones.
 
 **Si dice «ABORTADO: …»:** no se borró nada; avisarme con el texto.
 
@@ -266,8 +261,9 @@ El mismo bloque, cambiando **solo** la línea 3 a `v_confirmar boolean := true;`
 
 ```sql
 select
-  (select count(*) from organizaciones where id in ('2828082e-02f0-4693-bb94-d5604ea9c169', '304b9a43-2a04-4cc5-85bd-9c00d78772e4')) borradas_que_quedan,
-  (select count(*) from auditoria where org_id in ('2828082e-02f0-4693-bb94-d5604ea9c169', '304b9a43-2a04-4cc5-85bd-9c00d78772e4')) auditoria_que_queda,
+  (select count(*) from organizaciones where nombre in ('Guachu', 'Edificio arauca')) borradas_que_quedan,
+  (select count(*) from auditoria a where a.org_id is not null
+     and not exists (select 1 from organizaciones o where o.id = a.org_id)) auditoria_que_queda,
   (select string_agg(nombre, ', ') from organizaciones) organizaciones,
   (select count(*) from unidades) unidades;
 ```

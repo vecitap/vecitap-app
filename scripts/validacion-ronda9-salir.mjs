@@ -1,7 +1,8 @@
 // Script temporal de validación — ronda 9 del tramo 2, «Salir» del recetario
 // del 28-sep: G19 (Salir borra la cookie), G11 (Atrás + F5 después de Salir) y
-// K1 (Salir con 303 en Admin, /mi y /operador; la garita queda fuera: no hay
-// clave de vigilante.prueba en .env.local).
+// K1 (Salir con 303 en Admin, /mi y /operador; la garita quedó fuera porque
+// cuando se escribió no había clave de vigilante.prueba en .env.local. Desde
+// el 02-nov está, como PRUEBA_VIGILANTE_CLAVE, pero este script no la usa).
 //
 // «Salir» cierra todas las sesiones de la cuenta: se corre DESPUÉS de
 // scripts/validacion-ronda9-sesion.mjs, no a la vez.
