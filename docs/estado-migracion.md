@@ -58,7 +58,11 @@ producción.**
 **Pendientes (no bloquean el piloto):**
 - **Vercel y Supabase a Pro:** Nicolás lo habla con Gustavo. Con Supabase Pro hay respaldos automáticos. Mientras tanto, los respaldos se hacen a mano con `pg_dump`, y `docs/respaldo.md` hay que actualizarlo a ese método.
 - **Subdominio de seguimiento de Resend,** para poder encender Open Tracking.
-- **El remitente del SMTP de Auth:** confirmarlo en el dashboard (ver la nota en «Salida a producción — 29-sep»).
+- **Protección de los Preview de Vercel (Settings → Deployment Protection):** queda para decidir con Gustavo. Es la opción (a) de la revisión de `/design-system`. En producción, `/design-system` ya responde 404: no se compila (`pageExtensions` en `next.config.ts`), y además su layout llama a `notFound()`. Solo se ve en los Preview, y esta protección los cerraría enteros. Mientras no se decida, no se cambia nada.
+
+Confirmado en la revisión de cierre: el remitente del SMTP de Auth es
+`no-reply@envios.vecitap.com`, y el de la cola, `avisos@envios.vecitap.com`
+(ver la nota en «Salida a producción — 29-sep»).
 
 ## Ronda 12 del tramo 2 (31-oct) — multas al final, multas con fundamento, tablas anchas, cuentas en $ 0,00 y «Cobros» fuera del menú
 
@@ -6138,14 +6142,13 @@ base **vecitap-produccion**, con los planes Free de Vercel y Supabase.
 - Correo: **Resend**, dominio verificado `envios.vecitap.com`, remitente
   `no-reply@envios.vecitap.com` con nombre visible "Vecitap". **Confirm email
   activado** en producción.
-  - **Nota del 02-nov:** por el contexto (va junto a «Confirm email»), este
-    remitente parece ser el del **SMTP de Supabase Auth** (confirmación de
-    cuenta, «Olvidé mi contraseña»). Los recibos y los mensajes de la cola salen de otro remitente,
-    `avisos@envios.vecitap.com` (`secretos.correo_remitente`, leído en
-    producción el 02-nov; AGENTS.md también lo dice). Qué remitente tiene hoy
-    el SMTP de Auth no se puede leer por SQL: está en Supabase →
-    Authentication → Emails → SMTP Settings → *Sender email*. **Pendiente de
-    confirmar ahí.**
+  - **Nota del 02-nov (confirmado):** `no-reply@envios.vecitap.com` es el
+    remitente del **SMTP de Supabase Auth**: de ahí salen los correos de
+    confirmación de cuenta y de «Olvidé mi contraseña». Lo confirmó Nicolás
+    en la revisión de cierre. Los recibos y los mensajes de la cola salen de
+    otro remitente, `avisos@envios.vecitap.com` (`secretos.correo_remitente`,
+    leído en producción el 02-nov; también figura en AGENTS.md). Son dos
+    remitentes distintos a propósito, y ninguno de los dos está mal.
 - En producción se aplican todas las migraciones del repo que falten. Las corre
   Nicolás en el SQL Editor.
 
