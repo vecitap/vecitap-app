@@ -26,10 +26,18 @@ como estaba antes de ese archivo.
 | 0.5 | **Gustavo, antes de empezar** (el mismo día, sin esperar a las migraciones): el webhook de Resend (6.3), la variable `RESEND_WEBHOOK_SECRET` de Vercel en Production (6.1) y el INSERT de la huella en `secretos` (5.1). El `whsec_…` lo maneja solo él: no hace falta que te lo pase | Lo compruebas tú en el paso 5 (largo de la huella = 64) |
 
 **Cómo se corre un archivo de migración:** en VS Code, abrir el archivo de
-`supabase/migrations/`, `Ctrl+A`, `Ctrl+C`; en el SQL Editor, *New query*, pegar y *Run*. Si el
+`supabase/migrations/`, `Ctrl+A`, `Ctrl+C`; en el SQL Editor, *New query*, pegar y *Run*.
+**El archivo entero de una vez, no por bloques:** un *New query* por archivo, con los
+comentarios incluidos (las líneas con `--` no se ejecutan). Si el
 editor avisa de «operaciones destructivas», confirmar. Lo esperado es *Success* (con o sin
 avisos). Un error que empieza con **«ABORTADA»** es una guarda del archivo: no se aplicó nada;
 parar y avisarme con el texto completo.
+
+**Esto vale hasta el archivo 13. Desde el 14 los archivos se corren con `psql`** (ver «Antes
+del archivo 14», en el paso 4). Al pegar en el SQL Editor, las funciones quedan guardadas con
+saltos de línea de Windows (un «\r» invisible al final de cada línea). No cambia lo que hacen,
+pero sí su md5, y las guardas de los archivos siguientes abortan. Por eso las comprobaciones
+de las tandas calculan el md5 sin ese carácter (`replace(prosrc, chr(13), '')`).
 
 ---
 
@@ -301,7 +309,7 @@ inverso, pero se deciden juntos.
 
 ```sql
 with f as (
-  select proname, string_agg(md5(prosrc), ',') m
+  select proname, string_agg(md5(replace(prosrc, chr(13), '')), ',') m
     from pg_proc where pronamespace = 'public'::regnamespace group by proname)
 select que, esperado, coalesce(hay, '(no existe)') hay,
        case when hay = esperado then 'OK' else 'NO COINCIDE' end resultado
@@ -321,6 +329,49 @@ from (
 ```
 
 **Esperado:** 11 filas en OK.
+
+### Antes del archivo 14: quitar los retornos de carro y correr el resto con `psql`
+
+(Agregado el 02-nov, después de que el archivo 14 abortara.) Pegar en el SQL Editor guarda las
+funciones con un «\r» al final de cada línea. Las guardas de los archivos siguientes comparan
+el md5 del cuerpo de las funciones contra el de pruebas, que no tiene «\r», y abortan. Ese
+aborto es seguro: no se aplicó nada del archivo. Hay que hacer dos cosas, una sola vez:
+
+**a) Una sesión de PowerShell con la conexión**, igual que en el paso 1, más la codificación
+UTF-8 (sin ella, los acentos de los archivos llegan mal y las guardas vuelven a abortar):
+
+```powershell
+cd "$env:USERPROFILE\OneDrive\Documentos\GitHub\vecitap-app"
+$env:PGCLIENTENCODING = "UTF8"
+$uri = Read-Host "URI del Session pooler (con [YOUR-PASSWORD] adentro)"
+$seg = Read-Host "Contrasena de la base" -AsSecureString
+$cla = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($seg))
+$DB  = $uri -replace '\[YOUR-PASSWORD\]', [uri]::EscapeDataString($cla)
+function Aplicar($archivo) { psql $DB -X -v ON_ERROR_STOP=1 -f "supabase/migrations/$archivo" }
+```
+
+**b) La corrección, antes del 14:**
+
+```powershell
+Aplicar 20261102120000_funciones_sin_retorno_de_carro.sql
+```
+
+Esperado: `BEGIN`, `NOTICE:  Funciones corregidas: 19`, `DO`, `COMMIT`. Si sale otro número
+o un error, parar y avisarme.
+
+**Desde el archivo 14 hasta el 46, cada archivo con `Aplicar`, no pegando.** Por ejemplo:
+
+```powershell
+Aplicar 20261026130000_invitacion_en_recibo.sql
+```
+
+`psql` lee el archivo tal como está en el disco, sin «\r». Lo esperado es que la **última línea
+sea `COMMIT`**, con o sin `NOTICE` antes. Si sale `ERROR` (por ejemplo, una guarda «ABORTADA»),
+`psql` se detiene, no queda nada aplicado de ese archivo, y hay que parar y avisarme con el
+texto. Las consultas de comprobación de cada tanda se siguen pegando en el SQL Editor: son
+solo lecturas y no guardan nada.
+
+Al terminar la sesión: `Remove-Variable cla, seg, uri, DB`.
 
 ### Tanda 2 — rondas 7 y 8 (13 archivos)
 
@@ -342,7 +393,7 @@ from (
 
 ```sql
 with f as (
-  select proname, string_agg(md5(prosrc), ',') m
+  select proname, string_agg(md5(replace(prosrc, chr(13), '')), ',') m
     from pg_proc where pronamespace = 'public'::regnamespace group by proname)
 select que, esperado, coalesce(hay, '(no existe)') hay,
        case when hay = esperado then 'OK' else 'NO COINCIDE' end resultado
@@ -384,7 +435,7 @@ from (
 
 ```sql
 with f as (
-  select proname, string_agg(md5(prosrc), ',') m
+  select proname, string_agg(md5(replace(prosrc, chr(13), '')), ',') m
     from pg_proc where pronamespace = 'public'::regnamespace group by proname)
 select que, esperado, coalesce(hay, '(no existe)') hay,
        case when hay = esperado then 'OK' else 'NO COINCIDE' end resultado
@@ -423,7 +474,7 @@ from (
 
 ```sql
 with f as (
-  select proname, string_agg(md5(prosrc), ',') m
+  select proname, string_agg(md5(replace(prosrc, chr(13), '')), ',') m
     from pg_proc where pronamespace = 'public'::regnamespace group by proname)
 select que, esperado, coalesce(hay, '(no existe)') hay,
        case when hay = esperado then 'OK' else 'NO COINCIDE' end resultado
@@ -453,7 +504,7 @@ from (
 
 ```sql
 with f as (
-  select proname, string_agg(md5(prosrc), ',') m
+  select proname, string_agg(md5(replace(prosrc, chr(13), '')), ',') m
     from pg_proc where pronamespace = 'public'::regnamespace group by proname)
 select que, esperado, coalesce(hay, '(no existe)') hay,
        case when hay = esperado then 'OK' else 'NO COINCIDE' end resultado
@@ -480,7 +531,7 @@ from (
 
 ```sql
 with f as (
-  select proname, string_agg(md5(prosrc), ',') m
+  select proname, string_agg(md5(replace(prosrc, chr(13), '')), ',') m
     from pg_proc where pronamespace = 'public'::regnamespace group by proname)
 select que, esperado, coalesce(hay, '(no existe)') hay,
        case when hay = esperado then 'OK' else 'NO COINCIDE' end resultado
@@ -508,7 +559,7 @@ from (
 
 ```sql
 with f as (
-  select proname, string_agg(md5(prosrc), ',') m
+  select proname, string_agg(md5(replace(prosrc, chr(13), '')), ',') m
     from pg_proc where pronamespace = 'public'::regnamespace group by proname)
 select que, esperado, coalesce(hay, '(no existe)') hay,
        case when hay = esperado then 'OK' else 'NO COINCIDE' end resultado
@@ -551,6 +602,13 @@ select
 **Si alguna huella no coincide** y las siete tandas dieron OK: no es para parar. La app puede
 salir igual; avísame y comparo función por función por lectura (puede ser una diferencia de
 antes, de las que no rompen nada).
+
+**Resultado del 02-nov en producción:** todo coincidió salvo `huella_cuerpos`, que dio
+`da6528236659fc5f72b8ab6cc29a2c82`. Comparando las 169 funciones una por una, la única
+distinta es `reemplazar_propietario`, y solo por tres comentarios (`-- b.`, `-- c.`, `-- d.`).
+Producción los tiene, igual que el archivo `20261008140000_reemplazar_propietario.sql`.
+Pruebas no los tiene: esa función se aplicó ahí sin comentarios. El código es idéntico.
+Sin contar esa función, las dos bases dan la misma huella (`6e78bf58…`).
 
 ---
 
