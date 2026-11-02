@@ -35,6 +35,7 @@ Desvíos frente a `main`: casos **116 a 122** de
 | D | La tabla que no cabe se desliza en su recuadro con la primera columna fija (CSS en `.tabla-scroll`, para todas las tablas del panel). **Causa de que no se deslizara:** el recuadro tomaba el ancho de la tabla (grilla de Gastos del mes) y `html { overflow-x: hidden }` cortaba lo que sobraba; ahora `contain: inline-size`. En Pagos recibidos la unidad pasó a primera columna. El renglón «nuevo gasto» va de dos en dos en el teléfono (estiraba la página a 447 px) | `components/ui/ui.css`, `CierreMes.tsx`, `Pagos.tsx` |
 | E1 | Las cifras de las tablas (`td.mono`) no se parten: «$» y monto en la misma línea, en Mora y en todas las columnas de montos | `components/ui/ui.css` |
 | E2 | El aviso «… unidades quedan con la cuota de condominio en $ 0,00» manda ahora a «las reglas de cobro en Ajustes» (hecho con la Parte C) | `CierreMes.tsx` |
+| E3 | (01-nov, Gustavo: 02C, Junio 2027) En el desglose de «Cuotas y cargos» el monto ya no se parte («$» arriba, «5,00» abajo): no estaba en una celda `td.mono` sino en una fila flex, que lo encogía cuando la etiqueta era larga. `white-space: nowrap` y `flex-shrink: 0`. Probado con `next start` en Torre Ida (dos cargos de $ 5 con etiquetas largas, borrados después), a 1280 px y en un iPhone 13: sin el arreglo, 2 líneas; con él, 1. Título: «Ronda 12 del tramo 2: monto del desglose en una línea» | `CierreMes.tsx` |
 | C | **«Cobros» sale del menú** (01-nov). Las reglas fijas y «Agregar un cobro» pasan a Ajustes, tarjeta **«Reglas de cobro del edificio»**, debajo de «Datos del edificio». Las **cuotas extraordinarias** y el **cargo a una sola unidad** pasan a Gastos del mes, en este orden: gastos comunes → cuotas extraordinarias → cargo a una sola unidad → cómo se reparte → cerrar. Sin mes abierto, las cuotas extraordinarias se configuran igual y el cargo no sale. Sale el tipo «Solo a una unidad» del renglón de gasto (con «¿A qué unidad?» y «¿De quién es ese dinero?»); los gastos directos del mes abierto se ven y se corrigen en «Cargo a una sola unidad» y no salen repetidos en la tabla de gastos. La previa se vuelve a calcular al guardar un cargo o una cuota extraordinaria. `/cobros` redirige a Gastos del mes. Textos: los de la tabla del punto 5 de la propuesta. Sin migración | `ReglasCobro.tsx` (antes `Cobros.tsx`), `Ajustes.tsx` y su página, `CierreMes.tsx` y su página, `CargosUnidad.tsx`, `MarcoAdmin.tsx`, `cobros/page.tsx`, `inicio/page.tsx` |
 | F | Una cuenta (condominio u honorarios) a la que le toca $ 0,00 o menos no sale en «Datos para pagar», ni su monto ni sus datos, **si a la otra le toca algo**: en el correo del recibo, en el portal y en el papel (portal y Cortes). **Ajuste del 01-nov:** con el recibo en $ 0,00 o a favor, el correo hace lo mismo que el papel: sin «Datos para pagar» y, en lugar de «Total a pagar: $ 0,00», «Está al día · no tiene que pagar» o «A favor $ X · no tiene que pagar». Solo lo que se muestra: ningún monto ni recibo cambia | migración R12-3 (`datos_pago_html()`, `datos_pago_texto()`, `correo_recibo()`); `gruposDePago()` en `lib/datos-pago.ts`, que usan el portal y los dos papeles |
 
@@ -71,6 +72,11 @@ emitidos no se tocan.
 | 46 | `20261031190000_cerrar_funciones_expuestas.sql` | guarda md5: `destinatarios_de` de `20261031120000_correcciones_revision_r9_r10.sql` (2558c045…; hoy producción tiene 2be2e76b…, la de antes de esa migración); `_usr` y `_entrar` de `esquema_inicial.sql` |
 
 Los rollbacks, al revés: 46, 45, 44, 43 y después 42 (su guarda exige e5d46aa2…, que deja el de 43). Los de 45 y 46 son independientes de los otros.
+
+**La guía completa para aplicarlas (01-nov): [`docs/paso-produccion.md`](paso-produccion.md).**
+Las 46 en siete tandas con su verificación, el respaldo con `pg_dump`, el borrado de Guachu y
+Edificio arauca, `secretos`, Vercel, Auth, Resend y cron. Reemplaza a las tablas del Paso 8 de
+las rondas anteriores.
 
 ### Validación (31-oct)
 

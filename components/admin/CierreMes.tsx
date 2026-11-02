@@ -735,7 +735,8 @@ export function CierreMes({
                                     </>
                                   )}
                                 </span>
-                                <span className="mono">{usd(l.monto)}</span>
+                                {/* Ronda 12: el monto no se parte («$» arriba, cifra abajo) ni se encoge en la fila flex. */}
+                                <span className="mono" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{usd(l.monto)}</span>
                               </div>
                             ))}
                           </td>

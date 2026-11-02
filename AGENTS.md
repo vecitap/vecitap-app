@@ -184,7 +184,7 @@ historial, solo hay que rotarla.
   (`hdivffuorclzulijkyry`). Los refs no se escriben en el código: van por
   variables de entorno
 - Correo transaccional: Resend, dominio verificado `envios.vecitap.com`,
-  remitente `no-reply@envios.vecitap.com`. Lo despacha la base (`cola_correo`),
+  remitente `avisos@envios.vecitap.com`. Lo despacha la base (`cola_correo`),
   no la app Next
 
 ## Gobierno del proyecto
