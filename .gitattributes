@@ -1,0 +1,23 @@
+# Finales de línea: LF en el repo y en la copia de trabajo, en todas las
+# máquinas, sin importar core.autocrlf (este archivo tiene prioridad).
+#
+# Por qué (02-nov, paso a producción): con core.autocrlf=true, Git en Windows
+# deja los archivos con CRLF en la copia de trabajo. Si una migración se
+# aplica desde esa copia, las funciones quedan guardadas con «\r» y cambia su
+# md5(prosrc), que es lo que comparan las guardas de las migraciones. Ver
+# docs/estado-migracion.md, «Paso a producción del tramo 2».
+* text=auto eol=lf
+
+# SQL: siempre texto con LF, explícito (es el caso que importa).
+*.sql text eol=lf
+
+# Binarios: nunca convertir.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.ico  binary
+*.xlsx binary
+*.pdf  binary
+*.woff  binary
+*.woff2 binary

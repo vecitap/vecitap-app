@@ -16,6 +16,50 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Paso a producción del tramo 2 (02-nov) — cerrado, con el paso 8 abierto
+
+Lo aplicó Nicolás en vecitap-produccion siguiendo
+[`docs/paso-produccion.md`](paso-produccion.md). La revisión cruzada de
+cierre en el chat de Claude.ai lo **aprobó con ajustes**, y los ajustes
+están hechos en este mismo commit.
+
+**Resultado:**
+- **Respaldo:** `pg_dump` 18.6 antes de tocar nada (paso 1).
+- **Organizaciones:** se borraron Guachu y Edificio arauca, que eran de prueba y no tenían uso real. Queda solo GRUPO ING3 (53 unidades), que no se tocó. Las cuentas de Auth de las dos organizaciones borradas siguen existiendo, sin organización.
+- **Migraciones:** las 46, en 7 tandas, con las 7 verificaciones en OK. Más `20261102120000_funciones_sin_retorno_de_carro.sql` (ver abajo).
+- **Foto final contra pruebas (4.8):** 169 funciones y 43 tablas. Coinciden los permisos, las columnas, las restricciones y las políticas. `huella_cuerpos` difiere solo por tres comentarios de `reemplazar_propietario`: producción los tiene, igual que el archivo; pruebas no. Huella de atributos (`prosecdef`, `proconfig`, `provolatile`, `proleakproof`, `proparallel`), leída en las dos bases: `ce41de201b078096b4fe2a4f1ff49651`, igual en las dos.
+- **`secretos`:** los 6. `tope_correo()` = 65.
+- **Cron:** las 3 tareas activas. `vecitap_correos` da *succeeded* después de la tanda 7 (lo confirmó Nicolás).
+- **Publicación:** `dev` → `integration` en avance rápido (`2262f62`), con el deploy de Vercel en *Ready*.
+- **Comprobaciones del sitio:**
+  - Los pedidos van a `sudghmerriewjmmnlcrf`.
+  - `POST /api/resend` sin firma → 401.
+  - «Olvidé mi contraseña» → el enlace lleva a vecitap.com.
+  - `/design-system` → 404.
+
+**Excepción a «primero pruebas»: la migración de los «\r».**
+- **Qué pasó:** los archivos 1 a 13 se aplicaron pegándolos en el SQL Editor desde VS Code, y las funciones quedaron guardadas con «\r\n». Las guardas del archivo 14 (que comparan `md5(prosrc)` contra pruebas) abortaron, y no quedó nada aplicado de ese archivo.
+- **La corrección**, `20261102120000_funciones_sin_retorno_de_carro.sql`, se aplicó **primero en producción**, entre el archivo 13 y el 14, porque era la que destrababa el resto del paso. Antes se ensayó dos veces en pruebas, sin escribir nada.
+  - En producción corrigió 19 funciones.
+  - En pruebas se aplicó después, el mismo 02-nov, y corrigió 1 (`aceptar_invitacion`, que ya tenía un «\r» de antes).
+  - En las dos bases quedaron 0 funciones con «\r».
+- **Los archivos 14 a 46** se aplicaron con `psql -X -v ON_ERROR_STOP=1 -f` y `PGCLIENTENCODING=UTF8`.
+- **Lo que quedó como regla:**
+  - AGENTS.md: «Cómo se aplica una migración».
+  - `.gitattributes` con `eol=lf`. El índice ya tenía todo en LF, así que no hizo falta renormalizar. Las copias de trabajo con CRLF de esta máquina se pasaron a LF, sin cambios de contenido.
+
+**El paso 8 queda ABIERTO.** Falta revisar Admin con la cuenta de GRUPO ING3
+(info.ing3@gmail.com): el menú sin «Cobros», las 53 unidades, que Gastos del
+mes abra sin error, y Ajustes con «Reglas de cobro del edificio». El operador
+no puede hacerlo, porque Admin exige una membresía en la organización. **Es
+condición antes de avisarle al cliente que el sistema nuevo está en
+producción.**
+
+**Pendientes (no bloquean el piloto):**
+- **Vercel y Supabase a Pro:** Nicolás lo habla con Gustavo. Con Supabase Pro hay respaldos automáticos. Mientras tanto, los respaldos se hacen a mano con `pg_dump`, y `docs/respaldo.md` hay que actualizarlo a ese método.
+- **Subdominio de seguimiento de Resend,** para poder encender Open Tracking.
+- **El remitente del SMTP de Auth:** confirmarlo en el dashboard (ver la nota en «Salida a producción — 29-sep»).
+
 ## Ronda 12 del tramo 2 (31-oct) — multas al final, multas con fundamento, tablas anchas, cuentas en $ 0,00 y «Cobros» fuera del menú
 
 Pedido de Nicolás del 31-oct con las decisiones de Gustavo sobre la ronda 11 (partes A a E),
@@ -1132,10 +1176,15 @@ final de cada archivo).
 2. Otro igual para pruebas, con Endpoint URL
    `https://vecitap-app-git-dev-<equipo>.vercel.app/api/resend?x-vercel-protection-bypass=<secreto de bypass>`.
    Copiar su Signing secret (es otro).
-3. **Domains → `envios.vecitap.com` → Configuration → Open Tracking: activar.**
-   Click Tracking: **dejar apagado** (reescribe los enlaces, incluido el del
-   código de invitación). «Abierto» depende de que el programa de correo cargue
-   las imágenes: hay que leerlo como «probablemente lo abrió».
+3. ~~Domains → `envios.vecitap.com` → Configuration → Open Tracking: activar.
+   Click Tracking: dejar apagado.~~ **Corregido el 02-nov:** en producción
+   quedó al revés, con **Click Tracking encendido y Open Tracking apagado**.
+   Cambiarlo exige un subdominio de seguimiento, y esa decisión queda para
+   después del piloto. Lo de que Click Tracking «reescribe el enlace del
+   código de invitación» era una precaución que nunca se probó: la redirección
+   conserva la URL completa, y además el código va escrito en el correo. Con
+   Open Tracking apagado, «Abierto» en Cortes llega solo por clic: el webhook
+   de producción incluye `email.clicked` (ver `docs/paso-produccion.md`, 6.3).
 
 **Vercel, variables (Settings → Environment Variables):**
 - `RESEND_WEBHOOK_SECRET` — **Production**: el `whsec_…` del webhook de
@@ -6089,6 +6138,14 @@ base **vecitap-produccion**, con los planes Free de Vercel y Supabase.
 - Correo: **Resend**, dominio verificado `envios.vecitap.com`, remitente
   `no-reply@envios.vecitap.com` con nombre visible "Vecitap". **Confirm email
   activado** en producción.
+  - **Nota del 02-nov:** por el contexto (va junto a «Confirm email»), este
+    remitente parece ser el del **SMTP de Supabase Auth** (confirmación de
+    cuenta, «Olvidé mi contraseña»). Los recibos y los mensajes de la cola salen de otro remitente,
+    `avisos@envios.vecitap.com` (`secretos.correo_remitente`, leído en
+    producción el 02-nov; AGENTS.md también lo dice). Qué remitente tiene hoy
+    el SMTP de Auth no se puede leer por SQL: está en Supabase →
+    Authentication → Emails → SMTP Settings → *Sender email*. **Pendiente de
+    confirmar ahí.**
 - En producción se aplican todas las migraciones del repo que falten. Las corre
   Nicolás en el SQL Editor.
 

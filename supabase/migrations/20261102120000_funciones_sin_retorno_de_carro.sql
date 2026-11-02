@@ -28,6 +28,14 @@
 -- Se aplica en producción ENTRE el archivo 13 y el 14, aunque su fecha sea
 -- posterior: es una corrección del propio paso a producción.
 --
+-- APLICADA: en vecitap-produccion el 02-nov, por Nicolás con psql (corrigió
+-- 19 funciones); en vecitap-pruebas el 02-nov, DESPUÉS, por el asistente con
+-- execute_sql (corrigió 1: aceptar_invitacion). Es una excepción a «primero
+-- pruebas», registrada en docs/estado-migracion.md. En las dos bases quedaron
+-- 0 funciones con «\r», y los atributos (prosecdef, proconfig, provolatile,
+-- proleakproof, proparallel) dan la misma huella en las dos:
+-- ce41de201b078096b4fe2a4f1ff49651.
+--
 -- Rollback: supabase/rollbacks/20261102120000_funciones_sin_retorno_de_carro_rollback.sql
 
 begin;

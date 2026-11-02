@@ -130,6 +130,37 @@ Quién corre qué, por base:
   asistente le entrega la lista de migraciones ya probadas en pruebas, en
   orden, y verifica después por lectura que quedaron aplicadas.
 
+**Cómo se aplica una migración: con `psql`, nunca pegando en el SQL
+Editor.** En las dos bases:
+
+```powershell
+$env:PGCLIENTENCODING = "UTF8"
+psql $DB -X -v ON_ERROR_STOP=1 -f supabase/migrations/AAAAMMDDHHMMSS_nombre.sql
+```
+
+Pasó el 02-nov, en el paso a producción: pegar desde VS Code en el SQL
+Editor de Supabase guarda las funciones con «\r\n». El código no cambia, pero
+sí su `md5(prosrc)`, y las guardas de las migraciones siguientes abortan. Hizo
+falta una migración de corrección,
+`20261102120000_funciones_sin_retorno_de_carro.sql`. Tres reglas salen de
+eso:
+
+1. **`psql -X -v ON_ERROR_STOP=1 -f`**, con `PGCLIENTENCODING=UTF8` (sin esa
+   variable, los acentos llegan mal y las guardas también abortan).
+   `ON_ERROR_STOP` hace que un error corte el archivo, y como cada migración
+   va entre `begin;` y `commit;`, no queda nada a medias. La única excepción
+   es el asistente en pruebas, que aplica con `execute_sql`: manda el texto
+   del archivo tal cual, sin «\r», y después comprueba que quedaron 0
+   funciones con «\r».
+2. **Los archivos van con LF.** Lo fija `.gitattributes` (`eol=lf`) aunque
+   la máquina tenga `core.autocrlf=true`. `psql` manda el archivo tal como
+   está en el disco: si tuviera CRLF, el «\r» llegaría a la base igual.
+3. **Toda verificación de `md5(prosrc)` normaliza el «\r»:**
+   `md5(replace(prosrc, chr(13), ''))`. Vale para las guardas de las
+   migraciones nuevas y para las consultas de verificación. Después de
+   aplicar, esto tiene que dar 0:
+   `select count(*) from pg_proc where pronamespace = 'public'::regnamespace and position(chr(13) in prosrc) > 0;`
+
 ### Respaldo antes de cualquier migración en producción
 
 **Respaldo primero, migración después.** Sin excepciones por "es un cambio
