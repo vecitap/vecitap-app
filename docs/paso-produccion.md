@@ -74,7 +74,7 @@ Comprobar:
 ```powershell
 Get-ChildItem $RESP -Filter "vecitap-*-$HOY.*" | Select-Object Name, @{n='KB';e={[math]::Round($_.Length/1KB,1)}}
 (pg_restore --list "$RESP\vecitap-public-$HOY.dump" | Select-String "TABLE DATA public").Count
-git -C "$env:USERPROFILE\OneDrive\Documentos\GitHub\vecitap-app" status --porcelain
+git -C "<carpeta del repo>" status --porcelain   # p. ej. "$env:USERPROFILE\Claude\vecitap-app"
 ```
 
 | Esperado | Si no |
@@ -337,7 +337,7 @@ aborto es seguro: no se aplicó nada del archivo. Hay que hacer dos cosas, una s
 UTF-8 (sin ella, los acentos de los archivos llegan mal y las guardas vuelven a abortar):
 
 ```powershell
-cd "$env:USERPROFILE\OneDrive\Documentos\GitHub\vecitap-app"
+cd "<carpeta del repo>"   # p. ej. "$env:USERPROFILE\Claude\vecitap-app"
 $env:PGCLIENTENCODING = "UTF8"
 $uri = Read-Host "URI del Session pooler (con [YOUR-PASSWORD] adentro)"
 $seg = Read-Host "Contrasena de la base" -AsSecureString

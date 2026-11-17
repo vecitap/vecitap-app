@@ -312,8 +312,12 @@ historial, solo hay que rotarla.
 - Pendientes de seguridad puntuales (por fase): ver `docs/estado-migracion.md`.
 
 ## Flujo de trabajo
-- El proyecto vive en una carpeta sincronizada con OneDrive; `node_modules/` y
-  `.next/` generan avisos de borrado masivo al recompilar (comportamiento normal)
+- El repo se clona **fuera de cualquier carpeta sincronizada** (OneDrive,
+  Dropbox, Google Drive). Con OneDrive, cada build de `.next/` y cada
+  `npm install` disparaban avisos de borrado masivo, y a veces OneDrive
+  bloqueaba archivos de `.next/server` y el build fallaba con `EPERM`. Si
+  vuelve a pasar, revisar primero que el repo no haya quedado dentro de una
+  carpeta sincronizada
 - Tras crear una carpeta nueva bajo `app/` (una ruta nueva del App Router,
   con o sin segmento dinámico), reiniciar `npm run dev` — el watcher de Next
   no siempre recoge una carpeta de ruta creada mientras el servidor ya
