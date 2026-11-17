@@ -85,6 +85,16 @@ export const DESTINOS_PAGO: [string, string][] = [
 ];
 
 /**
+ * Cambio 1 (17-nov): motivos para cambiar la tasa de un pago. Los valores son
+ * los del CHECK `pago_tasa_manual_coherente`; «otro» exige escribir el motivo.
+ */
+export const MOTIVOS_TASA: [string, string][] = [
+  ["noche_fin_de_semana", "El pago se hizo de noche o en fin de semana"],
+  ["acuerdo_propietario", "Acuerdo con el propietario"],
+  ["otro", "Otro"],
+];
+
+/**
  * Plantilla del mensaje de WhatsApp de Cortes de cuenta. admin.html:4254-4258.
  * Se guarda editada en localStorage bajo `vecitap_plantilla`, igual que el original.
  */

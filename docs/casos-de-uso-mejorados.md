@@ -2663,3 +2663,15 @@ Lo que pidió Gustavo para antes del primer envío de recibos de GRUPO ING3.
   «Solo a una unidad»). Quien tenga guardado el enlace de Cobros llega a Gastos del mes. Nada
   de lo emitido cambia y la base no cambió. El cargo que no es de condominio (recargo de
   cobranza a Administración) queda para después del piloto.
+
+### 123. La tasa del BCV se puede cambiar en un pago
+
+- **Antes:** la tasa de un pago en bolívares la ponía siempre la base, según la fecha del
+  pago. La administración no podía cambiarla.
+- **Ahora (cambio 1 del feedback de ING3, respuestas del 17-nov):** la tasa del BCV aparece
+  sola, como antes, pero la administración puede escribir otra para ese pago al registrarlo o
+  después («Cambiar tasa» en la tabla), mientras el pago no haya entrado en un cierre. El
+  motivo es obligatorio: de noche o fin de semana, acuerdo con el propietario, u «Otro» con
+  texto. Vale solo para ese pago (o toda su transferencia agrupada); la tasa del BCV del día
+  no cambia. Queda quién la cambió y cuándo, y el registro de auditoría. El residente no puede
+  proponer una tasa y no ve ninguna marca. Migración `20261117120000_tasa_editable.sql`.

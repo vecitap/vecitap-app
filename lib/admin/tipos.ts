@@ -117,6 +117,9 @@ export type PagoAdmin = Pick<
   | "periodo_cierre_id"
   | "nota"
   | "grupo_id"
+  | "tasa_manual"
+  | "tasa_motivo"
+  | "tasa_motivo_detalle"
 >;
 
 /** `bancos` activos, como los pide admin.html:3327. */

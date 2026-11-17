@@ -1578,7 +1578,12 @@ export type Database = {
           periodo_cierre_id: string | null
           referencia: string | null
           reportado_por: string | null
+          tasa_ajustada_en: string | null
+          tasa_ajustada_por: string | null
           tasa_aplicada: number | null
+          tasa_manual: boolean
+          tasa_motivo: string | null
+          tasa_motivo_detalle: string | null
           telefono_origen: string | null
           unidad_id: string
         }
@@ -1604,7 +1609,12 @@ export type Database = {
           periodo_cierre_id?: string | null
           referencia?: string | null
           reportado_por?: string | null
+          tasa_ajustada_en?: string | null
+          tasa_ajustada_por?: string | null
           tasa_aplicada?: number | null
+          tasa_manual?: boolean
+          tasa_motivo?: string | null
+          tasa_motivo_detalle?: string | null
           telefono_origen?: string | null
           unidad_id: string
         }
@@ -1630,7 +1640,12 @@ export type Database = {
           periodo_cierre_id?: string | null
           referencia?: string | null
           reportado_por?: string | null
+          tasa_ajustada_en?: string | null
+          tasa_ajustada_por?: string | null
           tasa_aplicada?: number | null
+          tasa_manual?: boolean
+          tasa_motivo?: string | null
+          tasa_motivo_detalle?: string | null
           telefono_origen?: string | null
           unidad_id?: string
         }
@@ -2437,7 +2452,6 @@ export type Database = {
       }
     }
     Functions: {
-      _entrar: { Args: { p_correo: string }; Returns: undefined }
       _usr: { Args: { p_correo: string }; Returns: string }
       abrir_periodo: {
         Args: {
@@ -2456,6 +2470,15 @@ export type Database = {
       }
       aceptar_invitacion: { Args: { p_token: string }; Returns: string }
       administra_algo: { Args: never; Returns: boolean }
+      ajustar_tasa_pago: {
+        Args: {
+          p_detalle?: string
+          p_motivo?: string
+          p_pago: string
+          p_tasa: number
+        }
+        Returns: undefined
+      }
       anular_invitacion_visita: {
         Args: { p_invitacion: string }
         Returns: undefined

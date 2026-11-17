@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Aviso, Badge, Button, Campo, Card, Input, InputFecha, Select, type TonoBadge } from "@/components/ui";
-import { bs, hoyLocalISO, montoAlSalir, nf, num, usd, formatoFecha } from "@/lib/formato";
-import { BOLSILLOS, DESTINOS_PAGO, METODOS, PIDE } from "@/lib/admin/constantes";
+import { bs, hoyLocalISO, montoAlSalir, nf, num, paraCampo, usd, formatoFecha } from "@/lib/formato";
+import { BOLSILLOS, DESTINOS_PAGO, METODOS, MOTIVOS_TASA, PIDE } from "@/lib/admin/constantes";
 import {
   detectarColumnas,
   leerPDF,
@@ -41,7 +41,16 @@ const TONO_ESTADO: Record<string, TonoBadge> = { conciliado: "neutro", anulado: 
  * `monto_usd: 0` y `tasa_aplicada` sin mandar son deliberados, igual que en
  * el original: los calcula la base con la tasa del día del pago. Mandarlos
  * desde acá sería dejar que el navegador decida cuánto vale un pago.
+ *
+ * Cambio 1 (17-nov): la excepción es la tasa ajustada. Si la administración
+ * escribe otra tasa para un pago, se manda `tasa_manual` con la tasa y el
+ * motivo; la base comprueba que quien escribe administra la organización y
+ * que la tasa es creíble, y calcula el monto_usd igual (`pago_convierte`).
+ * Para un pago ya registrado se usa `ajustar_tasa_pago`.
  */
+
+/** Diferencia de tasa por debajo de la cual se considera la misma (medio céntimo). */
+const MISMA_TASA = 0.005;
 export function Pagos({
   orgId,
   unidades,
@@ -81,6 +90,18 @@ export function Pagos({
   const [tfCargada, setTfCargada] = useState<TasaDeFecha | null>(null);
   const [huecoTasa, setHuecoTasa] = useState("");
   const [guardandoTasa, setGuardandoTasa] = useState(false);
+  // Cambio 1: `null` = la del BCV; un texto = la que escribió la administración.
+  const [tasaTxt, setTasaTxt] = useState<string | null>(null);
+  const [motivoTasa, setMotivoTasa] = useState("");
+  const [detalleTasa, setDetalleTasa] = useState("");
+  // Cambio 1: cambiar la tasa de un pago ya registrado (reportado o confirmado).
+  const [editTasa, setEditTasa] = useState<{
+    pago: PagoAdmin;
+    tasa: string;
+    motivo: string;
+    detalle: string;
+    bcv: TasaDeFecha | null;
+  } | null>(null);
 
   const [ex, setEx] = useState({ unidad: "", monto: "", motivo: "", destino: "condominio" });
   // Ronda 7 (bloque 9): una transferencia repartida entre varias unidades.
@@ -148,6 +169,90 @@ export function Pagos({
   // al cambiar la fecha, hasta que responda la base no se muestra la vieja.
   const tf = f.moneda === "VES" && tfCargada?.fecha ? tfCargada : null;
 
+  /* ── Cambio 1: tasa escrita para este pago ── */
+  const tasaEscrita = tasaTxt === null ? null : num(tasaTxt);
+  const ajustada =
+    f.moneda === "VES" &&
+    tasaTxt !== null &&
+    tasaEscrita !== null &&
+    (!tf || Math.abs(tasaEscrita - tf.tasa) >= MISMA_TASA);
+  const tasaEfectiva = ajustada ? tasaEscrita : (tf?.tasa ?? null);
+
+  /** El primer problema con la tasa del formulario, o null si se puede guardar. */
+  function errorTasa(): string | null {
+    if (f.moneda !== "VES") return null;
+    if (tasaTxt !== null && tasaTxt.trim() !== "" && (tasaEscrita === null || tasaEscrita <= 0))
+      return "La tasa no se entiende.";
+    if (!ajustada) return tf ? null : "No hay tasa del BCV para esa fecha. Cárguela abajo o escriba la tasa de este pago.";
+    if (!motivoTasa) return "Elija el motivo del cambio de tasa.";
+    if (motivoTasa === "otro" && !detalleTasa.trim()) return "Escriba el motivo del cambio de tasa.";
+    return null;
+  }
+
+  /** Lo que se suma al INSERT cuando la tasa fue ajustada. */
+  function camposTasa() {
+    if (!ajustada) return {};
+    return {
+      tasa_manual: true,
+      tasa_aplicada: tasaEscrita,
+      tasa_motivo: motivoTasa,
+      tasa_motivo_detalle: motivoTasa === "otro" ? detalleTasa.trim() : null,
+    };
+  }
+
+  function limpiarTasa() {
+    setTasaTxt(null);
+    setMotivoTasa("");
+    setDetalleTasa("");
+  }
+
+  async function abrirEditorTasa(p: PagoAdmin) {
+    const supabase = crearClienteNavegador();
+    const { data } = await supabase.rpc("tasa_de_esa_fecha", { p_fecha: p.fecha });
+    const r = Array.isArray(data) ? data[0] : data;
+    setEditTasa({
+      pago: p,
+      tasa: paraCampo(Number(p.tasa_aplicada) || 0, 2),
+      motivo: p.tasa_motivo ?? "",
+      detalle: p.tasa_motivo_detalle ?? "",
+      bcv: r && Number(r.tasa) > 0 ? ({ ...r, tasa: Number(r.tasa) } as TasaDeFecha) : null,
+    });
+  }
+
+  async function guardarTasaPago(volverAlBcv: boolean) {
+    if (!editTasa) return;
+    const { pago, bcv, motivo, detalle } = editTasa;
+    let tasa: number | null = null;
+    if (!volverAlBcv) {
+      tasa = num(editTasa.tasa);
+      if (!tasa || tasa <= 0) return notificar("La tasa no se entiende.", "error");
+      // Escribir la misma del BCV es volver a ella.
+      if (bcv && Math.abs(tasa - bcv.tasa) < MISMA_TASA) tasa = null;
+    }
+    if (tasa !== null) {
+      if (!motivo) return notificar("Elija el motivo del cambio de tasa.", "error");
+      if (motivo === "otro" && !detalle.trim()) return notificar("Escriba el motivo del cambio de tasa.", "error");
+    }
+    setOcupado(true);
+    const supabase = crearClienteNavegador();
+    const { error } = await supabase.rpc("ajustar_tasa_pago", {
+      p_pago: pago.id,
+      // El tipo generado no marca nullable los argumentos de una función, pero
+      // ajustar_tasa_pago acepta p_tasa = NULL: volver a la tasa del BCV.
+      p_tasa: tasa as number,
+      ...(tasa !== null ? { p_motivo: motivo, ...(motivo === "otro" ? { p_detalle: detalle.trim() } : {}) } : {}),
+    });
+    setOcupado(false);
+    if (error) return fallo(error);
+    const partes = pago.grupo_id ? (grupos[pago.grupo_id]?.length ?? 0) : 0;
+    notificar(
+      (tasa === null ? "El pago volvió a la tasa del BCV." : "Tasa del pago cambiada. Queda registrado quién la cambió y por qué.") +
+        (partes > 1 ? ` Se aplicó a toda la transferencia (${partes} unidades).` : "")
+    );
+    setEditTasa(null);
+    router.refresh();
+  }
+
   async function verTasa() {
     const supabase = crearClienteNavegador();
     const { data } = await supabase.rpc("tasa_de_esa_fecha", { p_fecha: f.fecha });
@@ -175,11 +280,13 @@ export function Pagos({
     if (monto === null || monto <= 0) return notificar("El monto no se entiende.", "error");
     // Ronda 5: escrita a mano, el navegador acepta una fecha futura aunque el calendario no la ofrezca.
     if (!f.fecha || f.fecha > hoyLocalISO()) return notificar("La fecha del pago no puede ser futura.", "error");
-    if (f.moneda === "VES" && !tf) return notificar("No hay tasa del BCV para esa fecha. Cárguela abajo.", "error");
+    const eTasa = errorTasa();
+    if (eTasa) return notificar(eTasa, "error");
     setOcupado(true);
     const pide = PIDE[f.metodo] ?? {};
     const supabase = crearClienteNavegador();
     const { error } = await supabase.from("pagos").insert({
+      ...camposTasa(),
       org_id: orgId,
       unidad_id: f.unidad,
       fecha: f.fecha,
@@ -198,6 +305,7 @@ export function Pagos({
     setOcupado(false);
     if (error) return fallo(error);
     setF({ ...f, monto: "", referencia: "" });
+    limpiarTasa();
     notificar("Pago registrado como reportado. Falta conciliarlo.");
     router.refresh();
   }
@@ -216,7 +324,8 @@ export function Pagos({
     if (Math.abs(suma - total) > 0.005)
       return notificar(`Las partes suman ${nf(2).format(suma)} y el total es ${nf(2).format(total)}: tienen que ser iguales.`, "error");
     if (!f.fecha || f.fecha > hoyLocalISO()) return notificar("La fecha del pago no puede ser futura.", "error");
-    if (f.moneda === "VES" && !tf) return notificar("No hay tasa del BCV para esa fecha. Cárguela abajo.", "error");
+    const eTasa = errorTasa();
+    if (eTasa) return notificar(eTasa, "error");
     setOcupado(true);
     const pide = PIDE[f.metodo] ?? {};
     const grupo = crypto.randomUUID();
@@ -224,6 +333,8 @@ export function Pagos({
     // Una sola llamada: o entran todas las partes o ninguna.
     const { error } = await supabase.from("pagos").insert(
       filas.map((x, i) => ({
+        // Una transferencia, una tasa: la misma en todas las partes.
+        ...camposTasa(),
         org_id: orgId,
         unidad_id: x.unidad,
         fecha: f.fecha,
@@ -248,6 +359,7 @@ export function Pagos({
       { unidad: "", monto: "" },
       { unidad: "", monto: "" },
     ]);
+    limpiarTasa();
     notificar(`Transferencia registrada para ${filas.length} unidades, como reportada. Falta conciliarla.`);
     router.refresh();
   }
@@ -475,6 +587,17 @@ export function Pagos({
                         {bs(p.monto)} a {nf(2).format(Number(p.tasa_aplicada) || 0)}
                       </div>
                     )}
+                    {p.tasa_manual && (
+                      <div
+                        style={{ fontSize: 11.5, color: "var(--acento-texto)", whiteSpace: "normal", maxWidth: 220 }}
+                        title={p.tasa_motivo_detalle || undefined}
+                      >
+                        tasa ajustada ·{" "}
+                        {p.tasa_motivo === "otro"
+                          ? p.tasa_motivo_detalle
+                          : (MOTIVOS_TASA.find(([k]) => k === p.tasa_motivo)?.[1] ?? p.tasa_motivo)}
+                      </div>
+                    )}
                   </td>
                   <td className="mono" data-t="Referencia">
                     {p.referencia || "—"}
@@ -536,6 +659,13 @@ export function Pagos({
                     {p.periodo_cierre_id && (
                       <span style={{ fontSize: 11.5, color: "var(--tenue)" }}>ya está dentro de un cierre</span>
                     )}
+                    {p.moneda === "VES" && p.estado !== "anulado" && !p.periodo_cierre_id && (
+                      <div style={{ marginTop: 4 }}>
+                        <Button type="button" mini variante="secundario" onClick={() => abrirEditorTasa(p)}>
+                          Cambiar tasa
+                        </Button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -548,6 +678,69 @@ export function Pagos({
           )}
         </div>
       </Card>
+
+      {editTasa && (
+        <Card style={{ borderTop: "3px solid var(--acento)" }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>
+            Cambiar la tasa del pago · {codigo(editTasa.pago.unidad_id)}
+          </h2>
+          <p style={{ margin: "3px 0 14px", fontSize: 12.5, color: "var(--tenue)", lineHeight: 1.6 }}>
+            {bs(editTasa.pago.monto)} del {formatoFecha(editTasa.pago.fecha)}.{" "}
+            {editTasa.bcv
+              ? `La tasa del BCV de esa fecha es ${nf(2).format(editTasa.bcv.tasa)}.`
+              : "No hay tasa del BCV de esa fecha."}{" "}
+            Vale solo para este pago
+            {editTasa.pago.grupo_id && (grupos[editTasa.pago.grupo_id]?.length ?? 0) > 1
+              ? " y las demás unidades de la misma transferencia"
+              : ""}
+            : la tasa del BCV de ese día no cambia.
+          </p>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+            <Campo etiqueta="Tasa del pago">
+              <Input
+                className="mono"
+                inputMode="decimal"
+                value={editTasa.tasa}
+                onChange={(e) => setEditTasa({ ...editTasa, tasa: e.target.value })}
+                onBlur={() => setEditTasa({ ...editTasa, tasa: montoAlSalir(editTasa.tasa) })}
+              />
+            </Campo>
+            <Campo etiqueta="Motivo del cambio">
+              <Select value={editTasa.motivo} onChange={(e) => setEditTasa({ ...editTasa, motivo: e.target.value })}>
+                <option value="">Elija</option>
+                {MOTIVOS_TASA.map(([k, t]) => (
+                  <option key={k} value={k}>
+                    {t}
+                  </option>
+                ))}
+              </Select>
+            </Campo>
+            {editTasa.motivo === "otro" && (
+              <Campo etiqueta="Escriba el motivo">
+                <Input value={editTasa.detalle} onChange={(e) => setEditTasa({ ...editTasa, detalle: e.target.value })} />
+              </Campo>
+            )}
+          </div>
+          {!!num(editTasa.tasa) && (
+            <p style={{ fontSize: 12.5, color: "var(--tinta-2)", marginTop: 10 }}>
+              Equivale a <b>{usd(Number(editTasa.pago.monto) / (num(editTasa.tasa) ?? 1))}</b>.
+            </p>
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+            <Button type="button" cargando={ocupado} onClick={() => guardarTasaPago(false)}>
+              Guardar la tasa
+            </Button>
+            {editTasa.pago.tasa_manual && editTasa.bcv && (
+              <Button type="button" variante="secundario" cargando={ocupado} onClick={() => guardarTasaPago(true)}>
+                Volver a la del BCV
+              </Button>
+            )}
+            <Button type="button" variante="secundario" onClick={() => setEditTasa(null)}>
+              Cancelar
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {(
@@ -647,30 +840,30 @@ export function Pagos({
             </Campo>
             {f.moneda === "VES" && (
               <Campo
-                etiqueta="Tasa del BCV de esa fecha"
+                etiqueta="Tasa del pago ✎ editable"
                 ayuda={
-                  tf && tf.propia
-                    ? tf.fuente === "dolarapi"
-                      ? "publicada ese día"
-                      : "cargada a mano"
-                    : tf
-                      ? `no hay publicación de ese día: se usa la del ${formatoFecha(tf.fecha)}`
-                      : "no hay ninguna tasa de ese día ni anterior"
+                  ajustada
+                    ? tf
+                      ? `ajustada · la del BCV es ${nf(2).format(tf.tasa)}`
+                      : "escrita a mano para este pago"
+                    : tf && tf.propia
+                      ? tf.fuente === "dolarapi"
+                        ? "la del BCV, publicada ese día"
+                        : "la del BCV, cargada a mano"
+                      : tf
+                        ? `no hay publicación de ese día: se usa la del ${formatoFecha(tf.fecha)}`
+                        : "no hay ninguna tasa de ese día ni anterior"
                 }
               >
-                <div
+                <Input
                   className="mono"
-                  style={{
-                    padding: "9px 11px",
-                    borderRadius: 8,
-                    border: "1px solid var(--linea)",
-                    background: "var(--fondo)",
-                    color: tf ? "var(--tinta)" : "var(--rojo)",
-                    fontSize: 13.5,
-                  }}
-                >
-                  {tf ? nf(2).format(tf.tasa) : "sin tasa"}
-                </div>
+                  inputMode="decimal"
+                  placeholder={tf ? undefined : "sin tasa"}
+                  value={tasaTxt ?? (tf ? paraCampo(tf.tasa, 2) : "")}
+                  onChange={(e) => setTasaTxt(e.target.value)}
+                  onBlur={() => tasaTxt !== null && setTasaTxt(tasaTxt.trim() ? montoAlSalir(tasaTxt) : null)}
+                  style={ajustada ? { borderColor: "var(--acento)" } : undefined}
+                />
               </Campo>
             )}
             <Campo etiqueta="Método">
@@ -726,15 +919,67 @@ export function Pagos({
             )}
           </div>
 
-          {f.moneda === "VES" && montoVes !== null && tf && (
+          {f.moneda === "VES" && ajustada && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "12px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--acento)",
+                background: "var(--fondo)",
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <Badge tono="ambar">Tasa ajustada{tf ? ` · BCV era ${nf(2).format(tf.tasa)}` : ""}</Badge>
+                {tf && (
+                  <Button type="button" mini variante="secundario" onClick={limpiarTasa}>
+                    Volver a la del BCV
+                  </Button>
+                )}
+              </div>
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+                <Campo etiqueta="Motivo del cambio">
+                  <Select value={motivoTasa} onChange={(e) => setMotivoTasa(e.target.value)}>
+                    <option value="">Elija</option>
+                    {MOTIVOS_TASA.map(([k, t]) => (
+                      <option key={k} value={k}>
+                        {t}
+                      </option>
+                    ))}
+                  </Select>
+                </Campo>
+                {motivoTasa === "otro" && (
+                  <Campo etiqueta="Escriba el motivo">
+                    <Input value={detalleTasa} onChange={(e) => setDetalleTasa(e.target.value)} />
+                  </Campo>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--tenue)", lineHeight: 1.55 }}>
+                Vale solo para este pago: la tasa del BCV de ese día no cambia. Queda registrado quién la
+                cambió, cuándo y por qué.
+              </div>
+            </div>
+          )}
+
+          {f.moneda === "VES" && montoVes !== null && tasaEfectiva !== null && tasaEfectiva > 0 && (
             <p style={{ fontSize: 12.5, color: "var(--tinta-2)", marginTop: 10, lineHeight: 1.6 }}>
-              Equivale a <b>{usd(montoVes / tf.tasa)}</b> a la tasa del BCV del {formatoFecha(tf.fecha)}. Vale esa
-              y no la de hoy: si el propietario transfirió el lunes y usted concilia el jueves,
-              cobrarle a tasa de jueves sería cobrarle de más.
+              Equivale a <b>{usd(montoVes / tasaEfectiva)}</b>
+              {ajustada || !tf ? (
+                " a la tasa escrita para este pago."
+              ) : (
+                <>
+                  {" "}
+                  a la tasa del BCV del {formatoFecha(tf.fecha)}. Vale esa y no la de hoy: si el
+                  propietario transfirió el lunes y usted concilia el jueves, cobrarle a tasa de jueves
+                  sería cobrarle de más.
+                </>
+              )}
             </p>
           )}
 
-          {f.moneda === "VES" && (!tf || !tf.propia) && (
+          {f.moneda === "VES" && !ajustada && (!tf || !tf.propia) && (
             <div
               style={{
                 marginTop: 12,

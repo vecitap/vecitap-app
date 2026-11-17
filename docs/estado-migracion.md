@@ -16,6 +16,44 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Cambio 1 del feedback de ING3 (17-nov) — tasa del BCV editable — APLICADA EN PRUEBAS
+
+En `dev`, **sin commit**. Respuestas de las preguntas 1.1 a 1.7 en la carpeta
+de gestión (no en este repo). Caso de uso mejorado n.º 123.
+
+- **Base:** `20261117120000_tasa_editable.sql` y su rollback. **Aplicada en vecitap-pruebas
+  el 17-nov** (Nicolás, con psql; la herramienta de SQL del asistente rechazó la escritura).
+  **Sin aplicar en producción.**
+  Columnas `tasa_manual`, `tasa_motivo`, `tasa_motivo_detalle`, `tasa_ajustada_por`,
+  `tasa_ajustada_en`; `pago_convierte()` respeta la tasa enviada solo si quien escribe
+  administra la organización, con la regla de credibilidad de `completar_tasa`, y no deja
+  cambiarla si el pago ya está en un cierre; `pagos_grupo_al_insertar()` exige una sola tasa
+  por transferencia; RPC nueva `ajustar_tasa_pago` (INVOKER) para un pago ya registrado.
+  El rollback aborta si hay pagos con la tasa ajustada.
+- **Pantalla:** `components/admin/Pagos.tsx` (campo de tasa editable al registrar, con
+  motivo; botón «Cambiar tasa» en pagos en Bs no anulados y fuera de cierre).
+  `types/supabase.ts` regenerado desde pruebas el 17-nov (además de las columnas y la RPC,
+  sale `_entrar`, borrada el 02-nov). El tipo generado no marca `p_tasa` como nullable:
+  `Pagos.tsx` lo pasa con `as number`, porque `null` = volver a la del BCV.
+- **Probado (17-nov) en un Postgres 18 local**, con las tablas y funciones mínimas copiadas de
+  `esquema_inicial.sql` (sin RLS ni Supabase): la migración, los casos a–i, la guarda del
+  rollback (aborta con pagos ajustados), el rollback (deja los md5 originales) y volver a
+  aplicar. Build, lint y tsc en verde.
+- **Probado (17-nov) en vecitap-pruebas:** la verificación del archivo (6 columnas, CHECK,
+  0 pagos marcados, permisos anon f / authenticated t, 0 funciones con «\r», disparador con las
+  columnas nuevas) y los casos a–i en OK, en Administradora Baja / Torre Ida con
+  `admin.prueba` y `residente.prueba`, dentro de un bloque deshecho (no quedó nada escrito).
+  En el caso b el error lo da el disparador («Escriba el motivo…»), antes que el CHECK.
+  Build, lint y tsc en verde con los tipos regenerados.
+- **Pantalla probada (17-nov)** contra `next start` y pruebas, como administrador en
+  Administración Integral Los Samanes / Residencias El Ávila: registrar con tasa ajustada
+  (motivo obligatorio, «otro» con texto), «Cambiar tasa» y «Volver a la del BCV» en un pago
+  reportado, transferencia agrupada con una sola tasa (cambia el grupo entero), y el botón
+  ausente en pagos dentro de un cierre, anulados o en dólares. Sin errores de consola ni
+  correos encolados. No se concilió desde la pantalla (puede mandar un recibo por correo).
+  Pendiente de ver con Gustavo: el editor «Cambiar la tasa» se abre debajo de la tabla.
+- **Falta:** Preview para Gustavo; respaldo y producción.
+
 ## Paso a producción del tramo 2 (02-nov) — cerrado, con el paso 8 abierto
 
 Lo aplicó Nicolás en vecitap-produccion siguiendo
