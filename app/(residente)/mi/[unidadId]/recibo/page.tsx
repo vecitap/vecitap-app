@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { Recibo } from "@/components/residente/Recibo";
 import { ultimoReciboDe } from "@/lib/residente/recibo";
 import { ajustesCobroDe } from "@/lib/cobro";
+import { soloEstado } from "@/lib/residente/cuotas";
+import { DeudaPorMes } from "@/components/DeudaPorMes";
 
 /**
  * "Mi recibo". La carga vive en lib/residente/recibo.ts porque la comparte
@@ -20,5 +22,13 @@ export default async function PaginaRecibo({
   if (!r.unidad) notFound();
 
   const { soloUsd } = await ajustesCobroDe(r.unidad.org_id);
-  return <Recibo unidad={r.unidad} recibo={r.recibo} falla={r.falla} soloUsd={soloUsd} hoy={r.hoy} />;
+  // Cambio 2 (ING3): el detalle por mes, solo si quien mira ve el saldo (el
+  // propietario de una unidad que paga el inquilino ve solo el estado).
+  const conDetalle = r.recibo !== null && r.unidad.saldo !== null && !soloEstado(r.unidad);
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <Recibo unidad={r.unidad} recibo={r.recibo} falla={r.falla} soloUsd={soloUsd} hoy={r.hoy} />
+      {conDetalle && <DeudaPorMes unidadId={unidadId} enTarjeta />}
+    </div>
+  );
 }

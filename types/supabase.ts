@@ -1856,6 +1856,7 @@ export type Database = {
           conceptos: Json
           cuota: number
           detalle: Json
+          deuda_meses: Json | null
           directos: number
           emitido_en: string
           honorario: number
@@ -1881,6 +1882,7 @@ export type Database = {
           conceptos?: Json
           cuota?: number
           detalle?: Json
+          deuda_meses?: Json | null
           directos?: number
           emitido_en?: string
           honorario?: number
@@ -1906,6 +1908,7 @@ export type Database = {
           conceptos?: Json
           cuota?: number
           detalle?: Json
+          deuda_meses?: Json | null
           directos?: number
           emitido_en?: string
           honorario?: number
@@ -2666,6 +2669,33 @@ export type Database = {
           nombre: string
         }[]
       }
+      deuda_meses_json: { Args: { p_unidad: string }; Returns: Json }
+      deuda_partidas: {
+        Args: { p_unidad: string }
+        Returns: {
+          anio: number
+          destino: string
+          etiqueta: string
+          falta: number
+          mes: number
+          monto: number
+          prioridad: number
+          tipo: string
+        }[]
+      }
+      deuda_por_mes: {
+        Args: { p_unidad: string }
+        Returns: {
+          abonado: number
+          anio: number
+          destino: string
+          etiqueta: string
+          falta: number
+          mes: number
+          monto: number
+          tipo: string
+        }[]
+      }
       deuda_por_orden: {
         Args: { p_hasta?: string; p_unidad: string }
         Returns: {
@@ -3205,6 +3235,7 @@ export type Database = {
         Args: { p_encolado: string; p_mensaje: boolean }
         Returns: number
       }
+      puede_ver_saldo: { Args: { p_unidad: string }; Returns: boolean }
       reabrir_periodo: {
         Args: { p_confirmar?: boolean; p_periodo: string }
         Returns: undefined
@@ -3234,6 +3265,15 @@ export type Database = {
         Returns: number
       }
       reenviar_recibo: { Args: { p_recibo: string }; Returns: number }
+      repartir_pago: {
+        Args: { p_destino?: string; p_monto: number; p_unidades: string[] }
+        Returns: {
+          codigo: string
+          detalle: Json
+          monto: number
+          unidad_id: string
+        }[]
+      }
       registrar_evento_correo: {
         Args: {
           p_clave: string

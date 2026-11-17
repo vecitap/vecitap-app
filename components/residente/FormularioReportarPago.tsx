@@ -16,6 +16,7 @@ import {
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { Database } from "@/types/supabase";
 import { mensajeDeError } from "@/lib/errores";
+import { repartirTransferencia, textoCubre } from "@/lib/reparto";
 import { useSubirAlAviso } from "@/hooks/useSubirAlAviso";
 
 type Banco = Pick<Database["public"]["Tables"]["bancos"]["Row"], "codigo" | "nombre" | "corto">;
@@ -153,6 +154,40 @@ export function FormularioReportarPago({
   const parteDe = (u: { unidad_id: string; saldo: number | null }) => partes[u.unidad_id] ?? paraCampo(propuesta(u.saldo));
   const elegidas = unidadesGrupo.filter(marcada);
   const sumaPartes = elegidas.reduce((s, u) => s + (num(parteDe(u)) ?? 0), 0);
+  // Cambio 2: lo que propuso «Repartir automáticamente», por unidad. La línea
+  // «Cubre …» se muestra mientras el monto siga siendo el propuesto.
+  const [cubre, setCubre] = useState<Record<string, { monto: string; texto: string }>>({});
+  const [repartiendo, setRepartiendo] = useState(false);
+
+  /** Cambio 2: reparte el monto de la transferencia entre las unidades marcadas, por antigüedad entre todas. */
+  async function repartirAuto() {
+    const total = num(f.monto);
+    const quitarError = (prev: Record<string, string>) => {
+      const resto = { ...prev };
+      delete resto.grupo;
+      return resto;
+    };
+    if (total === null || total <= 0)
+      return setErrores((prev) => ({ ...prev, grupo: "Escriba primero el monto de la transferencia." }));
+    if (elegidas.length < 2) return setErrores((prev) => ({ ...prev, grupo: "Marque al menos dos unidades para repartir." }));
+    if (f.moneda === "VES" && !tasa)
+      return setErrores((prev) => ({ ...prev, grupo: "Todavía no hay tasa del Banco Central para ese día." }));
+    setRepartiendo(true);
+    const r = await repartirTransferencia(crearClienteNavegador(), {
+      unidades: elegidas.map((u) => u.unidad_id),
+      total,
+      moneda: f.moneda,
+      tasa: tasa?.tasa ?? null,
+      destino: reparto ? f.destino : "condominio",
+    });
+    setRepartiendo(false);
+    if ("error" in r) return setErrores((prev) => ({ ...prev, grupo: mensajeDeError(r.error) }));
+    setErrores(quitarError);
+    setPartes((prev) => ({ ...prev, ...Object.fromEntries(r.partes.map((x) => [x.unidad_id, x.monto > 0.005 ? paraCampo(x.monto) : ""])) }));
+    // Una unidad a la que no le toca nada queda sin marcar.
+    setMarcadas((prev) => ({ ...prev, ...Object.fromEntries(r.partes.map((x) => [x.unidad_id, x.monto > 0.005])) }));
+    setCubre(Object.fromEntries(r.partes.filter((x) => x.monto > 0.005).map((x) => [x.unidad_id, { monto: paraCampo(x.monto), texto: textoCubre(x.detalle) }])));
+  }
 
   // Lo exacto a transferir para quedar al día (ronda 4, caso 54): la deuda de
   // esta unidad por la tasa de la FECHA DEL PAGO, la misma con la que la base
@@ -243,7 +278,7 @@ export function FormularioReportarPago({
       if (elegidas.length < 2) errs.grupo = "Marque al menos dos unidades, o quite «paga varias de mis unidades».";
       else if (elegidas.some((u) => !((num(parteDe(u)) ?? 0) > 0))) errs.grupo = "Cada unidad marcada necesita su monto.";
       else if (monto !== null && Math.abs(sumaPartes - monto) > 0.005)
-        errs.grupo = `Lo que reparte suma ${nf(2).format(sumaPartes)} y la transferencia es de ${nf(2).format(monto)}: tienen que ser iguales.`;
+        errs.grupo = `Lo que reparte suma ${nf(2).format(sumaPartes)} y la transferencia es de ${nf(2).format(monto)}: tienen que ser iguales. Puede usar «Repartir automáticamente».`;
     }
     return errs;
   }
@@ -503,7 +538,8 @@ export function FormularioReportarPago({
               <span>
                 <b>Esta transferencia paga varias de mis unidades</b>
                 <span style={{ display: "block", fontSize: 12.5, color: "var(--tinta-2)" }}>
-                  Reparta el total entre sus unidades. Se propone lo que debe cada una; puede cambiarlo.
+                  Reparta el total entre sus unidades. Se propone lo que debe cada una; puede cambiarlo o repartirlo
+                  automáticamente.
                 </span>
               </span>
             </label>
@@ -526,16 +562,26 @@ export function FormularioReportarPago({
                       style={{ flex: "1 1 120px", width: "auto" }}
                       aria-label={`Monto para ${u.codigo}`}
                     />
+                    {marcada(u) && cubre[u.unidad_id] && cubre[u.unidad_id].monto === parteDe(u) && (
+                      <span style={{ flexBasis: "100%", fontSize: 12, color: "var(--tinta-2)" }}>{cubre[u.unidad_id].texto}</span>
+                    )}
                   </div>
                 ))}
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
                   <span>
                     Suma: <b className="mono">{f.moneda === "VES" ? bs(sumaPartes) : usd(sumaPartes)}</b>
                   </span>
+                  <Button type="button" mini variante="secundario" disabled={repartiendo} onClick={repartirAuto}>
+                    Repartir automáticamente
+                  </Button>
                   <Button type="button" mini variante="secundario" onClick={() => setF({ ...f, monto: paraCampo(sumaPartes) })}>
                     Usar la suma como monto
                   </Button>
                 </div>
+                <span style={{ fontSize: 12, color: "var(--tenue)" }}>
+                  «Repartir automáticamente» toma el monto de la transferencia y paga primero lo más antiguo de todas las
+                  unidades marcadas.
+                </span>
                 {errores.grupo && <p className="campo-error" style={{ margin: 0 }}>{errores.grupo}</p>}
               </div>
             )}

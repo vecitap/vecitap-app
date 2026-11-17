@@ -6,8 +6,9 @@ import { bs, formatoFecha, nf, usd } from "@/lib/formato";
 import { favorQueQueda, lineasDeCargos, tieneMulta } from "@/lib/recibo-papel";
 import { bolivaresExactos } from "@/lib/residente/monto-exacto";
 import type { RegistroRecibo } from "@/lib/residente/tipos";
+import { leerDeudaMeses, lineaMesPendiente } from "@/lib/reparto";
 import type { APagarHoy } from "@/lib/residente/a-pagar";
-import type { Database } from "@/types/supabase";
+import type { Database, Json } from "@/types/supabase";
 
 type Unidad = Database["public"]["Functions"]["mis_unidades"]["Returns"][number];
 
@@ -146,6 +147,13 @@ export function Recibo({
       {recibo.conceptos.map((l) => fila(l.nombre, l.monto))}
       {lineasDeCargos(recibo).map((l, i) => fila(l.etiqueta, l.monto, false, `cargo-${i}`))}
       {Number(recibo.anterior) > 0 && fila("Saldo del mes anterior", recibo.anterior)}
+      {/* Cambio 2 (ING3): de qué meses es ese saldo, como quedó al cerrar. */}
+      {Number(recibo.anterior) > 0 &&
+        (leerDeudaMeses(recibo.deuda_meses as Json) ?? []).map((x) => (
+          <div key={`${x.anio ?? "a"}-${x.mes ?? ""}`} style={{ fontSize: 12.5, color: "var(--tinta-2)", padding: "4px 0 4px 10px" }}>
+            {lineaMesPendiente(x)}
+          </div>
+        ))}
       {Number(recibo.a_favor) > 0 && fila("A su favor", -recibo.a_favor)}
       {Number(recibo.mora) > 0 && fila("Intereses de mora", recibo.mora)}
       {Number(recibo.mora) > 0 && tieneMulta(recibo) && (

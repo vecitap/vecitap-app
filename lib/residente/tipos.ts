@@ -47,6 +47,8 @@ export type RegistroRecibo = {
   conceptos: ConceptoRecibo[];
   cargos: CargoRecibo[];
   detalle: CategoriaRecibo[];
+  /** Cambio 2 (ING3): lo pendiente de los meses anteriores al cerrar. null en recibos anteriores. */
+  deuda_meses?: unknown;
   tasa_bcv: number;
   vence_el: string | null;
   alicuota: number;

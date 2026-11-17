@@ -150,6 +150,7 @@ export type ReciboAdmin = Pick<
   | "conceptos"
   | "cargos"
   | "detalle"
+  | "deuda_meses"
   | "tasa_bcv"
   | "vence_el"
   | "alicuota"

@@ -2675,3 +2675,32 @@ Lo que pidió Gustavo para antes del primer envío de recibos de GRUPO ING3.
   texto. Vale solo para ese pago (o toda su transferencia agrupada); la tasa del BCV del día
   no cambia. Queda quién la cambió y cuándo, y el registro de auditoría. El residente no puede
   proponer una tasa y no ve ninguna marca. Migración `20261117120000_tasa_editable.sql`.
+
+### 124. Pagos parciales: reparto automático entre unidades y detalle por mes
+
+- **Antes:** la deuda de cada unidad era un saldo total. No se veía qué meses estaban pagados
+  y cuál a medias. Una transferencia para varias unidades había que repartirla a mano: en
+  Administración no se proponía nada, y al residente se le proponía lo que debía cada unidad
+  completa (con 2 oficinas de $ 150 y una transferencia de $ 230, le proponía $ 300 y no lo
+  dejaba enviar hasta corregirlo).
+- **Ahora (cambio 2 del feedback de ING3, respuestas del 17-nov):**
+  - **«Repartir automáticamente»** en Pagos (transferencia para varias unidades) y en
+    «Reportar un pago» del residente: se escribe el total y el sistema lo reparte por
+    antigüedad entre todas las unidades. Primero la mora, después las cuotas
+    extraordinarias, después las cuotas y cargos del mes más antiguo al más reciente, y al
+    final las multas. Si dos unidades deben el mismo mes, va primero la de código menor. Lo
+    que sobra se reparte en partes iguales. Debajo de cada unidad dice qué cubre («Cubre jul
+    y ago · sep $ 30,00 de $ 50,00»). Los montos se pueden cambiar antes de guardar, y
+    escribirlos a mano sigue funcionando igual. El reparto se hace dentro de la cuenta del
+    pago (condominio, administración o servicio).
+  - **Detalle por mes** en la ficha de la unidad y en «Mi recibo» del residente: cada mes con
+    su cuota, lo abonado, lo que falta y si está pagado, en parte o pendiente.
+  - **El recibo** (portal y papel) dice, debajo de «Saldo del mes anterior», de qué meses es
+    ese saldo (la cuenta de condominio, la misma de ese renglón): «Septiembre 2026: abonado
+    $ 30,00, falta $ 20,00». Lo guarda el cierre, así
+    que solo aparece en los recibos cerrados desde este cambio. El correo no lo lleva: no
+    tiene desglose y manda al portal.
+  - **Ningún monto cambia.** El saldo, la mora y el cierre siguen igual. La prioridad de las
+    cuotas extraordinarias solo cambia qué mes figura pagado, porque la mora se calcula
+    igual sobre una cuota ordinaria que sobre una extraordinaria.
+  - Migraciones `20261117130000_deuda_por_mes.sql` y `20261117140000_deuda_meses_solo_condominio.sql`.

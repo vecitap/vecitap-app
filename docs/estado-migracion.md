@@ -16,6 +16,59 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Cambio 2 del feedback de ING3 (17-nov) — pagos parciales con varias unidades — APLICADA EN PRUEBAS
+
+En `dev`, **sin commit**. Respuestas 2.1 a 2.8 (y «Por confirmar», con sus valores por omisión)
+en la carpeta de gestión. Caso de uso mejorado n.º 124. No hubo un caso concreto en ING3 (2.1).
+
+- **Caso de prueba (persistente) en vecitap-pruebas:** Administradora Baja, edificio «Cambio 2 ·
+  prueba» (`00ab5b91-…`), oficinas 101 y 102 de $ 50/mes, julio a septiembre de 2026 cerrados
+  con `cerrar_periodo()`, octubre abierto, $ 150 cada una. `residente.prueba` es propietario
+  de las dos. Baja tiene la suscripción `cancelada` (no se reactiva): para abrir y cerrar meses
+  se puso `activa` dentro de la misma transacción y se devolvió a `cancelada` con su
+  `actualizada_en` (quedan las filas de auditoría). Un pago de prueba de 130/100
+  (`C2-PRUEBA-230`) quedó **anulado**.
+- **Lo que hacía el sistema** con $ 230: cualquier reparto daba el saldo correcto (115/115 →
+  $ 35 y $ 35; 150/80 → $ 0 y $ 70; 130/100 → $ 20 y $ 50), pero sin detalle por mes. En
+  Administración no se proponía nada, y al residente se le proponía $ 150 + $ 150.
+- **Base:** `20261117130000_deuda_por_mes.sql` y su rollback. **Aplicada en vecitap-pruebas el
+  17-nov** (Nicolás, con psql). Funciones nuevas: `deuda_partidas` (interna), `puede_ver_saldo`
+  (interna), `deuda_por_mes` y `repartir_pago` (RPC para authenticated, SECURITY DEFINER, con
+  la regla de acceso de `saldo_unidad()`) y `deuda_meses_json` (interna). Columna
+  `recibos.deuda_meses`, que llena `cerrar_periodo()` (md5 `cf6653ad…` → `d71adcb4…`).
+  `simular_cierre` y `deuda_por_orden` no cambian. **Sin aplicar en producción.**
+  **`puede_ver_saldo` es nueva en la familia de funciones de autorización:** revisión cuidadosa.
+- **Corrección de la revisión (17-nov):** `20261117140000_deuda_meses_solo_condominio.sql` y su
+  rollback, **aplicada en vecitap-pruebas el 17-nov** (Nicolás, con psql; verificación OK).
+  `deuda_meses_json` sumaba las tres cuentas, pero el recibo pone el detalle debajo de
+  «Saldo del mes anterior», que es solo condominio: con honorarios atrasados no cuadraba. Ahora
+  solo condominio (md5 `24e6b465…` → `e2f43f67…`). En pruebas, antes de aplicarla, en todas las
+  unidades lo pendiente suma exactamente el saldo de condominio (0 descuadres), y la ida y la
+  vuelta dan los md5 esperados. Va en el mismo paso a producción, después de `20261117130000`.
+  En la misma revisión, el texto «Cubre…» agrupa por tipo («Cubre mora de may · cuota
+  extraordinaria de nov, dic y ene · oct»).
+- **Guía de pruebas para Gustavo:** ronda 14, en la carpeta de gestión, sobre el Edificio
+  Gustavo (01A y 01B para el reparto, 08D y 02C para el detalle, +propietario con 02A y 02C).
+- **Probado en pruebas:** casos del reparto (230 → 130/100; 330 → 165/165; 300,01 → 150,01/150;
+  20 → todo a 101), accesos (vigilante y unidad ajena «Sin acceso», anon y las internas sin
+  permiso, dos edificios rechazado), pago de 130/100 → septiembre de 101 50/30/20, cierre de
+  octubre con `deuda_meses`, huella de `simular_cierre` igual, y en las 182 unidades de pruebas
+  lo pendiente por mes suma exactamente el saldo de cada cuenta. El rollback se probó en la
+  parte de `cerrar_periodo()` (vuelve a `cf6653ad…`). Los `drop` no se probaron, porque la
+  herramienta de SQL los rechaza.
+- **Pantallas:** `lib/reparto.ts` (lo común), `components/DeudaPorMes.tsx`, `Pagos.tsx`,
+  `FormularioReportarPago.tsx`, `Ficha.tsx`, la página «Mi recibo», `Recibo.tsx` y
+  `lib/recibo-papel.ts` (portal, papel del residente y papel de Cortes). `types/supabase.ts`
+  editado a mano con las funciones y la columna nuevas.
+- **Probado contra `next start` y pruebas:** reparto en Pagos, en dólares y en bolívares (las
+  partes suman exacto el total), ficha de la 101, «Mi recibo» y «Reportar un pago» del
+  residente, y el bloque del recibo en el portal y en el papel (con un `deuda_meses` puesto a
+  mano y vuelto a null). Build, lint y tsc en verde. Con el panel del navegador oculto, las
+  páginas que llegan por partes no terminan de mostrarse hasta forzar un cuadro: es del
+  entorno de prueba, no de la app.
+- **Falta:** el bloque del recibo con un cierre real desde la pantalla, Preview para Gustavo,
+  y respaldo y producción (después del cambio 1).
+
 ## Cambio 1 del feedback de ING3 (17-nov) — tasa del BCV editable — APLICADA EN PRUEBAS
 
 En `dev`, **sin commit**. Respuestas de las preguntas 1.1 a 1.7 en la carpeta

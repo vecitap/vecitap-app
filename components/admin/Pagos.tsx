@@ -18,6 +18,7 @@ import { cruzarConBanco } from "@/lib/admin/conciliacion";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { BancoFila, ComprobanteFila, PagoAdmin } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
+import { repartirTransferencia, textoCubre } from "@/lib/reparto";
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
 type Pestana = "registrar" | "conciliar" | "exonerar";
@@ -110,6 +111,9 @@ export function Pagos({
     { unidad: "", monto: "" },
     { unidad: "", monto: "" },
   ]);
+  // Cambio 2: lo que propuso «Repartir automáticamente», por unidad. La línea
+  // «Cubre …» se muestra solo mientras el monto siga siendo el propuesto.
+  const [cubre, setCubre] = useState<Record<string, { monto: string; texto: string }>>({});
 
   const [viendo, setViendo] = useState<{ url: string; tipo: string; pago: PagoAdmin; ficha: ComprobanteFila } | null>(null);
   const [purga, setPurga] = useState<number | null>(null);
@@ -310,6 +314,43 @@ export function Pagos({
     router.refresh();
   }
 
+  /**
+   * Cambio 2: reparte el total entre las unidades elegidas por antigüedad
+   * entre todas (la regla del cierre; la cuenta la hace la base). Se puede
+   * retocar antes de guardar.
+   */
+  async function repartirAuto() {
+    const total = num(f.monto);
+    if (total === null || total <= 0) return notificar("Escriba primero el total de la transferencia.", "error");
+    const ids = [...new Set(partes.map((x) => x.unidad).filter(Boolean))];
+    if (ids.length < 2) return notificar("Elija al menos dos unidades para repartir.", "error");
+    if (f.moneda === "VES" && !tasaEfectiva) return notificar("Falta la tasa del día del pago para repartir en bolívares.", "error");
+    setOcupado(true);
+    const r = await repartirTransferencia(crearClienteNavegador(), {
+      unidades: ids,
+      total,
+      moneda: f.moneda,
+      tasa: tasaEfectiva,
+      destino: f.destino,
+    });
+    setOcupado(false);
+    if ("error" in r) return fallo(r.error);
+    const conMonto = r.partes.filter((x) => x.monto > 0.005);
+    const sinMonto = r.partes.filter((x) => x.monto <= 0.005);
+    const nuevas = conMonto.map((x) => ({ unidad: x.unidad_id, monto: paraCampo(x.monto) }));
+    while (nuevas.length < 2) nuevas.push({ unidad: "", monto: "" });
+    setPartes(nuevas);
+    setCubre(Object.fromEntries(conMonto.map((x) => [x.unidad_id, { monto: paraCampo(x.monto), texto: textoCubre(x.detalle) }])));
+    if (conMonto.length < 2)
+      notificar(
+        `Toda la transferencia va a ${conMonto[0]?.codigo ?? "una unidad"}: regístrela como el pago de una sola unidad.`,
+        "error"
+      );
+    else if (sinMonto.length)
+      notificar(`Repartido por antigüedad. ${sinMonto.map((x) => x.codigo).join(", ")} no recibe nada: el total no alcanza.`);
+    else notificar("Repartido por antigüedad. Puede cambiar los montos antes de registrar.");
+  }
+
   /** Ronda 7 (bloque 9): una transferencia para varias unidades; la suma de las partes es el total. */
   async function registrarAgrupado() {
     const total = num(f.monto);
@@ -359,6 +400,7 @@ export function Pagos({
       { unidad: "", monto: "" },
       { unidad: "", monto: "" },
     ]);
+    setCubre({});
     limpiarTasa();
     notificar(`Transferencia registrada para ${filas.length} unidades, como reportada. Falta conciliarla.`);
     router.refresh();
@@ -800,11 +842,17 @@ export function Pagos({
                         Quitar
                       </Button>
                     )}
+                    {x.unidad && cubre[x.unidad] && cubre[x.unidad].monto === x.monto && (
+                      <span style={{ flexBasis: "100%", fontSize: 12, color: "var(--tinta-2)" }}>{cubre[x.unidad].texto}</span>
+                    )}
                   </div>
                 ))}
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
                   <Button type="button" mini variante="secundario" onClick={() => setPartes([...partes, { unidad: "", monto: "" }])}>
                     + Otra unidad
+                  </Button>
+                  <Button type="button" mini variante="secundario" disabled={ocupado} onClick={repartirAuto}>
+                    Repartir automáticamente
                   </Button>
                   <span style={{ color: "var(--tinta-2)" }}>
                     Suma de las partes: <b className="mono">{nf(2).format(sumaPartes)}</b>

@@ -10,6 +10,7 @@ import { imprimirEstado } from "@/lib/admin/imprimir-estado";
 import type { Database } from "@/types/supabase";
 import type { OrganizacionAdmin, SaldoActual, UnidadConPaga } from "@/lib/admin/tipos";
 import { DatosUnidad } from "./DatosUnidad";
+import { DeudaPorMes } from "@/components/DeudaPorMes";
 
 type FilaHistorial = Database["public"]["Functions"]["historial_unidad"]["Returns"][number];
 type PagoPendiente = Pick<Database["public"]["Tables"]["pagos"]["Row"], "id" | "fecha" | "monto_usd" | "metodo" | "referencia" | "destino">;
@@ -126,6 +127,8 @@ export function Ficha({
               </p>
             </div>
           )}
+
+          <DeudaPorMes unidadId={unidad.id} />
 
           <div className="tabla-scroll">
             <table className="tabla">

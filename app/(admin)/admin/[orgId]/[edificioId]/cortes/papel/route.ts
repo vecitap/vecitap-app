@@ -51,7 +51,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
   let consultaRecibos = supabase
     .from("recibos")
     .select(
-      "id,unidad_id,numero,cuota,directos,anterior,a_favor,mora,honorario,servicio,anterior_hon,anterior_serv,total,conceptos,cargos,detalle,tasa_bcv,vence_el,alicuota"
+      "id,unidad_id,numero,cuota,directos,anterior,a_favor,mora,honorario,servicio,anterior_hon,anterior_serv,total,conceptos,cargos,detalle,deuda_meses,tasa_bcv,vence_el,alicuota"
     )
     .eq("periodo_id", periodoId);
   if (unidadId) consultaRecibos = consultaRecibos.eq("unidad_id", unidadId);

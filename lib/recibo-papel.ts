@@ -2,6 +2,8 @@ import { nf, usd } from "@/lib/formato";
 import { urlParaCompartir } from "@/lib/url-sitio";
 import { datosPagoEnPapel, repartoRecibo, type CuentaPago } from "@/lib/datos-pago";
 import type { CargoRecibo, CategoriaRecibo, ConceptoRecibo } from "@/lib/residente/tipos";
+import { leerDeudaMeses, lineaMesPendiente } from "@/lib/reparto";
+import type { Json } from "@/types/supabase";
 
 /**
  * Recibo en papel · UNA sola plantilla para Admin y para el portal del
@@ -49,6 +51,8 @@ export type ReciboPapel = {
   /** Ronda 10 (C): los cargos a esta unidad, con su motivo. */
   cargos?: CargoRecibo[] | unknown;
   detalle?: CategoriaRecibo[] | unknown;
+  /** Cambio 2 (ING3): lo que quedó pendiente de cada mes anterior (`recibos.deuda_meses`). */
+  deuda_meses?: unknown;
 };
 
 /**
@@ -141,6 +145,10 @@ export function reciboEnPapel(d: DatosPapelRecibo): string {
     ...con.map((l) => linea(l.nombre, l.monto)),
     ...lineasDeCargos(r).map((l) => linea(l.etiqueta, l.monto)),
     Number(r.anterior) > 0 ? linea("Saldo del mes anterior", Number(r.anterior)) : "",
+    // Cambio 2 (ING3): de qué meses es ese saldo, congelado al cerrar.
+    ...(Number(r.anterior) > 0 ? (leerDeudaMeses(r.deuda_meses as Json) ?? []) : []).map(
+      (x) => `<tr><td colspan="2" style="font-size:7.4pt;color:#64748B;padding-top:0">${esc(lineaMesPendiente(x))}</td></tr>`
+    ),
     Number(r.a_favor) > 0 ? linea("A su favor", -Number(r.a_favor)) : "",
     Number(r.mora) > 0 ? linea("Intereses de mora", Number(r.mora)) : "",
     Number(r.mora) > 0 && tieneMulta(r)
