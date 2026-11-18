@@ -3400,9 +3400,9 @@ verificación dentro del propio archivo.
 
 ### Decisiones abiertas, sin código escrito
 
-- **Región de las funciones de Vercel** (propuesta 2 de "Lentitud de la
-  interfaz"): mirar Settings → Functions → Function Region y anotarlo. No toca
-  código y puede valer más que todo el resto junto.
+- ~~**Región de las funciones de Vercel**~~ — **CERRADA el 18-nov:** Nicolás
+  confirmó en el dashboard que es `iad1` (Washington), junto a Supabase en
+  East US. No hay que cambiar nada.
 - **`experimental.staleTimes.dynamic`** (propuesta 4): sin aprobar. Contrapartida
   de datos algo viejos en una app de contabilidad.
 - ~~**Segunda ronda de zona horaria**~~ — **CERRADA el 29-sep.** La migración
@@ -4508,7 +4508,7 @@ seis propuestas:
 | # | Propuesta | Estado |
 |---|---|---|
 | 1 | `loading.tsx` | ✅ aplicada (3 rutas aprobadas + `pagos` y `cortes`) |
-| 2 | Región de Vercel | ⏳ **pendiente de Nicolás** — mirar el dashboard, no toca código |
+| 2 | Región de Vercel | ✅ **confirmada el 18-nov: `iad1`**, junto a Supabase (East US). Nada que cambiar |
 | 3 | Paralelizar lo independiente | ✅ aplicada (`[orgId]/layout`, `[edificioId]/layout`, `recibo/page`) |
 | 4 | `experimental.staleTimes.dynamic` | ⏸ sin tocar, necesita aprobación |
 | 5 | Dedup `getUser()`/`tiene_rol` | ✅ corregida (tenía un error de análisis) y aplicada su mitad viable, con `cache()` |
@@ -4662,8 +4662,9 @@ Supabase en **East US**. Si la región de Vercel es `iad1` (Washington, el
 default histórico de Vercel para proyectos nuevos) están prácticamente
 pegados y cada viaje cuesta pocos milisegundos; si quedó en otra región, cada
 uno de esos 9 cruza el continente o el Atlántico y ahí sí se explica sola la
-lentitud. **Pendiente para Nicolás: mirar ese valor en el dashboard y
-anotarlo acá.** El `proxy.ts` es aparte: el `matcher` de Next 16 lo corre en
+lentitud. **Confirmado el 18-nov: `iad1`** (captura del dashboard de Nicolás,
+plan Hobby, una sola región). Los viajes a Supabase se pagan dentro de la misma
+zona; lo que queda de lentitud es el tramo del usuario hasta Vercel. El `proxy.ts` es aparte: el `matcher` de Next 16 lo corre en
 la red de Vercel, no necesariamente en la región de las funciones.
 
 ### Propuestas, por impacto sobre esfuerzo
