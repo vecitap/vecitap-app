@@ -7,6 +7,7 @@ import type { FilasMes } from "@/lib/admin/pantallas/mes";
 import type { FilasCortes } from "@/lib/admin/pantallas/cortes";
 import type { GastoAdmin, OrganizacionAdmin, ReciboAdmin, TasaViva } from "@/lib/admin/tipos";
 import type { Cosa } from "./bandeja-tipos";
+import type { CopiaGarita } from "@/lib/garita/sin-conexion-tipos";
 
 /**
  * El único módulo que lee y escribe la copia local (cambio 3, 1.1 e).
@@ -60,18 +61,21 @@ interface EsquemaLocal extends DBSchema {
   borradores: { key: string; value: Borrador };
   bandeja: { key: string; value: Cosa; indexes: { edificio: string } };
   meta: { key: string; value: { clave: string; valor: string } };
+  /** Parte D: la copia de una garita (lista del día resumida, quién está adentro). */
+  garita: { key: string; value: CopiaGarita };
 }
 
 const PREFIJO = "vecitap-";
 const nombreBase = (usuarioId: string) => `${PREFIJO}${usuarioId}`;
 
 function abrir(usuarioId: string): Promise<IDBPDatabase<EsquemaLocal>> {
-  return openDB<EsquemaLocal>(nombreBase(usuarioId), 3, {
+  return openDB<EsquemaLocal>(nombreBase(usuarioId), 4, {
     upgrade(db) {
       if (!db.objectStoreNames.contains("copias")) db.createObjectStore("copias", { keyPath: "edificioId" });
       if (!db.objectStoreNames.contains("borradores")) db.createObjectStore("borradores", { keyPath: "clave" });
       if (!db.objectStoreNames.contains("bandeja")) db.createObjectStore("bandeja", { keyPath: "id" }).createIndex("edificio", "edificioId");
       if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "clave" });
+      if (!db.objectStoreNames.contains("garita")) db.createObjectStore("garita", { keyPath: "edificioId" });
     },
   });
 }
@@ -106,6 +110,13 @@ export const leerBorrador = (usuarioId: string, clave: string) =>
 export const guardarBorrador = (usuarioId: string, borrador: Borrador) => conBase(usuarioId, (db) => db.put("borradores", borrador).then(() => undefined));
 
 export const borrarBorrador = (usuarioId: string, clave: string) => conBase(usuarioId, (db) => db.delete("borradores", clave));
+
+/* ── Garita (parte D) ── */
+
+export const leerCopiaGarita = (usuarioId: string, edificioId: string) =>
+  conBase(usuarioId, async (db) => (await db.get("garita", edificioId)) ?? null);
+
+export const guardarCopiaGarita = (usuarioId: string, copia: CopiaGarita) => conBase(usuarioId, (db) => db.put("garita", copia).then(() => undefined));
 
 /* ── Bandeja (parte B) ── */
 

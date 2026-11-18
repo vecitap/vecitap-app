@@ -1,7 +1,7 @@
 # Plan · Cambio 3 de ING3: trabajar sin internet en Administración
 
-Estado: **A, E, B y C construidas en la rama `app-sin-conexion` (18-nov), D propuesta** (ver
-secciones 8, 9 y 10). Lo que sigue es el plan tal como se aprobó el 17-nov.
+Estado: **A, E, B, C y D construidas en la rama `app-sin-conexion` (18-nov)** (ver secciones 8,
+9, 10 y 11). Lo que sigue es el plan tal como se aprobó el 17-nov.
 Primera versión revisada por Nicolás el mismo día; sus respuestas y las correcciones que salieron
 de ellas están incorporadas (ver «Cambios frente a la primera versión», al final).
 
@@ -745,8 +745,7 @@ componentes. Conviene que Nicolás los pruebe en línea en el Preview.
 ## 10. Partes E, B y C (18-nov) — resultado
 
 Nicolás pidió el 18-nov terminar todas las partes y probar al final. Rama `app-sin-conexion`.
-**E, B y C están hechas. D (Garita) no:** queda propuesta en 10.5, porque cambia la seguridad
-del módulo y necesita su aprobación.
+E, B y C están hechas. D (Garita) se propuso en 10.5 y Nicolás la aprobó el mismo día: sección 11.
 
 ### 10.1 Qué se construyó
 
@@ -813,56 +812,57 @@ nota de 101): el borrado no se aprobó. Se pueden anular o borrar desde la app.
 - **El orden de los gastos en línea** sigue con `mover_gasto`; la posición final se usa solo sin
   conexión.
 
-### 10.5 Parte D (Garita) — propuesta, sin construir
+### 10.5 Parte D (Garita) — propuesta
 
-En la garita se valida cada visita con el código de la invitación (`garita_validar`). Sin
-conexión no hay a quién preguntarle, así que para dejar entrar a alguien el equipo de la garita
-tendría que **tener guardados los códigos vigentes del día**. Eso cambia la seguridad del módulo:
-quien se lleve ese equipo (o lo copie) tiene los accesos del día de ese edificio. Por eso no se
-construyó sin decisión. Propuesta:
+Propuesta del 18-nov: guardar en el equipo de la garita las invitaciones del día con el código
+**resumido**, validar contra esa lista sin conexión y mandar entradas y salidas al volver.
+**Aprobada por Nicolás el mismo día** («al final son visitas… sí podríamos guardar de forma
+resumida los códigos del día»), junto con las cuatro decisiones de 10.4. Resultado en la sección 11.
 
-1. **Qué se guarda:** solo las invitaciones de hoy de los edificios del vigilante, con el código
-   **resumido** (un hash, no el código): la garita puede comprobar un código que le dictan pero
-   no puede leer la lista. Nombre del visitante, unidad, vigencia. Función nueva, de solo
-   lectura, con `puede_garita` (no se toca `puede_garita` ni `permitir_garita`).
-2. **Qué se hace sin conexión:** validar contra esa lista y anotar la entrada (y la salida) en
-   la bandeja del equipo, con la hora del equipo. Las invitaciones de un solo uso quedan
-   marcadas en el equipo para no abrir dos veces.
-3. **Al volver:** `garita_entrada` con `id_equipo` y `hecho_en` (cambio de firma con valores por
-   omisión; es de la familia de revisión cuidadosa). Si la invitación se anuló mientras tanto, la
-   entrada llega igual (ya pasó) y queda marcada para que la vea la administración.
-4. **Fuera:** visitantes sin invitación (los aprueba el residente en línea) y avisar al residente.
+## 11. Parte D, Garita (18-nov) — resultado
 
-Tamaño: mediana (≈ 10–15 %). Necesita la aprobación de Nicolás y, por tocar los gates de Garita,
-revisión cruzada.
+### 11.1 Qué se construyó
+
+| Pieza | Dónde |
+|---|---|
+| **Migración** `20261118150000_garita_sin_conexion.sql` (+ rollback): `garita_lista_del_dia` (las invitaciones de hoy y de las próximas 24 h, con el código resumido en sha256, nunca el código), `visitas.id_equipo` y `hecho_en`, `garita_entrada_diferida` (la invitación se juzga a la hora en que la persona entró; si al llegar ya no vale, la entrada se registra igual y queda una novedad en la bitácora; un reintento devuelve la misma visita) y `garita_salida_diferida` (por id, o por el `id_equipo` de una entrada que también se hizo sin conexión). Las tres autorizan con `permitir_garita`. **No se tocó** `permitir_garita`, `puede_garita`, `edificios_del_vigilante`, `garita_entrada` ni `garita_salida`: sus md5 son los mismos. **Aplicada en vecitap-pruebas**, sin aplicar en producción | `supabase/migrations/` |
+| El service worker se registra también con alcance `/garita/`; sin red, las páginas de la garita llevan a `/garita/sin-internet` (pública en `proxy.ts`, como la de Administración) | `app/sw.ts`, `app/serwist/[path]/route.ts`, `proxy.ts` |
+| La copia de la garita (almacén `garita` de la base local): lista del día resumida, directorio y quién está adentro. Con conexión se baja entera cada minuto (son pocas filas) | `lib/garita/sin-conexion.ts`, `components/garita/ModoGarita.tsx` |
+| **Entrada sin conexión:** el código que muestra la visita se resume en el equipo y se busca en la lista; mismas reglas que `garita_validar` (anulada, todavía no empieza, venció, ya se usó), contando también las entradas de este equipo que no se enviaron. «Registrar entrada» y «Visita sin anunciar» van a la bandeja con su hora. Con conexión, si la red falla al validar o al registrar, se usa la lista guardada y la bandeja | `components/garita/VistaEntrada.tsx` |
+| **Adentro sin conexión:** la lista de la copia más las entradas por enviar, menos las salidas por enviar; «Registrar salida» va a la bandeja | `components/garita/VistaAdentro.tsx` |
+| La pantalla sin internet de la garita: Entrada y Adentro; Consultar y Bitácora dicen que necesitan conexión | `app/(garita)/garita/sin-internet/` |
+| Al llegar, al residente se le avisa solo si la entrada tiene menos de 30 minutos (un aviso de hace horas confunde) | `lib/local/envios.ts` |
+
+### 11.2 Qué tan sensible es lo que queda en el equipo
+
+Quien tenga el equipo de la garita ve los **nombres, cédulas y placas** de las visitas del día y
+de quién está adentro, igual que hoy en pantalla. **No ve los códigos:** solo su resumen. Los
+códigos son 16 caracteres hexadecimales al azar (64 bits), así que no se pueden sacar probando a
+partir del resumen. Se borra al salir, como el resto de la copia.
+
+### 11.3 Probado contra `next start` (base de pruebas, `vigilante.prueba`, Torre Ida)
+
+| Prueba | Resultado |
+|---|---|
+| Migración, en una transacción deshecha: la lista trae el resumen y no el código; un vigilante de otro edificio, «Sin permiso para la garita de este edificio»; la misma entrada dos veces → 1 visita y el mismo id, con la invitación usada 1 vez; una invitación ya usada → entra igual y deja una novedad; una hora de mañana → rechazada; salida por `id_equipo` → «salio» | ✅ |
+| md5 de `permitir_garita`, `puede_garita`, `edificios_del_vigilante`, `garita_entrada` y `garita_salida`: iguales antes y después; 0 funciones con «\r» | ✅ |
+| Con conexión: service worker con alcance `/garita/`; la copia guardada sola, **sin el código** en el equipo (solo el resumen) | ✅ |
+| Sin servidor, recargar → pantalla sin internet de la garita. El código de una invitación de prueba → «Puede pasar»; registrar → bandeja; el mismo código otra vez → «Ya se usó»; un código que no existe → «no está en la lista del día» | ✅ |
+| Sin servidor: una visita sin anunciar con vehículo, y su salida en Adentro (por el menú, que pasa por el service worker) → 3 cosas por enviar | ✅ |
+| Al volver: las tres llegan con la hora real (`entrada_en` y `salida_en` = la del equipo), la bitácora dice «registrada sin conexión» y la invitación quedó con 1 uso | ✅ |
+
+Quedó en Torre Ida una invitación de prueba (código `C3C3…`, nota «Prueba del asistente») y las
+dos visitas de esta prueba; «Visita prueba sin conexión» sigue adentro.
+
+### 11.4 Lo que no se probó o queda abierto
+
+- Si `garita_entrada` llega a la base pero se pierde la respuesta (con conexión y la red se corta
+  justo en ese momento), la entrada pasa a la bandeja y puede quedar dos veces. Sin conexión no
+  pasa: la diferida no duplica.
+- Una invitación creada después de la última copia no está en la lista: sin conexión se la
+  rechaza («no está en la lista del día»). La pantalla lo dice.
+- Sin conexión no se asienta en la bitácora el intento con un código que no existe (en línea sí).
 
 ## Preguntas abiertas
 
-1. **Parte D (Garita):** ¿se guarda en el equipo de la garita la lista del día, resumida como en
-   10.5, o la garita queda fuera del modo sin conexión?
-2. Las cuatro decisiones de 10.4.
-
-Falta que Nicolás pruebe A, E, B y C en el Preview.
-
----
-
-## Cambios frente a la primera versión
-
-- Copia: ya no se baja entera cada 15 minutos. Lo propio entra al instante; lo de otros, por una
-  consulta de una fila cada minuto, y la copia entera solo cuando algo cambió (1.1 f).
-- Descarga: eran ~120 llamadas, no 25. Se propone `copia_edificio`, una llamada (1.1 g).
-- Pesos: ING3 medido en producción, ≈ 0,1 MB hoy y ≈ 0,6 MB a un año. 1,5 MB era un edificio de
-  100 unidades.
-- Reparto automático: sí, «al volver» (2.1).
-- Orden de gastos: sin migración, mandando la posición final (2.6).
-- Duplicados con el reporte del residente: verificado y cubierto (2.4).
-- Dos administradores: sección nueva (2.5).
-- El caso de diseño pasó a «viernes → lunes» (decidido).
-- Segunda ronda de respuestas (17-nov): sin cifrado; `copia_edificio` y el aviso de duplicado en
-  línea, aprobados; la base bloquea el cierre con equipos en riesgo (2.7, sección nueva; B pasa a
-  grande); rama aparte con los conflictos a mi cargo.
-- Tercera ronda (18-nov): libera cualquier administrador; 3 minutos; sección nueva sobre internet
-  muy lento (6).
-- Cuarta ronda (18-nov): región de Vercel confirmada (`iad1`); `staleTimes` descartado; parte E
-  nueva, «primero la copia» con conexión (7).
-- Quinta ronda (18-nov): orden A → E → B → C; edificio con copia automático.
+Ninguna. Falta que Nicolás pruebe A, E, B, C y D en el Preview.

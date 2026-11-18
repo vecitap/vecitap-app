@@ -20,7 +20,11 @@ const APAGAR = process.env.SIN_CONEXION_APAGAR === "1";
 export const { dynamic, dynamicParams, revalidate, generateStaticParams, GET } = createSerwistRoute({
   swSrc: APAGAR ? "app/sw-apagar.ts" : "app/sw.ts",
   globPatterns: [".next/static/**/*.{js,css,woff2}", "public/logo-claro.png", "public/logo-oscuro.png"],
-  additionalPrecacheEntries: [{ url: "/admin/sin-internet", revision }],
+  additionalPrecacheEntries: [
+    { url: "/admin/sin-internet", revision },
+    // Parte D: la pantalla sin internet de la garita.
+    { url: "/garita/sin-internet", revision },
+  ],
   // Archivos grandes que la cáscara no usa (p. ej. el lector de PDF) quedan
   // fuera del precache; si alguno faltara sin conexión, esa función dice que
   // necesita conexión.

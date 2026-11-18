@@ -2407,7 +2407,9 @@ export type Database = {
           edificio_id: string
           entrada_en: string
           estado: string
+          hecho_en: string | null
           id: string
+          id_equipo: string | null
           invitacion_id: string | null
           nombre: string
           nota: string | null
@@ -2424,7 +2426,9 @@ export type Database = {
           edificio_id: string
           entrada_en?: string
           estado?: string
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           invitacion_id?: string | null
           nombre: string
           nota?: string | null
@@ -2441,7 +2445,9 @@ export type Database = {
           edificio_id?: string
           entrada_en?: string
           estado?: string
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           invitacion_id?: string | null
           nombre?: string
           nota?: string | null
@@ -2984,11 +2990,46 @@ export type Database = {
         }
         Returns: string
       }
+      garita_entrada_diferida: {
+        Args: {
+          p_documento?: string
+          p_edificio: string
+          p_hecho_en: string
+          p_id_equipo: string
+          p_invitacion?: string
+          p_nombre: string
+          p_nota?: string
+          p_placa?: string
+          p_unidad: string
+        }
+        Returns: string
+      }
+      garita_lista_del_dia: {
+        Args: { p_edificio: string }
+        Returns: {
+          codigo_resumen: string
+          desde: string
+          documento: string
+          estado: string
+          hasta: string
+          invitacion_id: string
+          nombre: string
+          placa: string
+          unidad: string
+          unidad_id: string
+          usos: number
+          usos_max: number
+        }[]
+      }
       garita_nota: {
         Args: { p_edificio: string; p_texto: string; p_tipo?: string }
         Returns: string
       }
       garita_salida: { Args: { p_visita: string }; Returns: undefined }
+      garita_salida_diferida: {
+        Args: { p_hecho_en: string; p_id_equipo?: string; p_visita?: string }
+        Returns: undefined
+      }
       garita_validar: {
         Args: { p_codigo: string; p_edificio: string }
         Returns: {

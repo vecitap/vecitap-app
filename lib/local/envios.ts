@@ -324,7 +324,59 @@ async function personaEditar(supabase: Supabase, cosa: Cosa, signal: AbortSignal
   if (v.error) rechazo(v.error);
 }
 
+/* ── Garita (parte D) ── */
+
+/** Al residente se le avisa solo si la entrada es reciente: un aviso de hace dos días confunde. */
+const AVISAR_HASTA_MS = 30 * 60 * 1000;
+
+async function garitaEntrada(supabase: Supabase, cosa: Cosa, signal: AbortSignal) {
+  const d = cosa.datos as {
+    unidadId: string | null;
+    nombre: string;
+    documento?: string | null;
+    placa?: string | null;
+    invitacionId?: string | null;
+    nota?: string | null;
+  };
+  const r = revisarRespuesta(
+    await supabase
+      .rpc("garita_entrada_diferida", {
+        p_id_equipo: cosa.id,
+        p_hecho_en: cosa.hechoEn,
+        p_edificio: cosa.edificioId,
+        // Acepta NULL (visita sin anunciar que no eligió unidad), igual que garita_entrada.
+        p_unidad: d.unidadId as string,
+        p_nombre: d.nombre,
+        p_documento: d.documento ?? undefined,
+        p_placa: d.placa ?? undefined,
+        p_invitacion: d.invitacionId ?? undefined,
+        p_nota: d.nota ?? undefined,
+      })
+      .abortSignal(signal)
+  );
+  if (r.error) rechazo(r.error);
+  if (r.data && Date.now() - new Date(cosa.hechoEn).getTime() < AVISAR_HASTA_MS) {
+    void supabase.rpc("garita_avisar", { p_visita: r.data });
+  }
+}
+
+async function garitaSalida(supabase: Supabase, cosa: Cosa, signal: AbortSignal) {
+  const d = cosa.datos as { visitaId?: string | null; entradaIdEquipo?: string | null };
+  const r = revisarRespuesta(
+    await supabase
+      .rpc("garita_salida_diferida", {
+        p_hecho_en: cosa.hechoEn,
+        p_visita: d.visitaId ?? undefined,
+        p_id_equipo: d.visitaId ? undefined : (d.entradaIdEquipo ?? undefined),
+      })
+      .abortSignal(signal)
+  );
+  if (r.error) rechazo(r.error);
+}
+
 const ENVIOS: Record<Cosa["tipo"], (s: Supabase, c: Cosa, signal: AbortSignal) => Promise<void>> = {
+  "garita.entrada": garitaEntrada,
+  "garita.salida": garitaSalida,
   "pago.registrar": pagoRegistrar,
   "pago.repartir": pagoRepartir,
   "pago.estado": pagoEstado,

@@ -24,7 +24,10 @@ export type TipoCosa =
   /** La nota de la ficha de una unidad. */
   | "nota.guardar"
   /** Los datos de contacto de una persona ya vinculada a una unidad. */
-  | "persona.editar";
+  | "persona.editar"
+  /** Garita (parte D): una entrada o una salida hecha sin conexión, con su hora. */
+  | "garita.entrada"
+  | "garita.salida";
 
 /** Las tablas en que «fila.*» puede escribir. */
 export type TablaFila = "gastos" | "cargos_unidad";

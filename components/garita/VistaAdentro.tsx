@@ -1,12 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Aviso } from "@/components/ui";
 import { useAvisoTemporal } from "@/hooks/useAvisoTemporal";
 import { formatoHora } from "@/lib/formato";
 import type { VisitaDentro } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { mensajeDeError } from "@/lib/errores";
+import { SIN_CONEXION_ACTIVO } from "@/lib/local/config";
+import { EVENTO_COPIA_SUCIA, encolar, useBandeja } from "@/lib/local/bandeja";
+import { claseDeError } from "@/lib/local/envios";
+import { useCopiaGarita } from "@/lib/garita/sin-conexion";
+import { useDirectorioGarita } from "@/components/garita/DirectorioContexto";
 
 /**
  * Vista 2 · Adentro — garita.html:733-771. Lista de quién está adentro
@@ -19,22 +24,34 @@ import { mensajeDeError } from "@/lib/errores";
  * visita que ya no está "dentro" hace que la función retorne sin tocar
  * nada), así que un doble click no duplica nada — a diferencia de
  * `garita_entrada`, no hace falta blindarlo contra reenvíos.
+ *
+ * Cambio 3, parte D: sin conexión la lista sale de la copia de la garita,
+ * más las entradas de este equipo que todavía no se enviaron («por enviar»),
+ * menos las que tienen la salida por enviar. La salida va a la bandeja con
+ * su hora.
  */
+type Fila = VisitaDentro & { porEnviar?: boolean; entradaIdEquipo?: string };
+
 export function VistaAdentro({ edificioId }: { edificioId: string }) {
   const { aviso, mostrarAviso } = useAvisoTemporal();
-  const [adentro, setAdentro] = useState<VisitaDentro[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const copia = useCopiaGarita();
+  const directorio = useDirectorioGarita();
+  const bandeja = useBandeja(edificioId);
+  const [adentroServidor, setAdentro] = useState<VisitaDentro[]>([]);
+  const [cargando, setCargando] = useState(!copia);
   const [saliendoIds, setSaliendoIds] = useState<Set<string>>(new Set());
 
   const cargar = useCallback(async () => {
+    if (copia) return;
     const supabase = crearClienteNavegador();
     const { data, error } = await supabase.rpc("garita_dentro", { p_edificio: edificioId });
     setCargando(false);
     if (error) return mostrarAviso(mensajeDeError(error), "mal");
     setAdentro(data ?? []);
-  }, [edificioId, mostrarAviso]);
+  }, [edificioId, mostrarAviso, copia]);
 
   useEffect(() => {
+    if (copia) return;
     // La carga inicial va inline (no `cargar()`, que el lint rechaza como
     // setState directo dentro de un efecto) — `cargar` queda para el botón
     // "Actualizar" y el refresco cada 60s, que no corren dentro de un
@@ -48,22 +65,74 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
       setAdentro(data ?? []);
     });
     const id = setInterval(cargar, 60000);
+    // Cambio 3: cuando llega a la base lo que estaba por enviar, se vuelve a
+    // leer (si no, esas visitas desaparecerían de la lista hasta el próximo minuto).
+    const llego = (e: Event) => {
+      if ((e as CustomEvent<{ edificioId: string }>).detail?.edificioId === edificioId) void cargar();
+    };
+    window.addEventListener(EVENTO_COPIA_SUCIA, llego);
     return () => {
       vivo = false;
       clearInterval(id);
+      window.removeEventListener(EVENTO_COPIA_SUCIA, llego);
     };
-  }, [edificioId, mostrarAviso, cargar]);
+  }, [edificioId, mostrarAviso, cargar, copia]);
 
-  const registrarSalida = async (visitaId: string) => {
-    setSaliendoIds((s) => new Set(s).add(visitaId));
+  // Lo de la base (o de la copia) más lo de la bandeja de este equipo.
+  const adentro = useMemo<Fila[]>(() => {
+    const base = copia ? copia.dentro : adentroServidor;
+    const salen = new Set(
+      bandeja
+        .filter((c) => c.tipo === "garita.salida")
+        .map((c) => {
+          const d = c.datos as { visitaId?: string | null; entradaIdEquipo?: string | null };
+          return d.visitaId ?? d.entradaIdEquipo ?? "";
+        })
+    );
+    const pendientes: Fila[] = bandeja
+      .filter((c) => c.tipo === "garita.entrada" && !salen.has(c.id))
+      .map((c) => {
+        const d = c.datos as { unidadId: string | null; nombre: string; documento?: string | null; placa?: string | null };
+        return {
+          visita_id: c.id,
+          nombre: d.nombre,
+          documento: d.documento ?? "",
+          unidad: directorio.find((u) => u.unidad_id === d.unidadId)?.codigo ?? "",
+          placa: (d.placa ?? "").toUpperCase(),
+          entrada_en: c.hechoEn,
+          tipo: "",
+          porEnviar: true,
+          entradaIdEquipo: c.id,
+        };
+      });
+    return [...pendientes, ...base.filter((v) => !salen.has(v.visita_id))];
+  }, [copia, adentroServidor, bandeja, directorio]);
+
+  const salidaABandeja = async (v: Fila) => {
+    await encolar({
+      orgId: "",
+      edificioId,
+      unidadId: null,
+      tipo: "garita.salida",
+      datos: v.entradaIdEquipo ? { entradaIdEquipo: v.entradaIdEquipo } : { visitaId: v.visita_id },
+      antes: null,
+      resumen: `Salida de ${v.nombre}`,
+    });
+    mostrarAviso("Sin conexión: la salida quedó guardada en este equipo, con su hora, y se envía sola al volver.");
+  };
+
+  const registrarSalida = async (v: Fila) => {
+    if (copia || v.porEnviar) return salidaABandeja(v);
+    setSaliendoIds((s) => new Set(s).add(v.visita_id));
     const supabase = crearClienteNavegador();
-    const { error } = await supabase.rpc("garita_salida", { p_visita: visitaId });
+    const { error } = await supabase.rpc("garita_salida", { p_visita: v.visita_id });
     if (error) {
       setSaliendoIds((s) => {
         const n = new Set(s);
-        n.delete(visitaId);
+        n.delete(v.visita_id);
         return n;
       });
+      if (SIN_CONEXION_ACTIVO && claseDeError(error) === "red") return salidaABandeja(v);
       return mostrarAviso(mensajeDeError(error), "mal");
     }
     mostrarAviso("Salida registrada.");
@@ -92,6 +161,7 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
                     entró {formatoHora(v.entrada_en)}
                     {v.placa ? ` · ${v.placa}` : ""}
                     {v.documento ? ` · ${v.documento}` : ""}
+                    {v.porEnviar ? " · por enviar" : ""}
                   </div>
                 </div>
                 <button
@@ -99,7 +169,7 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
                   className="garita-boton chico"
                   disabled={saliendoIds.has(v.visita_id)}
                   aria-busy={saliendoIds.has(v.visita_id) || undefined}
-                  onClick={() => registrarSalida(v.visita_id)}
+                  onClick={() => registrarSalida(v)}
                 >
                   Registrar salida
                 </button>
@@ -109,11 +179,13 @@ export function VistaAdentro({ edificioId }: { edificioId: string }) {
             <div className="garita-vacio">No hay visitas adentro.</div>
           )}
         </div>
-        <div className="garita-fila">
-          <button type="button" className="garita-boton suave" onClick={cargar}>
-            Actualizar
-          </button>
-        </div>
+        {!copia && (
+          <div className="garita-fila">
+            <button type="button" className="garita-boton suave" onClick={cargar}>
+              Actualizar
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

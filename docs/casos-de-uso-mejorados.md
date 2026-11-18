@@ -2731,5 +2731,10 @@ Lo que pidió Gustavo para antes del primer envío de recibos de GRUPO ING3.
   - **Aviso de posible duplicado**, también con internet: un pago de la misma unidad, por el
     mismo monto y con fecha a ±3 días hace preguntar antes de registrarlo.
   - Los formularios a medio llenar se recuperan después de un apagón o de cerrar el navegador.
-  - Garita todavía no funciona sin internet (propuesta aparte).
-  - Migraciones `20261118120000_copia_edificio.sql` y `20261118140000_bandeja_sin_conexion.sql`.
+  - **La garita también:** sin internet valida los códigos con la lista del día guardada en el
+    equipo (los códigos no se guardan, solo un resumen que no deja sacarlos) y registra entradas,
+    visitas sin anunciar y salidas, que llegan con su hora al volver. Si una invitación ya no valía
+    al llegar (anulada o usada en otra puerta), la entrada queda igual y la administración lo ve en
+    la bitácora.
+  - Migraciones `20261118120000_copia_edificio.sql`, `20261118140000_bandeja_sin_conexion.sql` y
+    `20261118150000_garita_sin_conexion.sql`.

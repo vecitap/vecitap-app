@@ -12,6 +12,9 @@ const RUTAS_PROTEGIDAS = ["/admin", "/mi", "/operador", "/garita"];
    no puede depender de la sesión. Sin esta excepción, RUTA_ADMIN_ORG la
    tomaría como un orgId («sin-internet») y la mandaría a /sin-acceso. */
 const RUTA_CASCARA = "/admin/sin-internet";
+/* Parte D: la de la garita, por lo mismo (sin ella, «sin-internet» se
+   tomaría como un edificioId y la mandaría a /sin-acceso). */
+const RUTA_CASCARA_GARITA = "/garita/sin-internet";
 const RUTA_OPERADOR = "/operador";
 const RUTA_ADMIN_ORG = /^\/admin\/([^/]+)/;
 const RUTA_GARITA_EDIFICIO = /^\/garita\/([^/]+)/;
@@ -254,7 +257,7 @@ export async function proxy(request: NextRequest) {
   const sub = verificado?.claims?.sub;
   const haySesion = !sinConexion && !errorClaims && typeof sub === "string" && sub.length > 0;
 
-  const esCascara = request.nextUrl.pathname === RUTA_CASCARA;
+  const esCascara = request.nextUrl.pathname === RUTA_CASCARA || request.nextUrl.pathname === RUTA_CASCARA_GARITA;
   const esRutaProtegida = !esCascara && RUTAS_PROTEGIDAS.some((ruta) => request.nextUrl.pathname.startsWith(ruta));
 
   // Sigue fallando cerrado (no deja pasar a nadie): solo cambia la pantalla,
@@ -317,7 +320,7 @@ export async function proxy(request: NextRequest) {
   // cliente y la URL no lo lleva (ver docs/estado-migracion.md, "Ruta de la
   // garita"). /garita a secas no cae acá: solo pide sesión, y la página
   // resuelve a dónde va según cuántas garitas tenga asignadas.
-  const enGarita = haySesion ? request.nextUrl.pathname.match(RUTA_GARITA_EDIFICIO) : null;
+  const enGarita = haySesion && !esCascara ? request.nextUrl.pathname.match(RUTA_GARITA_EDIFICIO) : null;
   if (enGarita) {
     const edificioId = enGarita[1];
     const chequeo: Chequeo = !esUuid(edificioId)

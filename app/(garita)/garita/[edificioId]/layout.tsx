@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { DirectorioProvider } from "@/components/garita/DirectorioContexto";
 import { MarcoGarita } from "@/components/garita/MarcoGarita";
 import { NavGarita } from "@/components/garita/NavGarita";
+import { ModoGarita } from "@/components/garita/ModoGarita";
 import { crearClienteServidor } from "@/lib/supabase/server";
 import { usuarioActual } from "@/lib/supabase/cache";
 import { esUuid } from "@/lib/validacion";
@@ -61,6 +62,8 @@ export default async function LayoutGaritaEdificio({
         edificioIdActual={edificioId}
       />
       <NavGarita edificioId={edificioId} />
+      {/* Cambio 3, parte D: lista del día guardada y entradas por enviar. */}
+      <ModoGarita edificioId={edificioId} />
       <main className="garita-main">
         <DirectorioProvider directorio={directorio ?? []}>{children}</DirectorioProvider>
       </main>

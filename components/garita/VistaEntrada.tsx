@@ -10,6 +10,15 @@ import { registrarEntradaGarita } from "@/lib/garita/entrada";
 import type { ValidacionCodigo } from "@/lib/garita/tipos";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { mensajeDeError } from "@/lib/errores";
+import { SIN_CONEXION_ACTIVO } from "@/lib/local/config";
+import { encolar, useBandeja } from "@/lib/local/bandeja";
+import { claseDeError } from "@/lib/local/envios";
+import { usuarioLocal } from "@/lib/local/sesion-local";
+import { leerCopiaGarita } from "@/lib/local/almacen";
+import { useCopiaGarita, usosLocales, validarSinConexion } from "@/lib/garita/sin-conexion";
+import type { EntradaGarita } from "@/lib/garita/entrada";
+
+const TEXTO_EN_BANDEJA = "Sin conexión: la entrada quedó guardada en este equipo, con su hora, y se envía sola al volver.";
 
 type Veredicto = {
   ok: boolean;
@@ -44,17 +53,68 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
   const [enviandoSinAnunciar, setEnviandoSinAnunciar] = useState(false);
   const temporizadorDoc = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Cambio 3, parte D: sin conexión se valida con la lista del día guardada
+  // (códigos resumidos) y la entrada va a la bandeja con la hora del equipo.
+  const copia = useCopiaGarita();
+  const bandeja = useBandeja(edificioId);
+
+  /** La copia de esta garita: la de la pantalla sin internet o, si la red falló en línea, la guardada. */
+  const copiaGuardada = async () => {
+    if (copia) return copia;
+    if (!SIN_CONEXION_ACTIVO) return null;
+    const u = await usuarioLocal();
+    return u ? leerCopiaGarita(u, edificioId).catch(() => null) : null;
+  };
+
+  /** Registrar una entrada: en línea como siempre; sin conexión (o si la red falla), a la bandeja. */
+  const entrar = async (e: EntradaGarita): Promise<{ tipo: "enviado"; id: string } | { tipo: "en_bandeja" } | { tipo: "error"; error: unknown }> => {
+    const aBandeja = async () => {
+      const unidad = directorio.find((u) => u.unidad_id === e.unidadId)?.codigo;
+      await encolar({
+        orgId: "",
+        edificioId,
+        unidadId: e.unidadId,
+        tipo: "garita.entrada",
+        datos: { unidadId: e.unidadId, nombre: e.nombre, documento: e.documento ?? null, placa: e.placa ?? null, invitacionId: e.invitacionId ?? null, nota: e.nota ?? null },
+        antes: null,
+        resumen: `Entrada de ${e.nombre}${unidad ? ` a ${unidad}` : ""}${e.placa ? ` · ${e.placa.toUpperCase()}` : ""}`,
+      });
+      return { tipo: "en_bandeja" as const };
+    };
+    if (copia) return aBandeja();
+    const supabase = crearClienteNavegador();
+    const { data: id, error } = await registrarEntradaGarita(supabase, e);
+    if (error) {
+      if (SIN_CONEXION_ACTIVO && claseDeError(error) === "red") return aBandeja();
+      return { tipo: "error", error };
+    }
+    return id ? { tipo: "enviado", id } : { tipo: "error", error: new Error("No se pudo registrar la entrada.") };
+  };
+
   const validar = async (codigoBruto: string) => {
     // Acepta un enlace completo, igual que garita.html:594.
     const limpio = String(codigoBruto || "").trim().replace(/^.*\//, "");
     if (!limpio) return;
 
     setValidando(true);
-    const supabase = crearClienteNavegador();
-    const { data, error } = await supabase.rpc("garita_validar", {
-      p_edificio: edificioId,
-      p_codigo: limpio,
-    });
+    let data: ValidacionCodigo[] | null = null;
+    let error: unknown = null;
+    if (copia) {
+      data = [await validarSinConexion(copia, limpio, usosLocales(bandeja))];
+    } else {
+      const supabase = crearClienteNavegador();
+      const r = await supabase.rpc("garita_validar", { p_edificio: edificioId, p_codigo: limpio });
+      data = r.data;
+      error = r.error;
+      // Sin red (o muy lenta): la lista del día guardada en este equipo.
+      if (error && SIN_CONEXION_ACTIVO && claseDeError(error) === "red") {
+        const guardada = await copiaGuardada();
+        if (guardada) {
+          data = [await validarSinConexion(guardada, limpio, usosLocales(bandeja))];
+          error = null;
+        }
+      }
+    }
     setValidando(false);
 
     // garita_validar no es de solo lectura: si el código no existe, inserta
@@ -101,11 +161,10 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
     if (!fila) return;
 
     const unidad = directorio.find((u) => u.codigo === fila.unidad)?.unidad_id ?? null;
-    const supabase = crearClienteNavegador();
     // `unidadId: null` cuando el código no resuelve a ninguna unidad del
     // directorio: la firma real de garita_entrada exige el parámetro pero
     // acepta NULL — el detalle está en lib/garita/entrada.ts.
-    const { data: id, error } = await registrarEntradaGarita(supabase, {
+    const r = await entrar({
       edificioId,
       unidadId: unidad,
       nombre: fila.nombre,
@@ -113,21 +172,22 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
       placa: fila.placa ?? undefined,
       invitacionId: fila.invitacion_id ?? undefined,
     });
-    if (error) return mostrarAviso(mensajeDeError(error), "mal");
-    if (!id) return;
+    if (r.tipo === "error") return mostrarAviso(mensajeDeError(r.error), "mal");
+    if (r.tipo === "en_bandeja") return mostrarAviso(`${TEXTO_EN_BANDEJA} ${fila.nombre}`, "ok");
 
     mostrarAviso(`Entrada registrada. ${fila.nombre}`, "ok");
     // Sin esperar el resultado, igual que garita.html:620 — a diferencia del
     // formulario de abajo, este camino no le dice al vigilante si el aviso
     // llegó o no.
-    void supabase.rpc("garita_avisar", { p_visita: id });
+    void crearClienteNavegador().rpc("garita_avisar", { p_visita: r.id });
   };
 
   const onInputDocumento = (valor: string) => {
     setDocumento(valor);
     if (temporizadorDoc.current) clearTimeout(temporizadorDoc.current);
     const limpio = valor.replace(/[^0-9A-Za-z]/g, "");
-    if (limpio.length < 6) {
+    // Sin conexión no hay a quién preguntar si ya vino antes.
+    if (limpio.length < 6 || copia) {
       setPistaDoc("");
       return;
     }
@@ -156,10 +216,9 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
     if (!nombreLimpio) return mostrarAviso("Falta el nombre de quien entra.", "mal");
 
     setEnviandoSinAnunciar(true);
-    const supabase = crearClienteNavegador();
     // El <select> vacío ("Elegir…") es el caso de `null` explícito: una
     // visita sin anunciar que todavía no dice a quién visita.
-    const { data: id, error } = await registrarEntradaGarita(supabase, {
+    const r = await entrar({
       edificioId,
       unidadId: unidadId || null,
       nombre: nombreLimpio,
@@ -167,16 +226,19 @@ export function VistaEntrada({ edificioId }: { edificioId: string }) {
       placa: placa.trim() || undefined,
     });
     setEnviandoSinAnunciar(false);
-    if (error) return mostrarAviso(mensajeDeError(error), "mal");
-    if (!id) return;
+    if (r.tipo === "error") return mostrarAviso(mensajeDeError(r.error), "mal");
 
-    // Acá sí se espera y se le dice al vigilante si el aviso llegó
-    // (garita.html:720-723), a diferencia del camino del veredicto de arriba.
-    const { data: n } = await supabase.rpc("garita_avisar", { p_visita: id });
-    mostrarAviso(
-      (n ?? 0) > 0 ? "Entrada registrada. Se le avisó al residente." : "Entrada registrada. No se le pudo avisar al residente.",
-      (n ?? 0) > 0 ? "ok" : "mal"
-    );
+    if (r.tipo === "en_bandeja") {
+      mostrarAviso(`${TEXTO_EN_BANDEJA} Al residente no se le pudo avisar.`, "mal");
+    } else {
+      // Acá sí se espera y se le dice al vigilante si el aviso llegó
+      // (garita.html:720-723), a diferencia del camino del veredicto de arriba.
+      const { data: n } = await crearClienteNavegador().rpc("garita_avisar", { p_visita: r.id });
+      mostrarAviso(
+        (n ?? 0) > 0 ? "Entrada registrada. Se le avisó al residente." : "Entrada registrada. No se le pudo avisar al residente.",
+        (n ?? 0) > 0 ? "ok" : "mal"
+      );
+    }
     setDocumento("");
     setNombre("");
     setPlaca("");
