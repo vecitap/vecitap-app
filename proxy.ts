@@ -6,6 +6,12 @@ import { ROLES_ADMIN } from "@/lib/admin/constantes";
 import { esErrorDeConexionAuth, esRespuestaSinConexion } from "@/lib/supabase/conexion";
 
 const RUTAS_PROTEGIDAS = ["/admin", "/mi", "/operador", "/garita"];
+/* Cambio 3: la cáscara sin internet (app/(admin)/admin/sin-internet) es
+   pública, como /sin-conexion: no lleva ningún dato (lee la copia del
+   propio navegador) y el service worker la guarda al instalarse, así que
+   no puede depender de la sesión. Sin esta excepción, RUTA_ADMIN_ORG la
+   tomaría como un orgId («sin-internet») y la mandaría a /sin-acceso. */
+const RUTA_CASCARA = "/admin/sin-internet";
 const RUTA_OPERADOR = "/operador";
 const RUTA_ADMIN_ORG = /^\/admin\/([^/]+)/;
 const RUTA_GARITA_EDIFICIO = /^\/garita\/([^/]+)/;
@@ -248,7 +254,8 @@ export async function proxy(request: NextRequest) {
   const sub = verificado?.claims?.sub;
   const haySesion = !sinConexion && !errorClaims && typeof sub === "string" && sub.length > 0;
 
-  const esRutaProtegida = RUTAS_PROTEGIDAS.some((ruta) => request.nextUrl.pathname.startsWith(ruta));
+  const esCascara = request.nextUrl.pathname === RUTA_CASCARA;
+  const esRutaProtegida = !esCascara && RUTAS_PROTEGIDAS.some((ruta) => request.nextUrl.pathname.startsWith(ruta));
 
   // Sigue fallando cerrado (no deja pasar a nadie): solo cambia la pantalla,
   // "Reintente" en vez de Entrar.
@@ -280,7 +287,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const enAdmin = haySesion ? request.nextUrl.pathname.match(RUTA_ADMIN_ORG) : null;
+  const enAdmin = haySesion && !esCascara ? request.nextUrl.pathname.match(RUTA_ADMIN_ORG) : null;
   if (enAdmin) {
     const orgId = enAdmin[1];
     // Un orgId con formato inválido (typo, URL armada a mano) ni siquiera
@@ -333,5 +340,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // Cambio 3: tampoco pasan por acá el service worker (/serwist/*) ni el
+  // manifiesto: son archivos estáticos sin sesión.
+  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|serwist/|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

@@ -29,6 +29,10 @@ import { useTema } from "@/lib/theme/ThemeProvider";
 import { tasaDeReferencia, type TasaViva } from "@/lib/tasa";
 import type { OrganizacionAdmin } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
+import { ModoSinConexion } from "@/components/sin-conexion/ModoSinConexion";
+import { SIN_CONEXION_ACTIVO } from "@/lib/local/config";
+import { borrarBaseDelUsuario } from "@/lib/local/almacen";
+import { usuarioLocal } from "@/lib/local/sesion-local";
 
 /**
  * El armazón de Admin: columna lateral oscura + encabezado con la tasa del
@@ -168,6 +172,9 @@ export function MarcoAdmin({
               </option>
             ))}
           </Select>
+          {/* Cambio 3: copia sin conexión del edificio abierto (no dibuja
+              nada con el interruptor apagado). */}
+          {edificio && <ModoSinConexion orgId={organizacion.id} edificioId={edificio.id} edificioNombre={edificio.nombre} />}
         </div>
 
         {edificioId &&
@@ -201,7 +208,22 @@ export function MarcoAdmin({
             {tema === "oscuro" ? <Sun size={17} /> : <Moon size={17} />}
             {tema === "oscuro" ? "Tema claro" : "Tema oscuro"}
           </button>
-          <form action="/api/auth/salir" method="post">
+          {/* Cambio 3: antes de salir se borra la copia sin conexión de este
+              navegador (plan 1.1 j). Si el borrado fallara, se sale igual:
+              no se deja a nadie adentro por eso. */}
+          <form
+            action="/api/auth/salir"
+            method="post"
+            onSubmit={(e) => {
+              if (!SIN_CONEXION_ACTIVO) return;
+              e.preventDefault();
+              const form = e.currentTarget;
+              usuarioLocal()
+                .then((id) => (id ? borrarBaseDelUsuario(id) : undefined))
+                .catch(() => undefined)
+                .finally(() => form.submit());
+            }}
+          >
             <button type="submit" className="admin-nav">
               <LogOut size={17} /> Salir
             </button>

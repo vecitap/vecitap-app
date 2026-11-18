@@ -630,10 +630,75 @@ seguir con B.
 
 ---
 
+## 8. Prueba de concepto (18-nov) — resultado
+
+Rama **`app-sin-conexion`** (Nicolás eligió el nombre; reemplaza a `cambio-3-sin-conexion` en todo
+este documento). Alcance: Propietarios sin conexión, de punta a punta.
+
+### Qué se construyó
+
+| Pieza | Archivo |
+|---|---|
+| Interruptor (`NEXT_PUBLIC_SIN_CONEXION`): encendido en Preview y con `SIN_CONEXION=1`, apagado en producción | `next.config.ts`, `lib/local/config.ts` |
+| Service worker con Serwist, alcance `/admin/`: red primero, 8 s como máximo, y si falla, a la cáscara | `app/sw.ts`, `app/serwist/[path]/route.ts` |
+| Manifiesto e íconos de 192 y 512 px | `app/manifest.ts`, `public/icon-192.png`, `public/icon-512.png` |
+| Cáscara pública y sin datos | `app/(admin)/admin/sin-internet/` |
+| `proxy.ts`: cáscara pública; `/serwist/*` y el manifiesto fuera del `matcher` | `proxy.ts` |
+| Armado compartido de Propietarios (servidor y copia, una sola función) | `lib/admin/pantallas/propietarios.ts` |
+| Copia local por usuario (IndexedDB), sesión leída sin red, conexión comprobada de verdad | `lib/local/*` |
+| Copia automática del edificio abierto y aviso en el lateral; Salir borra la copia | `components/sin-conexion/ModoSinConexion.tsx`, `MarcoAdmin.tsx` |
+
+Dependencias nuevas: `@serwist/turbopack` y `serwist` 9.5.15, `idb` 8.0.4, y para armar el
+service worker en el build `esbuild` y `esbuild-wasm` 0.28.2 (de desarrollo). Todas con versión
+exacta. `npm audit` muestra avisos que ya estaban (`next`, `sharp`, `source-map-js`), no de estas.
+
+### Probado contra `next start` (localhost:3123, base de pruebas, cuenta `admin.prueba`)
+
+El corte se simuló **apagando el servidor**: el navegador sigue «con internet», pero nadie contesta.
+Es el caso más difícil, porque `navigator.onLine` sigue diciendo que hay conexión.
+
+| # | Prueba | Resultado |
+|---|---|---|
+| 1 | Con conexión: service worker activo con alcance `/admin/`, 87 archivos guardados (3,2 MB, una vez por despliegue), copia del edificio guardada sola, lateral «Disponible sin conexión · 00:45» | ✅ |
+| 2 | En el caché del service worker no hay ninguna página con datos: solo la cáscara y los archivos del build | ✅ |
+| 3 | Sin servidor, **recargar** Propietarios (F5) → la cáscara con la copia: 101 y 102, $ 150,00 cada una | ✅ |
+| 4 | Sin servidor, **clic en el menú** (Inicio) → Next falla la navegación, cae a navegación del navegador, el service worker lleva a la cáscara: «Esta sección todavía no se puede ver sin conexión» | ✅ |
+| 5 | Dentro de la cáscara, sin red, «Ver Propietarios» → Propietarios desde la copia, sin pedir nada | ✅ |
+| 6 | Franja: «Sin conexión: está viendo los datos de 00:48» mientras no hay servidor; con servidor, «Volvió la conexión» y «Ver lo último», que vuelve a la página real | ✅ (la primera versión decía «Volvió» con el servidor apagado: corregido con una comprobación real, `lib/local/conexion.ts`) |
+| 7 | Salir → se borra la base local del usuario y la sesión | ✅ |
+| 8 | Cáscara sin sesión → «No hay una sesión abierta en este equipo», sin datos | ✅ |
+| 9 | Build con el interruptor apagado: en el código del navegador queda `SIN_CONEXION_ACTIVO = false`, no se registra nada | ✅ |
+| 10 | `npm run build`, `npm run lint`, `npx tsc --noEmit` | ✅ los tres |
+
+### Lo que aprendimos (y entra en la parte A)
+
+- **El diseño funciona con el router de Next 16.** Era el riesgo más grande. Sin
+  `experimental.useOffline`, cuando un clic no llega al servidor, Next hace una navegación normal
+  del navegador (lo dice su código: «Falling back to browser navigation»), y ahí la toma el service
+  worker. No hizo falta tocar nada de Next.
+- **Serwist con Turbopack funciona** en Windows (esbuild nativo) y queda listo para Vercel (Linux,
+  `esbuild-wasm`).
+- **`navigator.onLine` no sirve para el aviso:** con el servidor caído decía «en línea». El aviso
+  usa una consulta real con reintentos.
+- **Los logos no se ven sin conexión:** `next/image` pasa por el optimizador del servidor. En la
+  cáscara se sacó el logo; en A, el componente `Logo` va con `unoptimized` o como texto.
+- **El panel del navegador del asistente** deja de dibujar cuando se apaga la pantalla; las
+  pruebas siguieron leyendo el texto de la página.
+
+### Lo que no se probó todavía
+
+- **Internet lento de verdad** (los 8 segundos): se prueba en el Preview con Chrome, DevTools →
+  Network → «Slow 4G» y «3G».
+- **Corte real** (Wi-Fi apagado, modo avión) y **el caso viernes → lunes** (cerrar el navegador,
+  abrirlo sin red con el token vencido). Por diseño debería abrir la copia: la sesión se lee de la
+  cookie sin verificar su vencimiento.
+- **Instalar la app** desde Chrome o Edge en el Preview.
+- El manifiesto existe también con el interruptor apagado: Chrome podría ofrecer «Instalar» en
+  producción. Inofensivo, pero se puede condicionar en A.
+
 ## Preguntas abiertas
 
-Ninguna. Falta la aprobación del plan para crear la rama `cambio-3-sin-conexion` y empezar la
-prueba de concepto (primer paso de A).
+Ninguna nueva. Falta que Nicolás pruebe el Preview y apruebe seguir con el resto de A.
 
 ---
 

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSerwist } from "@serwist/turbopack";
 
 /* /design-system (vitrina interna del sistema de diseño, no producto) queda
    FUERA del build de producción (ronda 3, punto 6): sus archivos se llaman
@@ -13,7 +14,24 @@ import type { NextConfig } from "next";
    El layout conserva además su propio `notFound()` como segunda capa. */
 const VITRINA = process.env.VERCEL_ENV === "preview" || process.env.MOSTRAR_VITRINA === "1";
 
+/* Cambio 3 (trabajar sin internet, docs/plan-sin-conexion.md): interruptor.
+   Encendido en los Preview de Vercel y en local con `SIN_CONEXION=1`;
+   **apagado en producción** hasta que se apruebe. Apagado, no se registra
+   el service worker ni se baja ninguna copia (lib/local/config.ts). */
+const SIN_CONEXION = process.env.VERCEL_ENV === "preview" || process.env.SIN_CONEXION === "1";
+
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_SIN_CONEXION: SIN_CONEXION ? "1" : "" },
+  /* El service worker (app/serwist/[path]/route.ts) no se guarda en caché
+     del navegador: así cada despliegue llega en la próxima visita. */
+  async headers() {
+    return [
+      {
+        source: "/serwist/:path*",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
+    ];
+  },
   pageExtensions: VITRINA ? ["tsx", "ts", "jsx", "js", "vitrina.tsx"] : ["tsx", "ts", "jsx", "js"],
   /* La portada pública (vecitap.com) es el sitio de venta, que antes vivía
      en GitHub Pages (repo vecitap-sitio). Se sirve tal cual desde
@@ -30,4 +48,6 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// withSerwist solo agrega esbuild a serverExternalPackages (lo usa la ruta
+// del service worker en el build); no cambia nada más de la configuración.
+export default withSerwist(nextConfig);
