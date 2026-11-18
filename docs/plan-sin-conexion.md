@@ -1,6 +1,7 @@
 # Plan · Cambio 3 de ING3: trabajar sin internet en Administración
 
-Estado: **propuesta, segunda versión (17-nov-2026).** No hay código ni migraciones escritas.
+Estado: **A, E, B y C construidas en la rama `app-sin-conexion` (18-nov), D propuesta** (ver
+secciones 8, 9 y 10). Lo que sigue es el plan tal como se aprobó el 17-nov.
 Primera versión revisada por Nicolás el mismo día; sus respuestas y las correcciones que salieron
 de ellas están incorporadas (ver «Cambios frente a la primera versión», al final).
 
@@ -741,9 +742,107 @@ componentes. Conviene que Nicolás los pruebe en línea en el Preview.
   arriba). Se puede dejar solo uno.
 - Antes de producción: aplicar `20261118120000_copia_edificio.sql` (Nicolás, con respaldo).
 
+## 10. Partes E, B y C (18-nov) — resultado
+
+Nicolás pidió el 18-nov terminar todas las partes y probar al final. Rama `app-sin-conexion`.
+**E, B y C están hechas. D (Garita) no:** queda propuesta en 10.5, porque cambia la seguridad
+del módulo y necesita su aprobación.
+
+### 10.1 Qué se construyó
+
+| Parte | Pieza | Dónde |
+|---|---|---|
+| E | **Primero la copia.** Las fronteras de carga (`loading.tsx`) de Inicio, Propietarios, la ficha, Pagos, Gastos del mes y Cortes dibujan la copia del edificio mientras llega la página fresca, inerte (`inert`) y con «Actualizando… (mostrando los datos de las 10:42)». Cuando llega lo del servidor, Next la reemplaza sola. Sin copia, el «Cargando…» de siempre. En esa vista no se leen ni se guardan borradores | `components/sin-conexion/VistaPrevia.tsx`, `ContenidoCopia.tsx` |
+| E | **Lo propio entra a la copia enseguida:** cada cosa que llega a la base vuelve a bajar la copia de ese edificio (antes solo cada minuto, por la huella) | `lib/local/bandeja.ts` (`EVENTO_COPIA_SUCIA`), `ModoSinConexion.tsx` |
+| B | **Migración** `20261118140000_bandeja_sin_conexion.sql` (+ rollback): `id_equipo` y `hecho_en` en pagos, gastos, cargos y ajustes, con el trigger que se salta un reintento (2.6); `equipos_sin_conexion`, `latido_equipo`, `equipos_en_riesgo`, `liberar_equipo` y el trigger de `periodos` que no deja cerrar con equipos en riesgo (2.7). Una sola función de trigger para las cuatro tablas (`saltar_id_equipo_repetido`), no cuatro. **Aplicada en vecitap-pruebas**, sin aplicar en producción | `supabase/migrations/` |
+| B | **La bandeja** («cosas por enviar») en IndexedDB, y `hacer()`: con conexión manda al instante como siempre; si la red falla o tarda más de 15 s, la cosa queda sola en la bandeja. Envío en orden, una pestaña a la vez (Web Locks), al volver la conexión, al abrir y cada minuto. Red → sigue por enviar; sesión vencida → «entre de nuevo»; rechazo → «Revisar» con el motivo | `lib/local/bandeja.ts`, `envios.ts`, `bandeja-tipos.ts` |
+| B | **Pagos:** registrar (uno y agrupado), conciliar y anular (también con el archivo del banco), exonerar. **«Repartir al volver»** sin conexión. Sin conexión, un pago en bolívares sin tasa a mano toma la del BCV de su fecha al llegar (la pone la base, como cuando lo carga el residente) | `components/admin/Pagos.tsx` |
+| B | **Aviso de posible duplicado**, también en línea: misma unidad, mismo monto y moneda, fecha a ±3 días, no anulado. En línea pregunta antes de registrar; desde la bandeja, va a «Revisar» con «Es el mismo: descartar el mío» o «Son distintos: enviar igual» | `envios.ts` (`buscarPosiblesDuplicados`), `Pagos.tsx`, `PorEnviar.tsx` |
+| B | **«Por enviar»**: en Pagos, en la ficha de la unidad, en Gastos del mes, y la lista completa desde el lateral («3 cosas por enviar · Ver»). Un pago con un cambio pendiente muestra «por enviar: conciliar» y no ofrece los botones de nuevo | `PorEnviar.tsx`, `ModoSinConexion.tsx` |
+| B | **Salir bloqueado** con cosas por enviar | `FormularioSalir.tsx` |
+| B | **Equipos en riesgo:** cada equipo avisa cada minuto cuántas cosas tiene por enviar de cada edificio con copia; al cerrar la pestaña con conexión avisa «cerrado» (`fetch` con `keepalive`). En Gastos del mes, la lista «Equipos sin conexión» con el botón para liberarlos; con cosas por enviar en este equipo, «Cerrar el mes» queda deshabilitado | `ModoSinConexion.tsx`, `EquiposEnRiesgo.tsx`, `CierreMes.tsx` |
+| C | **Gastos del mes:** agregar, editar, borrar y ordenar (sin conexión, la posición final de cada gasto de la categoría). **Cargos a una unidad:** agregar, corregir y quitar. Las ediciones y los borrados viajan con los valores de antes: si otra persona cambió lo mismo, «Revisar» muestra las dos versiones («Usar lo mío» / «Quedarme con lo de la otra persona»). Un gasto o cargo cuyo mes se cerró va a «Revisar» con «Pasarlo al mes abierto» | `CierreMes.tsx`, `CargosUnidad.tsx`, `envios.ts` |
+| C | **Ficha:** sin conexión se guardan los datos de contacto de las personas que ya están en la ficha y la nota, con la misma comparación de antes. El código, la alícuota, los saldos, quién paga y cambiar de propietario o inquilino necesitan conexión (lo dice al guardar) | `DatosUnidad.tsx` |
+
+Con el interruptor apagado (producción) todo se porta como antes: no hay bandeja, los inserts
+no llevan `id_equipo` (la columna puede no existir en esa base), no se buscan duplicados ni se
+comparan versiones, y un error de red se muestra como siempre.
+
+### 10.2 Probado contra `next start` (base de pruebas, `admin.prueba`, «Cambio 2 · prueba»)
+
+| Prueba | Resultado |
+|---|---|
+| Migración: columnas, unique y triggers (4, 4, 4 y 1), funciones definer/invoker y permisos, 0 funciones con «\r» | ✅ |
+| Migración, en una transacción deshecha: el mismo pago con referencia y el mismo `id_equipo` dos veces → 1 fila, sin error; el mismo cargo dos veces → 1; dos pagos sin `id_equipo` → 2 | ✅ |
+| Migración: con 2 pendientes, el cierre se rechaza («el equipo de admin.prueba@… tiene 2 cosa(s) sin enviar»); con un equipo mudo hace 5 min, también («sin conexión desde el 18/11 06:37»); liberado o cerrado, la regla pasa; la liberación queda en `auditoria` | ✅ (la regla de cuenta suspendida se apagó dentro de esa transacción para poder llegar a esta) |
+| En línea: registrar un pago → llega al instante, con `id_equipo` y `hecho_en`; la copia lo trae enseguida | ✅ |
+| En línea: el mismo pago otra vez → «¿Es un pago distinto?» con el que ya estaba | ✅ |
+| Sin servidor, en la pantalla sin conexión: un pago de 102, conciliar el de 101, el de 101 repetido y una transferencia «a repartir al volver»; un gasto y un cargo a 101 (por el lateral, que pasa por el service worker) → seis cosas en «Por enviar», «Cerrar el mes» deshabilitado, Salir bloqueado | ✅ |
+| Al volver el servidor: se envían solas en orden. El pago, la conciliación, el gasto y el cargo llegan con la hora real del equipo en `hecho_en`; la transferencia se reparte con la deuda del momento (toda a 101, por antigüedad); el repetido queda en «Revisar» como posible duplicado → «Es el mismo: descartar el mío» | ✅ |
+| Nota de la ficha sin conexión; «otra persona» la cambia en la base → «Revisar» muestra las dos versiones → «Usar lo mío» la envía | ✅ |
+| Gastos del mes en línea: «Equipos sin conexión» muestra un equipo mudo hace 10 min → liberarlo → desaparece, y queda en la auditoría | ✅ |
+| Parte E: clic en Propietarios → la copia aparece con «Actualizando…» y la página fresca la reemplaza (0,8 s y 1,1 s con el servidor local) | ✅ |
+| `npm run build` (encendido y apagado), `lint`, `tsc` | ✅ |
+
+Quedaron en «Cambio 2 · prueba» los datos de estas pruebas (pagos de 101 y 102 por $ 7,77,
+$ 5,55 y $ 20, el gasto «Vigilancia prueba sin conexion», el cargo «Consumo de agua prueba» y la
+nota de 101): el borrado no se aprobó. Se pueden anular o borrar desde la app.
+
+### 10.3 Lo que no se probó
+
+- **Con el panel del navegador del asistente oculto**, las páginas en línea que llegan por
+  partes a veces se quedan en «Cargando…» (ya anotado en la parte A). Por eso la parte E se
+  midió con clics dentro de una página ya cargada, no con F5.
+- La vista previa tarda lo que tarda Next en traer la frontera de carga si no la precargó: con
+  la página visible y el menú a la vista, Next la precarga y debería ser inmediata. **Conviene
+  que Nicolás lo mire con internet lento** (DevTools → «Slow 4G»): es donde la parte E se nota.
+- Una sesión vencida de verdad (el aviso «entre de nuevo») y dos pestañas mandando a la vez.
+- Cerrar un mes de verdad en pruebas con la bandeja vacía (la regla nueva se probó en la base).
+- Contactos de la ficha sin conexión (mismo camino que la nota, sin prueba propia).
+
+### 10.4 Decisiones tomadas al construir (para revisar)
+
+- **«Es el mismo»** descarta el pago propio y deja el otro como estaba (reportado o conciliado).
+  El plan decía «confirmar el del residente»; no se confirma solo porque confirmar es decir que
+  el dinero llegó, y eso lo tiene que mirar el administrador.
+- **«Corregir y reenviar»** no edita la cosa dentro de «Revisar»: se descarta y se vuelve a
+  cargar en el formulario. «Reintentar» la manda de nuevo tal cual.
+- **Confirmar o anular algo que todavía está por enviar** no se puede: primero tiene que llegar.
+  Así no hace falta encadenar una cosa con otra («dependencias» de 2.3).
+- **«Revisar» cuenta como pendiente** para el cierre: el mes no se cierra hasta que se resuelva.
+- **El orden de los gastos en línea** sigue con `mover_gasto`; la posición final se usa solo sin
+  conexión.
+
+### 10.5 Parte D (Garita) — propuesta, sin construir
+
+En la garita se valida cada visita con el código de la invitación (`garita_validar`). Sin
+conexión no hay a quién preguntarle, así que para dejar entrar a alguien el equipo de la garita
+tendría que **tener guardados los códigos vigentes del día**. Eso cambia la seguridad del módulo:
+quien se lleve ese equipo (o lo copie) tiene los accesos del día de ese edificio. Por eso no se
+construyó sin decisión. Propuesta:
+
+1. **Qué se guarda:** solo las invitaciones de hoy de los edificios del vigilante, con el código
+   **resumido** (un hash, no el código): la garita puede comprobar un código que le dictan pero
+   no puede leer la lista. Nombre del visitante, unidad, vigencia. Función nueva, de solo
+   lectura, con `puede_garita` (no se toca `puede_garita` ni `permitir_garita`).
+2. **Qué se hace sin conexión:** validar contra esa lista y anotar la entrada (y la salida) en
+   la bandeja del equipo, con la hora del equipo. Las invitaciones de un solo uso quedan
+   marcadas en el equipo para no abrir dos veces.
+3. **Al volver:** `garita_entrada` con `id_equipo` y `hecho_en` (cambio de firma con valores por
+   omisión; es de la familia de revisión cuidadosa). Si la invitación se anuló mientras tanto, la
+   entrada llega igual (ya pasó) y queda marcada para que la vea la administración.
+4. **Fuera:** visitantes sin invitación (los aprueba el residente en línea) y avisar al residente.
+
+Tamaño: mediana (≈ 10–15 %). Necesita la aprobación de Nicolás y, por tocar los gates de Garita,
+revisión cruzada.
+
 ## Preguntas abiertas
 
-Ninguna. Falta que Nicolás pruebe la parte A en el Preview y apruebe seguir con la parte E.
+1. **Parte D (Garita):** ¿se guarda en el equipo de la garita la lista del día, resumida como en
+   10.5, o la garita queda fuera del modo sin conexión?
+2. Las cuatro decisiones de 10.4.
+
+Falta que Nicolás pruebe A, E, B y C en el Preview.
 
 ---
 

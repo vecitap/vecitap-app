@@ -20,7 +20,9 @@ export type Database = {
           creado_por: string | null
           destino: string
           fecha: string
+          hecho_en: string | null
           id: string
+          id_equipo: string | null
           monto: number
           motivo: string
           org_id: string
@@ -32,7 +34,9 @@ export type Database = {
           creado_por?: string | null
           destino?: string
           fecha?: string
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           monto: number
           motivo: string
           org_id: string
@@ -44,7 +48,9 @@ export type Database = {
           creado_por?: string | null
           destino?: string
           fecha?: string
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           monto?: number
           motivo?: string
           org_id?: string
@@ -275,7 +281,9 @@ export type Database = {
           concepto: string
           creado_en: string
           creado_por: string | null
+          hecho_en: string | null
           id: string
+          id_equipo: string | null
           monto: number
           org_id: string
           periodo_id: string
@@ -287,7 +295,9 @@ export type Database = {
           concepto: string
           creado_en?: string
           creado_por?: string | null
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           monto: number
           org_id: string
           periodo_id: string
@@ -299,7 +309,9 @@ export type Database = {
           concepto?: string
           creado_en?: string
           creado_por?: string | null
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           monto?: number
           org_id?: string
           periodo_id?: string
@@ -917,13 +929,69 @@ export type Database = {
           },
         ]
       }
+      equipos_sin_conexion: {
+        Row: {
+          descripcion: string | null
+          edificio_id: string
+          equipo_id: string
+          estado: string
+          liberado_en: string | null
+          liberado_por: string | null
+          org_id: string
+          pendientes: number
+          ultimo_contacto: string
+          usuario_id: string
+        }
+        Insert: {
+          descripcion?: string | null
+          edificio_id: string
+          equipo_id: string
+          estado: string
+          liberado_en?: string | null
+          liberado_por?: string | null
+          org_id: string
+          pendientes?: number
+          ultimo_contacto?: string
+          usuario_id: string
+        }
+        Update: {
+          descripcion?: string | null
+          edificio_id?: string
+          equipo_id?: string
+          estado?: string
+          liberado_en?: string | null
+          liberado_por?: string | null
+          org_id?: string
+          pendientes?: number
+          ultimo_contacto?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipos_sin_conexion_edificio_id_fkey"
+            columns: ["edificio_id"]
+            isOneToOne: false
+            referencedRelation: "edificios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipos_sin_conexion_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizaciones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gastos: {
         Row: {
           bolsillo: string
           categoria_id: string | null
           concepto: string
           creado_en: string
+          hecho_en: string | null
           id: string
+          id_equipo: string | null
           monto: number
           orden: number
           org_id: string
@@ -937,7 +1005,9 @@ export type Database = {
           categoria_id?: string | null
           concepto?: string
           creado_en?: string
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           monto?: number
           orden?: number
           org_id: string
@@ -951,7 +1021,9 @@ export type Database = {
           categoria_id?: string | null
           concepto?: string
           creado_en?: string
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           monto?: number
           orden?: number
           org_id?: string
@@ -1568,7 +1640,9 @@ export type Database = {
           estado: string
           fecha: string
           grupo_id: string | null
+          hecho_en: string | null
           id: string
+          id_equipo: string | null
           metodo: string | null
           moneda: string
           monto: number
@@ -1599,7 +1673,9 @@ export type Database = {
           estado?: string
           fecha?: string
           grupo_id?: string | null
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           metodo?: string | null
           moneda?: string
           monto: number
@@ -1630,7 +1706,9 @@ export type Database = {
           estado?: string
           fecha?: string
           grupo_id?: string | null
+          hecho_en?: string | null
           id?: string
+          id_equipo?: string | null
           metodo?: string | null
           moneda?: string
           monto?: number
@@ -2757,6 +2835,19 @@ export type Database = {
         }
         Returns: Json
       }
+      equipos_en_riesgo: {
+        Args: { p_edificio: string }
+        Returns: {
+          descripcion: string
+          equipo_id: string
+          es_mio: boolean
+          estado: string
+          pendientes: number
+          quien: string
+          ultimo_contacto: string
+          usuario_id: string
+        }[]
+      }
       es_operador: { Args: never; Returns: boolean }
       esc_html: { Args: { t: string }; Returns: string }
       estadisticas_periodo: {
@@ -3032,6 +3123,20 @@ export type Database = {
           usada_en: string
         }[]
       }
+      latido_equipo: {
+        Args: {
+          p_descripcion?: string
+          p_edificio: string
+          p_equipo: string
+          p_estado: string
+          p_pendientes: number
+        }
+        Returns: undefined
+      }
+      liberar_equipo: {
+        Args: { p_edificio: string; p_equipo: string }
+        Returns: undefined
+      }
       libro_edificio: {
         Args: { p_desde: string; p_edificio: string; p_hasta: string }
         Returns: {
@@ -3232,11 +3337,11 @@ export type Database = {
       permitir_garita: { Args: { p_edificio: string }; Returns: string }
       puede_garita: { Args: { p_edificio: string }; Returns: boolean }
       puede_operar: { Args: { p_org: string }; Returns: boolean }
+      puede_ver_saldo: { Args: { p_unidad: string }; Returns: boolean }
       puesto_en_cola: {
         Args: { p_encolado: string; p_mensaje: boolean }
         Returns: number
       }
-      puede_ver_saldo: { Args: { p_unidad: string }; Returns: boolean }
       reabrir_periodo: {
         Args: { p_confirmar?: boolean; p_periodo: string }
         Returns: undefined
@@ -3266,15 +3371,6 @@ export type Database = {
         Returns: number
       }
       reenviar_recibo: { Args: { p_recibo: string }; Returns: number }
-      repartir_pago: {
-        Args: { p_destino?: string; p_monto: number; p_unidades: string[] }
-        Returns: {
-          codigo: string
-          detalle: Json
-          monto: number
-          unidad_id: string
-        }[]
-      }
       registrar_evento_correo: {
         Args: {
           p_clave: string
@@ -3283,6 +3379,15 @@ export type Database = {
           p_tipo: string
         }
         Returns: string
+      }
+      repartir_pago: {
+        Args: { p_destino?: string; p_monto: number; p_unidades: string[] }
+        Returns: {
+          codigo: string
+          detalle: Json
+          monto: number
+          unidad_id: string
+        }[]
       }
       residentes_de: {
         Args: { p_edificio: string }

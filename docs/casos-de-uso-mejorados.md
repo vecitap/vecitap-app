@@ -2704,3 +2704,32 @@ Lo que pidió Gustavo para antes del primer envío de recibos de GRUPO ING3.
     cuotas extraordinarias solo cambia qué mes figura pagado, porque la mora se calcula
     igual sobre una cuota ordinaria que sobre una extraordinaria.
   - Migraciones `20261117130000_deuda_por_mes.sql` y `20261117140000_deuda_meses_solo_condominio.sql`.
+
+### 125. Administración funciona sin internet
+
+- **Antes:** sin internet no se podía abrir ninguna pantalla de Administración, y lo que se
+  estaba escribiendo se perdía. Un pago se registraba dos veces sin aviso si el residente ya
+  lo había reportado con otra referencia (o sin referencia).
+- **Ahora (cambio 3 del feedback de ING3, plan `docs/plan-sin-conexion.md`), detrás del
+  interruptor `NEXT_PUBLIC_SIN_CONEXION` (apagado en producción hasta aprobarlo):**
+  - El edificio que se abre queda guardado en la computadora y se mantiene al día solo. Sin
+    internet se ven Inicio, Propietarios y la ficha de cada unidad, Pagos, Gastos del mes y el
+    último mes cerrado de Cortes, con el menú de siempre y la hora de los datos. La app se puede
+    instalar.
+  - Sin internet se pueden registrar, conciliar y anular pagos, exonerar, cargar y corregir
+    gastos y cargos, y guardar la nota y los contactos de una unidad. Quedan en «Por enviar»,
+    aparte, **sin tocar los saldos**, y llegan solos al volver la conexión, con la hora en que se
+    hicieron. Una transferencia para varias unidades se puede dejar «a repartir al volver».
+  - Lo que la base no acepta, o lo que otra persona cambió mientras tanto, queda en «Revisar»
+    con las dos versiones. Nada se borra solo, y no se puede salir de la cuenta con cosas por
+    enviar.
+  - El mes no se puede cerrar si un equipo tiene (o puede tener) cosas por enviar de ese
+    edificio; cualquier administrador puede liberar un equipo cuando quien lo usa confirma que
+    no tiene nada. Queda en la auditoría.
+  - Con internet, al cambiar de sección se ve al instante lo guardado («Actualizando…»)
+    mientras llega lo fresco.
+  - **Aviso de posible duplicado**, también con internet: un pago de la misma unidad, por el
+    mismo monto y con fecha a ±3 días hace preguntar antes de registrarlo.
+  - Los formularios a medio llenar se recuperan después de un apagón o de cerrar el navegador.
+  - Garita todavía no funciona sin internet (propuesta aparte).
+  - Migraciones `20261118120000_copia_edificio.sql` y `20261118140000_bandeja_sin_conexion.sql`.

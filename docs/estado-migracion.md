@@ -16,7 +16,19 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
-## Cambio 3 del feedback de ING3 (18-nov) — trabajar sin internet — PARTE A EN LA RAMA `app-sin-conexion`
+## Cambio 3 del feedback de ING3 (18-nov) — trabajar sin internet — PARTES A, E, B Y C EN LA RAMA `app-sin-conexion`
+
+- **18-nov, partes E, B y C hechas** (sección 10 del plan): «primero la copia» con conexión,
+  la bandeja de cosas por enviar (pagos, conciliación, exoneraciones, «Repartir al volver»,
+  gastos, cargos, contactos y nota), «Revisar» con duplicados y conflictos, Salir bloqueado con
+  pendientes, y la base que no deja cerrar un mes con equipos en riesgo. **Base:**
+  `20261118140000_bandeja_sin_conexion.sql` y su rollback, **aplicada en vecitap-pruebas el
+  18-nov** (asistente, execute_sql; verificación OK). **Sin aplicar en producción:** va después
+  de `20261118120000_copia_edificio.sql`. Sus cuatro funciones nuevas de equipos deciden si un
+  mes se puede cerrar: **familia de revisión cuidadosa**. Caso de uso mejorado n.º 125.
+- **Parte D (Garita) sin construir:** propuesta en la sección 10.5 del plan, espera la decisión
+  de Nicolás (guardar en el equipo de la garita los códigos del día, resumidos).
+- **Falta:** que Nicolás pruebe todo en el Preview; las cuatro decisiones de 10.4.
 
 Plan completo, decisiones y resultados en [`plan-sin-conexion.md`](plan-sin-conexion.md)
 (orden A → E → B → C, D después). **Rama propia, `app-sin-conexion`**, que sale de `dev`: `dev`

@@ -6,6 +6,7 @@ import type { FilasPagos } from "@/lib/admin/pantallas/pagos";
 import type { FilasMes } from "@/lib/admin/pantallas/mes";
 import type { FilasCortes } from "@/lib/admin/pantallas/cortes";
 import type { GastoAdmin, OrganizacionAdmin, ReciboAdmin, TasaViva } from "@/lib/admin/tipos";
+import type { Cosa } from "./bandeja-tipos";
 
 /**
  * El único módulo que lee y escribe la copia local (cambio 3, 1.1 e).
@@ -14,8 +15,10 @@ import type { GastoAdmin, OrganizacionAdmin, ReciboAdmin, TasaViva } from "@/lib
  * (decidido el 17-nov: riesgo asumido por la empresa); si algún día cambia,
  * se cambia acá y en ningún otro lado.
  *
- * Almacenes: `copias` (una por edificio) y `borradores` (formularios a medio
- * llenar, plan sección 3). La parte B suma `bandeja`.
+ * Almacenes: `copias` (una por edificio), `borradores` (formularios a medio
+ * llenar, plan sección 3), `bandeja` (cosas hechas en este equipo que
+ * todavía no llegaron a la base, parte B) y `meta` (el identificador de este
+ * equipo).
  */
 
 /** Lo que necesita el lateral (MarcoAdmin) para dibujarse sin el servidor. */
@@ -55,16 +58,20 @@ export type Borrador = {
 interface EsquemaLocal extends DBSchema {
   copias: { key: string; value: CopiaEdificio };
   borradores: { key: string; value: Borrador };
+  bandeja: { key: string; value: Cosa; indexes: { edificio: string } };
+  meta: { key: string; value: { clave: string; valor: string } };
 }
 
 const PREFIJO = "vecitap-";
 const nombreBase = (usuarioId: string) => `${PREFIJO}${usuarioId}`;
 
 function abrir(usuarioId: string): Promise<IDBPDatabase<EsquemaLocal>> {
-  return openDB<EsquemaLocal>(nombreBase(usuarioId), 2, {
+  return openDB<EsquemaLocal>(nombreBase(usuarioId), 3, {
     upgrade(db) {
       if (!db.objectStoreNames.contains("copias")) db.createObjectStore("copias", { keyPath: "edificioId" });
       if (!db.objectStoreNames.contains("borradores")) db.createObjectStore("borradores", { keyPath: "clave" });
+      if (!db.objectStoreNames.contains("bandeja")) db.createObjectStore("bandeja", { keyPath: "id" }).createIndex("edificio", "edificioId");
+      if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "clave" });
     },
   });
 }
@@ -99,6 +106,35 @@ export const leerBorrador = (usuarioId: string, clave: string) =>
 export const guardarBorrador = (usuarioId: string, borrador: Borrador) => conBase(usuarioId, (db) => db.put("borradores", borrador).then(() => undefined));
 
 export const borrarBorrador = (usuarioId: string, clave: string) => conBase(usuarioId, (db) => db.delete("borradores", clave));
+
+/* ── Bandeja (parte B) ── */
+
+/** Las cosas por enviar de este usuario (de un edificio, o todas), en el orden en que se hicieron. */
+export const listarBandeja = (usuarioId: string, edificioId?: string) =>
+  conBase(usuarioId, async (db) => {
+    const todas = edificioId ? await db.getAllFromIndex("bandeja", "edificio", edificioId) : await db.getAll("bandeja");
+    return todas.sort((a, b) => a.hechoEn.localeCompare(b.hechoEn));
+  });
+
+export const leerCosa = (usuarioId: string, id: string) => conBase(usuarioId, async (db) => (await db.get("bandeja", id)) ?? null);
+
+export const guardarCosa = (usuarioId: string, cosa: Cosa) => conBase(usuarioId, (db) => db.put("bandeja", cosa).then(() => undefined));
+
+export const borrarCosa = (usuarioId: string, id: string) => conBase(usuarioId, (db) => db.delete("bandeja", id));
+
+/**
+ * El identificador de este equipo (plan 2.7): se crea una vez y queda en la
+ * base local del usuario. Con él la base sabe qué equipos pueden tener cosas
+ * por enviar.
+ */
+export const equipoId = (usuarioId: string) =>
+  conBase(usuarioId, async (db) => {
+    const hay = await db.get("meta", "equipo");
+    if (hay) return hay.valor;
+    const nuevo = crypto.randomUUID();
+    await db.put("meta", { clave: "equipo", valor: nuevo });
+    return nuevo;
+  });
 
 /**
  * Al salir: borra la base del usuario que sale (plan 1.1 j). Las de otros

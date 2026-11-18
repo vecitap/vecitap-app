@@ -3,8 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBorrador } from "@/lib/local/borrador";
 import { AvisoBorrador } from "@/components/sin-conexion/AvisoBorrador";
+import { PorEnviar } from "@/components/sin-conexion/PorEnviar";
+import { hacer, marcasEquipo, textoEnBandeja, useBandeja, type Resultado } from "@/lib/local/bandeja";
+import { buscarPosiblesDuplicados, claseDeError } from "@/lib/local/envios";
+import { SIN_CONEXION_ACTIVO } from "@/lib/local/config";
+import { useModoCopia } from "@/lib/local/contexto";
+import type { CandidatoDuplicado } from "@/lib/local/bandeja-tipos";
 import { useRouter } from "next/navigation";
-import { Aviso, Badge, Button, Campo, Card, Input, InputFecha, Select, type TonoBadge } from "@/components/ui";
+import { Aviso, Badge, Button, Campo, Card, Confirmar, Input, InputFecha, Select, type TonoBadge } from "@/components/ui";
 import { bs, hoyLocalISO, montoAlSalir, nf, num, paraCampo, usd, formatoFecha } from "@/lib/formato";
 import { BOLSILLOS, DESTINOS_PAGO, METODOS, MOTIVOS_TASA, PIDE } from "@/lib/admin/constantes";
 import {
@@ -133,6 +139,26 @@ export function Pagos({
   );
   const borradorEx = useBorrador(`pagos.exonerar·${edificioId}`, ex, setEx, (b) => !b.monto.trim() && !b.motivo.trim());
 
+  // Cambio 3, parte B: en la pantalla sin internet lo que se guarda va a la
+  // bandeja; «Pagos por enviar» muestra lo de este edificio.
+  const sinConexion = useModoCopia() === "sin-conexion";
+  const bandeja = useBandeja(edificioId);
+  /** Pagos con un cambio de estado esperando para enviarse. */
+  const pendienteDe = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of bandeja) {
+      if (c.tipo !== "pago.estado") continue;
+      const d = c.datos as { pagoId?: string; grupoId?: string | null; estado: string };
+      const texto = d.estado === "conciliado" ? "por enviar: conciliar" : "por enviar: anular";
+      if (d.grupoId) pagos.filter((x) => x.grupo_id === d.grupoId).forEach((x) => (m[x.id] = texto));
+      else if (d.pagoId) m[d.pagoId] = texto;
+    }
+    return m;
+  }, [bandeja, pagos]);
+  // Aviso de posible duplicado en línea (plan 2.4, aprobado el 17-nov).
+  const [duplicados, setDuplicados] = useState<{ candidatos: CandidatoDuplicado[]; seguir: () => void } | null>(null);
+  const codigos = useMemo(() => Object.fromEntries(unidades.map((u) => [u.id, u.codigo])), [unidades]);
+
   const [viendo, setViendo] = useState<{ url: string; tipo: string; pago: PagoAdmin; ficha: ComprobanteFila } | null>(null);
   const [purga, setPurga] = useState<number | null>(null);
 
@@ -205,7 +231,9 @@ export function Pagos({
     if (f.moneda !== "VES") return null;
     if (tasaTxt !== null && tasaTxt.trim() !== "" && (tasaEscrita === null || tasaEscrita <= 0))
       return "La tasa no se entiende.";
-    if (!ajustada) return tf ? null : "No hay tasa del BCV para esa fecha. Cárguela abajo o escriba la tasa de este pago.";
+    // Sin conexión no se puede leer la tasa de esa fecha: la pone la base al
+    // enviarse (pago_convierte), igual que cuando el pago lo carga el residente.
+    if (!ajustada) return tf || sinConexion ? null : "No hay tasa del BCV para esa fecha. Cárguela abajo o escriba la tasa de este pago.";
     if (!motivoTasa) return "Elija el motivo del cambio de tasa.";
     if (motivoTasa === "otro" && !detalleTasa.trim()) return "Escriba el motivo del cambio de tasa.";
     return null;
@@ -306,9 +334,10 @@ export function Pagos({
     if (eTasa) return notificar(eTasa, "error");
     setOcupado(true);
     const pide = PIDE[f.metodo] ?? {};
-    const supabase = crearClienteNavegador();
-    const { error } = await supabase.from("pagos").insert({
+    const id = crypto.randomUUID();
+    const fila = {
       ...camposTasa(),
+      ...marcasEquipo(id),
       org_id: orgId,
       unidad_id: f.unidad,
       fecha: f.fecha,
@@ -323,14 +352,131 @@ export function Pagos({
       documento_origen: pide.documento ? f.documento.trim() : null,
       correo_origen: pide.correo ? f.correo.trim() : null,
       estado: "reportado",
+    };
+    await conDuplicados([fila], async (permitirDuplicado) => {
+      const r = await hacer({
+        id,
+        orgId,
+        edificioId,
+        unidadId: f.unidad,
+        tipo: "pago.registrar",
+        datos: { filas: [fila] },
+        antes: null,
+        resumen: `Pago de ${codigo(f.unidad)} · ${f.moneda === "VES" ? bs(monto) : usd(monto)} · ${formatoFecha(f.fecha)}`,
+        permitirDuplicado,
+      });
+      if (!terminar(r)) return;
+      setF({ ...f, monto: "", referencia: "" });
+      limpiarTasa();
+      borradorPago.limpiar();
+      if (r.tipo === "enviado") notificar("Pago registrado como reportado. Falta conciliarlo.");
     });
     setOcupado(false);
-    if (error) return fallo(error);
+  }
+
+  /**
+   * Lo que devolvió hacer() (cambio 3): en la bandeja, el aviso; rechazado,
+   * el error de siempre. Devuelve si hay que limpiar el formulario.
+   */
+  function terminar(r: Resultado): boolean {
+    if (r.tipo === "rechazado") {
+      fallo(r.error);
+      return false;
+    }
+    if (r.tipo === "en_bandeja") notificar(textoEnBandeja());
+    else router.refresh();
+    return true;
+  }
+
+  /**
+   * Cambio 3 (plan 2.4): antes de registrar con conexión, busca un pago no
+   * anulado de la misma unidad, mismo monto y fecha a ±3 días. Si lo hay,
+   * pregunta. Sin conexión no se puede mirar: lo mira el envío al volver.
+   */
+  async function conDuplicados(
+    filas: { unidad_id: string; monto: number; moneda: string; fecha: string }[],
+    seguir: (permitirDuplicado: boolean) => Promise<void>
+  ) {
+    if (!SIN_CONEXION_ACTIVO || sinConexion) return seguir(false);
+    let candidatos: CandidatoDuplicado[] = [];
+    try {
+      candidatos = await buscarPosiblesDuplicados(crearClienteNavegador(), filas);
+    } catch (e) {
+      // Sin red para mirar: que lo mire el envío al volver.
+      if (claseDeError(e) !== "base") return seguir(false);
+      return fallo(e);
+    }
+    if (!candidatos.length) return seguir(true);
+    setDuplicados({
+      candidatos,
+      seguir: () => {
+        setDuplicados(null);
+        setOcupado(true);
+        void seguir(true).finally(() => setOcupado(false));
+      },
+    });
+  }
+
+  /**
+   * Cambio 3 (plan 2.1): sin conexión no se le puede pedir el reparto a la
+   * base. Se elige el total y las unidades, y la transferencia queda en la
+   * bandeja; al volver, el envío pide el reparto con la deuda de ese momento.
+   */
+  async function repartirAlVolver() {
+    const total = num(f.monto);
+    if (total === null || total <= 0) return notificar("Escriba el total de la transferencia.", "error");
+    const ids = [...new Set(partes.map((x) => x.unidad).filter(Boolean))];
+    if (ids.length < 2) return notificar("Elija al menos dos unidades para repartir.", "error");
+    if (!f.fecha || f.fecha > hoyLocalISO()) return notificar("La fecha del pago no puede ser futura.", "error");
+    if (f.moneda === "VES" && !tasaEfectiva) return notificar("Para repartir en bolívares sin conexión, escriba la tasa de este pago.", "error");
+    const eTasa = errorTasa();
+    if (eTasa) return notificar(eTasa, "error");
+    setOcupado(true);
+    const pide = PIDE[f.metodo] ?? {};
+    const hechoEn = new Date().toISOString();
+    const r = await hacer({
+      orgId,
+      edificioId,
+      unidadId: null,
+      tipo: "pago.repartir",
+      hechoEn,
+      datos: {
+        base: {
+          ...camposTasa(),
+          hecho_en: hechoEn,
+          org_id: orgId,
+          monto_usd: 0,
+          metodo: f.metodo,
+          destino: f.destino,
+          referencia: f.referencia.trim() || null,
+          banco_codigo: pide.banco ? f.banco || null : null,
+          telefono_origen: pide.telefono ? f.telefono.trim() : null,
+          documento_origen: pide.documento ? f.documento.trim() : null,
+          correo_origen: pide.correo ? f.correo.trim() : null,
+          estado: "reportado",
+        },
+        total,
+        unidades: ids,
+        moneda: f.moneda,
+        tasa: tasaEfectiva,
+        destino: f.destino,
+        fecha: f.fecha,
+        grupo: crypto.randomUUID(),
+        ids: Object.fromEntries(ids.map((u) => [u, crypto.randomUUID()])),
+      },
+      antes: null,
+      resumen: `Transferencia de ${f.moneda === "VES" ? bs(total) : usd(total)} para ${ids.map(codigo).join(", ")}, a repartir al volver · ${formatoFecha(f.fecha)}`,
+    });
+    setOcupado(false);
+    if (!terminar(r)) return;
     setF({ ...f, monto: "", referencia: "" });
+    setPartes([
+      { unidad: "", monto: "" },
+      { unidad: "", monto: "" },
+    ]);
+    setCubre({});
     limpiarTasa();
     borradorPago.limpiar();
-    notificar("Pago registrado como reportado. Falta conciliarlo.");
-    router.refresh();
   }
 
   /**
@@ -389,12 +535,13 @@ export function Pagos({
     setOcupado(true);
     const pide = PIDE[f.metodo] ?? {};
     const grupo = crypto.randomUUID();
-    const supabase = crearClienteNavegador();
-    // Una sola llamada: o entran todas las partes o ninguna.
-    const { error } = await supabase.from("pagos").insert(
-      filas.map((x, i) => ({
+    const hechoEn = new Date().toISOString();
+    // Una sola llamada: o entran todas las partes o ninguna. Cada parte lleva
+    // su id_equipo, para que un reintento no la duplique (cambio 3).
+    const nuevas = filas.map((x, i) => ({
         // Una transferencia, una tasa: la misma en todas las partes.
         ...camposTasa(),
+        ...marcasEquipo(crypto.randomUUID(), hechoEn),
         org_id: orgId,
         unidad_id: x.unidad,
         fecha: f.fecha,
@@ -410,34 +557,51 @@ export function Pagos({
         correo_origen: pide.correo ? f.correo.trim() : null,
         estado: "reportado",
         grupo_id: grupo,
-      }))
-    );
+      }));
+    await conDuplicados(nuevas, async (permitirDuplicado) => {
+      const r = await hacer({
+        orgId,
+        edificioId,
+        unidadId: null,
+        tipo: "pago.registrar",
+        hechoEn,
+        datos: { filas: nuevas },
+        antes: null,
+        resumen: `Transferencia de ${f.moneda === "VES" ? bs(total) : usd(total)} para ${filas.map((x) => codigo(x.unidad)).join(", ")} · ${formatoFecha(f.fecha)}`,
+        permitirDuplicado,
+      });
+      if (!terminar(r)) return;
+      setF({ ...f, monto: "", referencia: "" });
+      setPartes([
+        { unidad: "", monto: "" },
+        { unidad: "", monto: "" },
+      ]);
+      setCubre({});
+      limpiarTasa();
+      borradorPago.limpiar();
+      if (r.tipo === "enviado") notificar(`Transferencia registrada para ${filas.length} unidades, como reportada. Falta conciliarla.`);
+    });
     setOcupado(false);
-    if (error) return fallo(error);
-    setF({ ...f, monto: "", referencia: "" });
-    setPartes([
-      { unidad: "", monto: "" },
-      { unidad: "", monto: "" },
-    ]);
-    setCubre({});
-    limpiarTasa();
-    borradorPago.limpiar();
-    notificar(`Transferencia registrada para ${filas.length} unidades, como reportada. Falta conciliarla.`);
-    router.refresh();
   }
 
-  async function cambiarEstado(p: PagoAdmin, estado: string) {
-    const campos = estado === "conciliado" ? { estado, conciliado_en: new Date().toISOString() } : { estado };
-    const supabase = crearClienteNavegador();
+  async function cambiarEstado(p: PagoAdmin, estado: "conciliado" | "anulado") {
     // Ronda 7 (bloque 9): un pago agrupado se confirma o se anula con todo su grupo.
-    const consulta = supabase.from("pagos").update(campos);
-    const { error } = await (p.grupo_id ? consulta.eq("grupo_id", p.grupo_id) : consulta.eq("id", p.id));
-    if (error) return fallo(error);
-    if (p.grupo_id)
+    // Cambio 3: solo cambia si el pago todavía está como se lo vio (`desde`);
+    // si otra persona lo tocó antes, va a «Revisar».
+    const r = await hacer({
+      orgId,
+      edificioId,
+      unidadId: p.unidad_id,
+      tipo: "pago.estado",
+      datos: { pagoId: p.id, grupoId: p.grupo_id, estado, desde: p.estado },
+      antes: null,
+      resumen: `${estado === "conciliado" ? "Conciliar" : "Anular"} el pago de ${codigo(p.unidad_id)} · ${usd(p.monto_usd)} · ${formatoFecha(p.fecha)}${p.grupo_id ? " (toda la transferencia)" : ""}`,
+    });
+    if (!terminar(r)) return;
+    if (r.tipo === "enviado" && p.grupo_id)
       notificar(
         `Se ${estado === "conciliado" ? "confirmó" : "anuló"} la transferencia completa (${grupos[p.grupo_id]?.length ?? 0} unidades).`
       );
-    router.refresh();
   }
 
   async function exonerar() {
@@ -445,20 +609,30 @@ export function Pagos({
     const monto = num(ex.monto);
     if (monto === null || monto === 0) return notificar("El monto no se entiende.", "error");
     if (!ex.motivo.trim()) return notificar("Escriba el motivo: queda en la auditoría.", "error");
-    const supabase = crearClienteNavegador();
-    const { error } = await supabase.from("ajustes").insert({
+    const id = crypto.randomUUID();
+    const fila = {
+      ...marcasEquipo(id),
       org_id: orgId,
       unidad_id: ex.unidad,
       fecha: hoyLocalISO(),
       monto,
       motivo: ex.motivo.trim(),
       destino: ex.destino,
+    };
+    const r = await hacer({
+      id,
+      orgId,
+      edificioId,
+      unidadId: ex.unidad,
+      tipo: "ajuste.registrar",
+      datos: { fila },
+      antes: null,
+      resumen: `Exoneración a ${codigo(ex.unidad)} · ${usd(monto)} · ${ex.motivo.trim()}`,
     });
-    if (error) return fallo(error);
+    if (!terminar(r)) return;
     setEx({ ...ex, monto: "", motivo: "" });
     borradorEx.limpiar();
-    notificar("Exoneración registrada.");
-    router.refresh();
+    if (r.tipo === "enviado") notificar("Exoneración registrada.");
   }
 
   async function verComprobante(p: PagoAdmin) {
@@ -552,20 +726,28 @@ export function Pagos({
   async function conciliarLote() {
     if (!cruce) return;
     setOcupado(true);
-    const supabase = crearClienteNavegador();
+    let enBandeja = 0;
     for (const c of cruce.casan) {
-      const { error } = await supabase
-        .from("pagos")
-        .update({ estado: "conciliado", conciliado_en: new Date().toISOString(), banco: c.pago.banco || null })
-        // Un grupo (id «g:…») se concilia entero.
-        .eq(c.pago.id.startsWith("g:") ? "grupo_id" : "id", c.pago.id.replace(/^g:/, ""));
-      if (error) {
+      // Un grupo (id «g:…») se concilia entero.
+      const grupo = c.pago.id.startsWith("g:") ? c.pago.id.slice(2) : null;
+      const pago = grupo ? grupos[grupo]?.[0] : pagos.find((x) => x.id === c.pago.id);
+      const r = await hacer({
+        orgId,
+        edificioId,
+        unidadId: pago?.unidad_id ?? null,
+        tipo: "pago.estado",
+        datos: { pagoId: grupo ? undefined : c.pago.id, grupoId: grupo, estado: "conciliado", desde: "reportado", banco: c.pago.banco || null },
+        antes: null,
+        resumen: `Conciliar con el banco el pago de ${codigo(pago?.unidad_id ?? null)} · ${nf(2).format(c.pago.monto)}${grupo ? " (toda la transferencia)" : ""}`,
+      });
+      if (r.tipo === "rechazado") {
         setOcupado(false);
-        return fallo(error);
+        return fallo(r.error);
       }
+      if (r.tipo === "en_bandeja") enBandeja++;
     }
     setOcupado(false);
-    notificar(`${cruce.casan.length} pagos conciliados.`);
+    notificar(enBandeja ? `${cruce.casan.length} pagos marcados para conciliar. ${textoEnBandeja()}` : `${cruce.casan.length} pagos conciliados.`);
     setMov(null);
     setMapa(null);
     setFilasCrudas(null);
@@ -579,6 +761,25 @@ export function Pagos({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>}
+
+      {/* Cambio 3, parte B: lo hecho en este equipo que todavía no llegó. */}
+      <PorEnviar
+        edificioId={edificioId}
+        filtro={(c) => c.tipo.startsWith("pago.") || c.tipo === "ajuste.registrar"}
+        titulo="Pagos por enviar"
+        codigos={codigos}
+      />
+      {duplicados && (
+        <Confirmar
+          titulo="¿Es un pago distinto?"
+          texto={`Ya hay ${duplicados.candidatos.length === 1 ? "un pago" : "pagos"} de la misma unidad, por el mismo monto y con fecha cercana: ${duplicados.candidatos
+            .map((x) => `${codigo(x.unidad_id)}, ${formatoFecha(x.fecha)}, ref. ${x.referencia || "—"}, ${x.metodo ?? "—"}, ${x.estado}`)
+            .join("; ")}. Si es el mismo pago, no lo registre de nuevo.`}
+          boton="Es distinto: registrar"
+          onNo={() => setDuplicados(null)}
+          onSi={duplicados.seguir}
+        />
+      )}
 
       {/* Ronda 5 (pedido de Gustavo): lo registrado va arriba y destacado; registrar,
           conciliar y exonerar, abajo. */}
@@ -702,9 +903,14 @@ export function Pagos({
                       {p.estado}
                       {p.periodo_cierre_id ? " · en cierre" : ""}
                     </Badge>
+                    {pendienteDe[p.id] && (
+                      <div style={{ marginTop: 4 }}>
+                        <Badge tono="azul">{pendienteDe[p.id]}</Badge>
+                      </div>
+                    )}
                   </td>
                   <td className="acciones" style={{ width: 150 }}>
-                    {p.estado === "reportado" && (
+                    {p.estado === "reportado" && !pendienteDe[p.id] && (
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                         <Button type="button" mini onClick={() => cambiarEstado(p, "conciliado")}>
                           Conciliar
@@ -714,7 +920,7 @@ export function Pagos({
                         </Button>
                       </div>
                     )}
-                    {p.estado === "conciliado" && !p.periodo_cierre_id && (
+                    {p.estado === "conciliado" && !p.periodo_cierre_id && !pendienteDe[p.id] && (
                       <Button type="button" mini variante="secundario" onClick={() => cambiarEstado(p, "anulado")}>
                         Anular
                       </Button>
@@ -873,9 +1079,22 @@ export function Pagos({
                   <Button type="button" mini variante="secundario" onClick={() => setPartes([...partes, { unidad: "", monto: "" }])}>
                     + Otra unidad
                   </Button>
-                  <Button type="button" mini variante="secundario" disabled={ocupado} onClick={repartirAuto}>
-                    Repartir automáticamente
-                  </Button>
+                  {sinConexion ? (
+                    <Button
+                      type="button"
+                      mini
+                      variante="secundario"
+                      disabled={ocupado}
+                      onClick={repartirAlVolver}
+                      title="El reparto lo calcula la base con la deuda del momento en que vuelva la conexión"
+                    >
+                      Repartir al volver
+                    </Button>
+                  ) : (
+                    <Button type="button" mini variante="secundario" disabled={ocupado} onClick={repartirAuto}>
+                      Repartir automáticamente
+                    </Button>
+                  )}
                   <span style={{ color: "var(--tinta-2)" }}>
                     Suma de las partes: <b className="mono">{nf(2).format(sumaPartes)}</b>
                     {num(f.monto) !== null && Math.abs(sumaPartes - (num(f.monto) ?? 0)) > 0.005 && (

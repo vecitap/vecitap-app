@@ -8,8 +8,8 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Input, Select } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
 import { montoAlSalir, num, numeroMalEscrito, paraCampo, usd } from "@/lib/formato";
-import { crearClienteNavegador } from "@/lib/supabase/client";
 import { mensajeDeError } from "@/lib/errores";
+import { hacer, marcasEquipo, textoEnBandeja } from "@/lib/local/bandeja";
 import { compararCodigos } from "@/lib/orden-unidades";
 
 /**
@@ -46,11 +46,14 @@ const VACIO = { unidad: "", concepto: "", referencia: "", monto: "", lopago: fal
  */
 export function CargosUnidad({
   orgId,
+  edificioId,
   mes,
   unidades,
   cargos,
 }: {
   orgId: string;
+  /** Para la bandeja de cosas por enviar (cambio 3). */
+  edificioId: string;
   /** El mes abierto del edificio: la tarjeta solo sale con un mes abierto. */
   mes: { id: string; etiqueta: string };
   unidades: { id: string; codigo: string }[];
@@ -61,6 +64,7 @@ export function CargosUnidad({
   const [editando, setEditando] = useState<CargoDelMes | null>(null);
   const [quitar, setQuitar] = useState<CargoDelMes | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   // Cambio 3 (plan, sección 3): el cargo nuevo a medio escribir no se pierde.
   // Mientras se edita uno existente, no se guarda borrador.
   const borrador = useBorrador(editando ? null : `mes.cargo·${mes.id}`, f, setF, (b) => !b.concepto.trim() && !b.monto.trim() && !b.referencia.trim());
@@ -111,37 +115,65 @@ export function CargosUnidad({
       referencia: f.referencia.trim() || null,
       monto: Math.round(monto! * 100) / 100,
     };
-    const supabase = crearClienteNavegador();
     const tabla = esGasto ? "gastos" : "cargos_unidad";
     // Ronda 11 (B): el tipo solo existe en cargos_unidad.
     const tipo: "multa" | "otro" = f.multa ? "multa" : "otro";
-    const { error: e } = editando
-      ? esGasto
-        ? await supabase.from("gastos").update(campos).eq("id", editando.id)
-        : await supabase.from("cargos_unidad").update({ ...campos, tipo }).eq("id", editando.id)
-      : tabla === "gastos"
-        ? await supabase
-            .from("gastos")
-            .insert({ ...campos, org_id: orgId, periodo_id: mes.id, tipo: "directo", bolsillo: "condominio", categoria_id: null, orden: 10 })
-        : await supabase.from("cargos_unidad").insert({ ...campos, tipo, org_id: orgId, periodo_id: mes.id });
-    if (e) throw e;
+    // Cambio 3 (partes B y C): pasa por la bandeja. Con conexión, igual que
+    // antes; sin conexión, queda en «Por enviar» y llega al volver.
+    const id = crypto.randomUUID();
+    const resumen = `${editando ? "Cambio en el cargo" : "Cargo"} a ${codigo(f.unidad)}: ${campos.concepto} · ${usd(campos.monto)} · ${mes.etiqueta}`;
+    const r = editando
+      ? await hacer({
+          orgId,
+          edificioId,
+          unidadId: f.unidad,
+          tipo: "fila.editar",
+          datos: { tabla, id: editando.id, campos: esGasto ? campos : { ...campos, tipo } },
+          // Los valores de antes (plan 2.5): si otra persona los cambió, no se pisan.
+          antes: { unidad_id: editando.unidad_id, concepto: editando.concepto, referencia: editando.referencia, monto: editando.monto },
+          resumen,
+        })
+      : await hacer({
+          id,
+          orgId,
+          edificioId,
+          unidadId: f.unidad,
+          tipo: "fila.crear",
+          datos: {
+            tabla,
+            fila:
+              tabla === "gastos"
+                ? { ...campos, ...marcasEquipo(id), org_id: orgId, periodo_id: mes.id, tipo: "directo", bolsillo: "condominio", categoria_id: null, orden: 10 }
+                : { ...campos, ...marcasEquipo(id), tipo, org_id: orgId, periodo_id: mes.id },
+          },
+          antes: null,
+          resumen,
+        });
+    if (r.tipo === "rechazado") throw r.error;
     if (!editando) borrador.limpiar();
     setEditando(null);
     setF(VACIO);
-    router.refresh();
+    if (r.tipo === "en_bandeja") setAviso(textoEnBandeja());
+    else router.refresh();
   });
 
   async function confirmarQuitar() {
     if (!quitar) return;
-    const supabase = crearClienteNavegador();
-    const { error: e } = await supabase
-      .from(quitar.origen === "gasto" ? "gastos" : "cargos_unidad")
-      .delete()
-      .eq("id", quitar.id);
-    if (editando?.id === quitar.id) cancelarEdicion();
+    const c = quitar;
+    const r = await hacer({
+      orgId,
+      edificioId,
+      unidadId: c.unidad_id,
+      tipo: "fila.borrar",
+      datos: { tabla: c.origen === "gasto" ? "gastos" : "cargos_unidad", id: c.id },
+      antes: { unidad_id: c.unidad_id, concepto: c.concepto, referencia: c.referencia, monto: c.monto },
+      resumen: `Quitar el cargo a ${codigo(c.unidad_id)}: ${c.concepto} · ${usd(c.monto)}`,
+    });
+    if (editando?.id === c.id) cancelarEdicion();
     setQuitar(null);
-    if (e) return setError(mensajeDeError(e));
-    router.refresh();
+    if (r.tipo === "rechazado") return setError(mensajeDeError(r.error));
+    if (r.tipo === "en_bandeja") setAviso(textoEnBandeja());
+    else router.refresh();
   }
 
   return (
@@ -150,6 +182,11 @@ export function CargosUnidad({
       {!editando && (
         <div style={{ margin: "8px 0" }}>
           <AvisoBorrador {...borrador} />
+        </div>
+      )}
+      {aviso && (
+        <div style={{ margin: "8px 0" }}>
+          <Aviso tono="ok">{aviso}</Aviso>
         </div>
       )}
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--tenue)", lineHeight: 1.5 }}>

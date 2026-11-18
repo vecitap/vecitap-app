@@ -1,4 +1,4 @@
-import { Cargando } from "@/components/ui";
+import { VistaPrevia } from "@/components/sin-conexion/VistaPrevia";
 
 /**
  * Elegida junto con `cortes/` como las dos secciones de Admin con una
@@ -11,7 +11,11 @@ import { Cargando } from "@/components/ui";
  * por `.in("unidad_id", ids)`, y `ids` sale de traer `unidades` primero —
  * es una dependencia de datos genuina, no algo que se pueda meter sin más
  * en el mismo `Promise.all`.
+ *
+ * Cambio 3, parte E («primero la copia»): si este equipo tiene la copia del
+ * edificio, en vez del «Cargando…» se ve la copia al instante, inerte y con
+ * «Actualizando…», hasta que llega la página fresca (VistaPrevia).
  */
 export default function CargandoPagos() {
-  return <Cargando />;
+  return <VistaPrevia />;
 }

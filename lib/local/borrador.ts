@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SIN_CONEXION_ACTIVO } from "./config";
 import { usuarioLocal } from "./sesion-local";
 import { borrarBorrador, guardarBorrador, leerBorrador } from "./almacen";
+import { useModoCopia } from "./contexto";
 
 /**
  * Formularios que no se pierden (cambio 3, plan sección 3).
@@ -32,7 +33,10 @@ const VENCE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type Recuperable<T> = { valor: T; guardadoEn: string } | null;
 
-export function useBorrador<T>(clave: string | null, valor: T, aplicar: (v: T) => void, vacio: (v: T) => boolean) {
+export function useBorrador<T>(claveForm: string | null, valor: T, aplicar: (v: T) => void, vacio: (v: T) => boolean) {
+  // En la vista previa de la copia (parte E) el formulario es de mentira: ni
+  // ofrece ni guarda borradores; lo hace la página de verdad cuando llega.
+  const clave = useModoCopia() === "vista-previa" ? null : claveForm;
   const [recuperable, setRecuperable] = useState<Recuperable<T>>(null);
   // No se guarda nada hasta haber leído el borrador anterior: si no, el
   // formulario vacío lo pisaría antes de poder ofrecerlo.

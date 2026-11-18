@@ -1,4 +1,4 @@
-import { Cargando } from "@/components/ui";
+import { VistaPrevia } from "@/components/sin-conexion/VistaPrevia";
 
 /**
  * Elegida junto con `pagos/` — ver el comentario de ese archivo. Acá el
@@ -11,7 +11,11 @@ import { Cargando } from "@/components/ui";
  * ahora — no estaba en el alcance aprobado de esta sesión (`[orgId]/layout`,
  * `[edificioId]/layout`, `recibo/page`) — pero queda anotado acá como el
  * candidato más claro para la próxima ronda de paralelización.
+ *
+ * Cambio 3, parte E («primero la copia»): si este equipo tiene la copia del
+ * edificio, en vez del «Cargando…» se ve la copia al instante, inerte y con
+ * «Actualizando…», hasta que llega la página fresca (VistaPrevia).
  */
 export default function CargandoCortes() {
-  return <Cargando />;
+  return <VistaPrevia />;
 }

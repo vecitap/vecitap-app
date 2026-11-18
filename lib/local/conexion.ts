@@ -19,6 +19,10 @@ import { useEffect, useState } from "react";
 export type Conexion = "comprobando" | "en-linea" | "sin-conexion";
 
 const ESPERA_MS = 5000;
+
+/** Lo último que se supo, para quien no puede usar el hook (la bandeja). */
+let ultima: Conexion = "comprobando";
+export const ultimaConexion = () => ultima;
 const PASOS_MS = [1000, 2000, 4000, 8000, 10000];
 const CON_CONEXION_MS = 60000;
 
@@ -48,7 +52,8 @@ export function useConexion(inicial: Conexion = "comprobando"): Conexion {
       window.clearTimeout(reloj);
       const ok = await comprobar();
       if (!vivo) return;
-      setEstado(ok ? "en-linea" : "sin-conexion");
+      ultima = ok ? "en-linea" : "sin-conexion";
+      setEstado(ultima);
       intento = ok ? 0 : intento + 1;
       const espera = ok ? CON_CONEXION_MS : PASOS_MS[Math.min(intento - 1, PASOS_MS.length - 1)];
       reloj = window.setTimeout(ciclo, espera);
@@ -58,7 +63,10 @@ export function useConexion(inicial: Conexion = "comprobando"): Conexion {
       intento = 0;
       void ciclo();
     };
-    const sinRed = () => setEstado("sin-conexion");
+    const sinRed = () => {
+      ultima = "sin-conexion";
+      setEstado("sin-conexion");
+    };
 
     void ciclo();
     window.addEventListener("online", yaMismo);

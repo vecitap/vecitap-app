@@ -12,6 +12,8 @@ import { OPCIONES_PAGA, esPaga, pagaDe, type Paga } from "@/lib/paga";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { LARGO_NOTA, TIPOS_UNIDAD, type TipoUnidad, type UnidadConPaga, type Vinculo } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
+import { useModoCopia } from "@/lib/local/contexto";
+import { hacer, textoEnBandeja } from "@/lib/local/bandeja";
 
 type FormPersona = {
   prefijo: string;
@@ -83,18 +85,22 @@ function aForm(v: Vinculo | null): FormPersona {
  */
 export function DatosUnidad({
   orgId,
+  edificioId,
   unidad,
   prop,
   inq,
   nota: notaGuardada,
 }: {
   orgId: string;
+  /** Para la bandeja de cosas por enviar (cambio 3). */
+  edificioId: string;
   unidad: UnidadConPaga;
   prop: Vinculo | null;
   inq: Vinculo | null;
   nota: string;
 }) {
   const router = useRouter();
+  const sinConexion = useModoCopia() === "sin-conexion";
   const uDe = (x: UnidadConPaga) => ({
     codigo: x.codigo,
     // Escritos como en Venezuela y sin recortar decimales (ronda 4, caso
@@ -308,8 +314,77 @@ export function DatosUnidad({
     await escribir.ejecutar(decisiones);
   }
 
+  /**
+   * Cambio 3 (parte C): sin conexión se pueden guardar los datos de contacto
+   * de las personas que ya están en la ficha y la nota. Cada cosa va a la
+   * bandeja con los valores que había al editar: si otra persona los cambió
+   * mientras tanto, no se pisan (va a «Revisar» con las dos versiones). Lo
+   * demás (código, alícuota, saldos, quién paga, cambiar de propietario o de
+   * inquilino, cargar uno nuevo) necesita conexión.
+   */
+  async function guardarSinConexion(decisiones: Decisiones) {
+    const cambiaUnidad = JSON.stringify(u) !== JSON.stringify(uDe(unidad)) || paga !== pagaDe(unidad.paga);
+    const otraPersona = (["propietario", "inquilino"] as const).some(
+      (t) => (cambia[t] && decisiones[t] === "reemplazar") || (!actualDe[t]?.personas?.id && formDe[t].nombre.trim())
+    );
+    if (cambiaUnidad || otraPersona)
+      throw new Error(
+        "Sin conexión solo se guardan los datos de contacto de las personas que ya están en la ficha, y la nota. El código, la alícuota, los saldos, quién paga y cambiar de propietario o inquilino, cuando vuelva internet."
+      );
+    let enBandeja = 0;
+    for (const tipo of ["propietario", "inquilino"] as const) {
+      const actual = actualDe[tipo];
+      const f = formDe[tipo];
+      if (!actual?.personas?.id || JSON.stringify(f) === JSON.stringify(aForm(actual))) continue;
+      const campos = {
+        prefijo: f.prefijo || null,
+        nombre: f.nombre.trim(),
+        documento: f.documento.trim() || null,
+        telefono: f.telefono.trim() || null,
+        correo: f.correo.trim() || null,
+        correo_respaldo: f.correoRespaldo.trim().toLowerCase() || null,
+      };
+      const ap = actual.personas;
+      const r = await hacer({
+        orgId,
+        edificioId,
+        unidadId: unidad.id,
+        tipo: "persona.editar",
+        datos: { personaId: ap.id, vinculoId: actual.id, campos, enviarCorte: !!f.enviar },
+        antes: {
+          prefijo: ap.prefijo ?? null,
+          nombre: ap.nombre ?? null,
+          documento: ap.documento ?? null,
+          telefono: ap.telefono ?? null,
+          correo: ap.correo ?? null,
+          correo_respaldo: ap.correo_respaldo ?? null,
+        },
+        resumen: `Datos del ${tipo} de ${unidad.codigo}: ${campos.nombre}`,
+      });
+      if (r.tipo === "rechazado") throw r.error;
+      if (r.tipo === "en_bandeja") enBandeja++;
+    }
+    const texto = nota.trim();
+    if (texto !== notaGuardada.trim()) {
+      const r = await hacer({
+        orgId,
+        edificioId,
+        unidadId: unidad.id,
+        tipo: "nota.guardar",
+        datos: { unidadId: unidad.id, texto },
+        antes: { nota: notaGuardada.trim() },
+        resumen: `Nota de ${unidad.codigo}: ${texto ? `«${texto.length > 60 ? texto.slice(0, 60) + "…" : texto}»` : "borrarla"}`,
+      });
+      if (r.tipo === "rechazado") throw r.error;
+      if (r.tipo === "en_bandeja") enBandeja++;
+    }
+    borrador.limpiar();
+    setListo(enBandeja ? textoEnBandeja() : "Guardado.");
+  }
+
   // Bloque E: la escritura, con "Guardado ✓" (o el error) al lado del botón.
   const escribir = useAccion(async (decisiones: Decisiones) => {
+    if (sinConexion) return guardarSinConexion(decisiones);
     const supabase = crearClienteNavegador();
     const { error } = await supabase
       .from("unidades")

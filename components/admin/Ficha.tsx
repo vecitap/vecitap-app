@@ -11,6 +11,7 @@ import type { Database } from "@/types/supabase";
 import type { OrganizacionAdmin, SaldoActual, UnidadConPaga } from "@/lib/admin/tipos";
 import { DatosUnidad } from "./DatosUnidad";
 import { DeudaPorMes } from "@/components/DeudaPorMes";
+import { PorEnviar } from "@/components/sin-conexion/PorEnviar";
 
 type FilaHistorial = Database["public"]["Functions"]["historial_unidad"]["Returns"][number];
 type PagoPendiente = Pick<Database["public"]["Tables"]["pagos"]["Row"], "id" | "fecha" | "monto_usd" | "metodo" | "referencia" | "destino">;
@@ -128,6 +129,9 @@ export function Ficha({
             </div>
           )}
 
+          {/* Cambio 3, parte B: lo de esta unidad hecho en este equipo que todavía no llegó. */}
+          <PorEnviar edificioId={edificioId} filtro={(c) => c.unidadId === unidad.id} titulo="Por enviar de esta unidad" />
+
           <DeudaPorMes unidadId={unidad.id} />
 
           <div className="tabla-scroll">
@@ -204,7 +208,7 @@ export function Ficha({
           </div>
         </div>
       ) : (
-        <DatosUnidad orgId={orgId} unidad={unidad} prop={prop} inq={inq} nota={nota} />
+        <DatosUnidad orgId={orgId} edificioId={edificioId} unidad={unidad} prop={prop} inq={inq} nota={nota} />
       )}
     </div>
   );

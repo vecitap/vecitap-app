@@ -184,7 +184,7 @@ export function MarcoAdmin({
           </Select>
           {/* Cambio 3: copia sin conexión del edificio abierto (no dibuja
               nada con el interruptor apagado). */}
-          {edificio && <ModoSinConexion orgId={organizacion.id} edificioId={edificio.id} />}
+          {edificio && <ModoSinConexion orgId={organizacion.id} edificioId={edificio.id} local={!!local} />}
         </div>
 
         {edificioId &&

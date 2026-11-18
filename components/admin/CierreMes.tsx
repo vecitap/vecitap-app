@@ -17,6 +17,11 @@ import { useCopiaLocal } from "@/lib/local/contexto";
 import { useBorrador } from "@/lib/local/borrador";
 import { AvisoBorrador } from "@/components/sin-conexion/AvisoBorrador";
 import { SELECT_GASTOS_MES } from "@/lib/admin/pantallas/mes";
+import { useModoCopia } from "@/lib/local/contexto";
+import { hacer, marcasEquipo, textoEnBandeja, useBandeja, type Resultado } from "@/lib/local/bandeja";
+import { SIN_CONEXION_ACTIVO } from "@/lib/local/config";
+import { PorEnviar } from "@/components/sin-conexion/PorEnviar";
+import { EquiposEnRiesgo } from "@/components/sin-conexion/EquiposEnRiesgo";
 
 type ActualizarGasto = Database["public"]["Tables"]["gastos"]["Update"];
 type InsertarGasto = Database["public"]["Tables"]["gastos"]["Insert"];
@@ -78,6 +83,10 @@ export function CierreMes({
   // Cambio 3: sin conexión, los gastos del mes abierto salen de la copia y la
   // previa del reparto (simular_cierre, que calcula la base) no se pide.
   const copia = useCopiaLocal();
+  const sinConexion = useModoCopia() === "sin-conexion";
+  // Cambio 3, parte B (plan 2.3 y 2.7): con cosas por enviar de este edificio
+  // en este equipo, el mes no se cierra desde acá.
+  const porEnviarAqui = useBandeja(edificioId).length;
   const [gastos, setGastos] = useState<GastoAdmin[]>(copia?.gastosAbierto ?? []);
   const [nuevo, setNuevo] = useState({ concepto: "", referencia: "", monto: "", categoria: "" });
   // Cambio 3 (plan, sección 3): el gasto a medio escribir no se pierde.
@@ -289,6 +298,24 @@ export function CierreMes({
     router.refresh();
   }
 
+  /**
+   * Cambio 3 (partes B y C): lo que devolvió hacer(). Rechazado, el error de
+   * siempre; en la bandeja, el aviso (y `local` aplica el cambio a la lista
+   * de esta pantalla, para seguir trabajando sobre lo que se ve); enviado,
+   * se vuelve a leer la lista. Devuelve si salió bien.
+   */
+  function terminar(r: Resultado, local?: (lista: GastoAdmin[]) => GastoAdmin[]): boolean {
+    if (r.tipo === "rechazado") {
+      fallo(r.error);
+      return false;
+    }
+    if (r.tipo === "en_bandeja") {
+      notificar(textoEnBandeja());
+      if (local) setGastos(local);
+    } else cargarGastos();
+    return true;
+  }
+
   async function agregarGasto() {
     if (!periodoAbierto) return;
     const monto = num(nuevo.monto);
@@ -297,8 +324,9 @@ export function CierreMes({
     if (monto === null) return notificar(nuevo.monto.trim() ? (numeroMalEscrito([["El monto", nuevo.monto]]) ?? "El monto no se entiende.") : "Falta el monto.", "error");
     const enEsaCat = gastos.filter((g) => (g.categoria_id || "") === (nuevo.categoria || ""));
     const ultimo = Math.max(0, ...enEsaCat.map((g) => g.orden || 0));
-    const supabase = crearClienteNavegador();
-    const { error } = await supabase.from("gastos").insert({
+    const id = crypto.randomUUID();
+    const fila = {
+      ...marcasEquipo(id),
       org_id: orgId,
       periodo_id: periodoAbierto.id,
       orden: ultimo + 10,
@@ -311,32 +339,86 @@ export function CierreMes({
       tipo: "comun",
       unidad_id: null,
       bolsillo: "condominio",
+    };
+    const r = await hacer({
+      id,
+      orgId,
+      edificioId,
+      unidadId: null,
+      tipo: "fila.crear",
+      datos: { tabla: "gastos", fila },
+      antes: null,
+      resumen: `Gasto nuevo: ${fila.concepto} · ${usd(monto)} · ${periodoAbierto.etiqueta}`,
     });
-    if (error) return fallo(error);
+    if (!terminar(r)) return;
     borradorGasto.limpiar();
     setNuevo({ ...nuevo, concepto: "", referencia: "", monto: "" });
-    cargarGastos();
   }
 
+  const nombreGasto = (id: string) => gastos.find((g) => g.id === id)?.concepto || "Sin concepto";
+
   async function quitarGasto(id: string) {
-    const supabase = crearClienteNavegador();
-    const { error } = await supabase.from("gastos").delete().eq("id", id);
-    if (error) return fallo(error);
-    cargarGastos();
+    const g = gastos.find((x) => x.id === id);
+    const r = await hacer({
+      orgId,
+      edificioId,
+      unidadId: null,
+      tipo: "fila.borrar",
+      datos: { tabla: "gastos", id },
+      // Si otra persona lo cambió mientras tanto, no se borra sin preguntar.
+      antes: g ? { concepto: g.concepto, monto: g.monto, referencia: g.referencia, categoria_id: g.categoria_id } : null,
+      resumen: `Borrar el gasto «${nombreGasto(id)}»${g ? ` · ${usd(g.monto)}` : ""}`,
+    });
+    terminar(r, (lista) => lista.filter((x) => x.id !== id));
   }
 
   async function moverGasto(id: string, arriba: boolean) {
-    const supabase = crearClienteNavegador();
-    const { error } = await supabase.rpc("mover_gasto", { p_id: id, p_arriba: arriba });
-    if (error) return fallo(error);
-    cargarGastos();
+    if (!sinConexion) {
+      const supabase = crearClienteNavegador();
+      const { error } = await supabase.rpc("mover_gasto", { p_id: id, p_arriba: arriba });
+      if (error) return fallo(error);
+      cargarGastos();
+      return;
+    }
+    // Cambio 3 (plan 2.7, «Orden de los gastos»): sin conexión se manda la
+    // posición final de cada gasto de la categoría, que se puede repetir sin
+    // cambiar el resultado (mover_gasto intercambia, y repetirlo movería de nuevo).
+    const g = gastos.find((x) => x.id === id);
+    if (!g || !periodoAbierto) return;
+    const lista = gastos
+      .filter((x) => x.tipo === "comun" && (x.categoria_id || "") === (g.categoria_id || ""))
+      .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+    const i = lista.findIndex((x) => x.id === id);
+    const j = arriba ? i - 1 : i + 1;
+    if (j < 0 || j >= lista.length) return;
+    [lista[i], lista[j]] = [lista[j], lista[i]];
+    const posiciones = lista.map((x, k) => ({ id: x.id, orden: (k + 1) * 10 }));
+    const r = await hacer({
+      orgId,
+      edificioId,
+      unidadId: null,
+      tipo: "gasto.orden",
+      datos: { periodoId: periodoAbierto.id, posiciones },
+      antes: null,
+      resumen: `Orden de los gastos: «${g.concepto || "Sin concepto"}» ${arriba ? "más arriba" : "más abajo"}`,
+    });
+    terminar(r, (todos) => todos.map((x) => ({ ...x, orden: posiciones.find((p) => p.id === x.id)?.orden ?? x.orden })));
   }
 
   async function editarGasto(id: string, campos: ActualizarGasto) {
-    const supabase = crearClienteNavegador();
-    const { error } = await supabase.from("gastos").update(campos).eq("id", id);
-    if (error) return fallo(error);
-    cargarGastos();
+    const g = gastos.find((x) => x.id === id);
+    const claves = Object.keys(campos) as (keyof GastoAdmin)[];
+    const r = await hacer({
+      orgId,
+      edificioId,
+      unidadId: null,
+      tipo: "fila.editar",
+      datos: { tabla: "gastos", id, campos },
+      // Los valores de antes (plan 2.5): si otra persona los cambió, no se pisan.
+      antes: g ? Object.fromEntries(claves.map((k) => [k, g[k] ?? null])) : null,
+      resumen: `Cambio en el gasto «${nombreGasto(id)}»: ${claves.map((k) => `${k === "categoria_id" ? "categoría" : k} ${k === "monto" ? usd(campos.monto) : k === "categoria_id" ? (categorias.find((c) => c.id === campos.categoria_id)?.nombre ?? "sin categoría") : `«${String(campos[k as keyof ActualizarGasto] ?? "")}»`}`).join(", ")}`,
+    });
+    terminar(r, (lista) => lista.map((x) => (x.id === id ? ({ ...x, ...campos } as GastoAdmin) : x)));
   }
 
   /**
@@ -587,6 +669,15 @@ export function CierreMes({
               </div>
 
               <AvisoBorrador {...borradorGasto} />
+              {/* Cambio 3: gastos y cargos hechos en este equipo que todavía no llegaron. */}
+              <div style={{ marginTop: 12 }}>
+                <PorEnviar
+                  edificioId={edificioId}
+                  filtro={(c) => c.tipo.startsWith("fila.") || c.tipo === "gasto.orden"}
+                  titulo="Gastos y cargos por enviar"
+                  codigos={Object.fromEntries(unidades.map((u) => [u.id, u.codigo]))}
+                />
+              </div>
               <div className="gasto-nuevo" style={{ display: "grid", gap: 10, gridTemplateColumns: "2fr 1.4fr 1.4fr 1fr auto", alignItems: "end", margin: "14px 0" }}>
                 <Campo etiqueta="Concepto">
                   <Input value={nuevo.concepto} onChange={(e) => setNuevo({ ...nuevo, concepto: e.target.value })} placeholder="Vigilancia" />
@@ -656,7 +747,7 @@ export function CierreMes({
 
           {/* Ronda 12 (C): pasaron de «Cobros». */}
           <CuotasExtraordinarias orgId={orgId} edificioId={edificioId} extraordinarias={conceptos.filter((c) => c.cuotas !== null)} avance={avance} />
-          <CargosUnidad orgId={orgId} mes={{ id: periodoAbierto.id, etiqueta: periodoAbierto.etiqueta }} unidades={unidades} cargos={cargos} />
+          <CargosUnidad orgId={orgId} edificioId={edificioId} mes={{ id: periodoAbierto.id, etiqueta: periodoAbierto.etiqueta }} unidades={unidades} cargos={cargos} />
 
           {previa && previa.length > 0 && (
             <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)" }}>
@@ -762,7 +853,7 @@ export function CierreMes({
             </div>
           )}
 
-          {copia && periodoAbierto && (
+          {sinConexion && periodoAbierto && (
             <Aviso tono="azul" titulo="La previa del reparto necesita conexión">
               El reparto de cada unidad lo calcula el sistema. Sin conexión puede ver los gastos
               cargados; la previa y el cierre del mes vuelven cuando vuelva internet.
@@ -783,8 +874,23 @@ export function CierreMes({
             </Aviso>
           )}
 
+          {/* Cambio 3, parte B (plan 2.3 y 2.7). */}
+          {porEnviarAqui > 0 && (
+            <Aviso tono="ambar" titulo="Hay cosas por enviar de este edificio en este equipo">
+              {porEnviarAqui === 1 ? "Queda 1 cosa" : `Quedan ${porEnviarAqui} cosas`} sin llegar a la base. El mes se puede
+              cerrar cuando se envíen (o se descarten): si no, quedarían fuera de los recibos.
+            </Aviso>
+          )}
+          {SIN_CONEXION_ACTIVO && !copia && <EquiposEnRiesgo edificioId={edificioId} />}
+
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button type="button" cargando={ocupado} onClick={() => setConfirma({ que: "cerrar" })}>
+            <Button
+              type="button"
+              cargando={ocupado}
+              disabled={porEnviarAqui > 0 || sinConexion}
+              title={sinConexion ? "Cerrar el mes necesita conexión" : undefined}
+              onClick={() => setConfirma({ que: "cerrar" })}
+            >
               <ReceiptText size={16} /> Cerrar el mes y emitir recibos
             </Button>
             {cerrados.length > 0 && (

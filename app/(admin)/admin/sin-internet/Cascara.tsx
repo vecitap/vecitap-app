@@ -5,49 +5,30 @@ import { useSearchParams } from "next/navigation";
 import { CloudOff, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { Button, Card, PantallaMarca, Vacio } from "@/components/ui";
 import { MarcoAdmin } from "@/components/admin/MarcoAdmin";
-import { Propietarios } from "@/components/admin/Propietarios";
-import { PantallaInicio } from "@/components/admin/PantallaInicio";
-import { Ficha } from "@/components/admin/Ficha";
-import { Pagos } from "@/components/admin/Pagos";
-import { CierreMes } from "@/components/admin/CierreMes";
-import { Cortes } from "@/components/admin/Cortes";
-import { armarPropsPropietarios } from "@/lib/admin/pantallas/propietarios";
-import { armarPropsInicio } from "@/lib/admin/pantallas/inicio";
-import { fichaDesdeCopia } from "@/lib/admin/pantallas/ficha";
-import { armarPropsPagos } from "@/lib/admin/pantallas/pagos";
-import { armarPropsMes } from "@/lib/admin/pantallas/mes";
+import { contenidoDeCopia, leerRutaAdmin } from "@/components/sin-conexion/ContenidoCopia";
 import { usuarioLocal } from "@/lib/local/sesion-local";
 import { leerCopia, type CopiaEdificio } from "@/lib/local/almacen";
 import { ProveedorCopia } from "@/lib/local/contexto";
 import { useConexion } from "@/lib/local/conexion";
+import { useBandeja } from "@/lib/local/bandeja";
 import { RUTA_CASCARA, VERSION_COPIA } from "@/lib/local/config";
 import { formatoHora } from "@/lib/local/formato";
-import { esUuid } from "@/lib/validacion";
 
 /**
  * Lo que dibuja la pantalla sin internet (cambio 3, plan 1.1 c).
  *
  * `?ir=` trae la dirección que se quiso abrir
  * (/admin/<org>/<edificio>/<sección>[/<unidad>]). Se lee la copia de ese
- * edificio y se dibujan **los mismos componentes** que en línea, con props
- * armadas por **las mismas funciones** (lib/admin/pantallas). Los
- * componentes que en línea piden datos al montarse los leen de la copia
- * (ProveedorCopia).
+ * edificio y se dibujan **los mismos componentes** que en línea
+ * (contenidoDeCopia). Los componentes que en línea piden datos al montarse los
+ * leen de la copia (ProveedorCopia).
  *
- * Sin conexión se puede consultar: Inicio, Propietarios y la ficha de cada
- * unidad, Pagos recibidos, Gastos del mes y Cortes (último mes cerrado). Lo
- * demás dice que necesita conexión. Registrar o cambiar algo sin conexión es
- * la parte B; hoy, si se intenta, la base no contesta y se avisa el error.
+ * Sin conexión se puede consultar Inicio, Propietarios y la ficha de cada
+ * unidad, Pagos recibidos, Gastos del mes y Cortes (último mes cerrado), y
+ * registrar pagos, exoneraciones, gastos, cargos, contactos y notas: van a
+ * la bandeja («Por enviar») y llegan solos al volver la conexión (partes B y
+ * C). Lo demás dice que necesita conexión.
  */
-
-type Ruta = { orgId: string; edificioId: string; seccion: string; unidadId: string | null; destino: string };
-
-function leerRuta(ir: string | null): Ruta | null {
-  if (!ir || !ir.startsWith("/admin/")) return null;
-  const [, , orgId, edificioId, seccion = "inicio", unidadId] = ir.split("?")[0].split("/");
-  if (!esUuid(orgId ?? "") || !esUuid(edificioId ?? "")) return null;
-  return { orgId, edificioId, seccion, unidadId: unidadId && esUuid(unidadId) ? unidadId : null, destino: ir };
-}
 
 const hrefCascara = (orgId: string, edificioId: string, seccion: string) =>
   `${RUTA_CASCARA}?ir=${encodeURIComponent(`/admin/${orgId}/${edificioId}/${seccion}`)}`;
@@ -71,12 +52,13 @@ type Estado =
 export function Cascara() {
   const params = useSearchParams();
   const ir = params.get("ir");
-  const ruta = leerRuta(ir);
+  const ruta = leerRutaAdmin(ir);
   const lenta = params.get("motivo") === "lenta";
   const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
   // Se llegó acá porque la red falló: hasta que una comprobación real diga
   // lo contrario, no hay conexión.
   const enLinea = useConexion("sin-conexion") === "en-linea";
+  const pendientes = useBandeja(ruta?.edificioId ?? null).filter((c) => c.estado !== "revisar").length;
 
   useEffect(() => {
     let vivo = true;
@@ -84,7 +66,7 @@ export function Cascara() {
       const usuarioId = await usuarioLocal();
       if (!vivo) return;
       if (!usuarioId) return setEstado({ tipo: "sin-sesion" });
-      const r = leerRuta(ir);
+      const r = leerRutaAdmin(ir);
       if (!r) return setEstado({ tipo: "sin-ruta" });
       const copia = await leerCopia(usuarioId, r.edificioId).catch(() => null);
       if (!vivo) return;
@@ -100,7 +82,7 @@ export function Cascara() {
 
   // Volver a la página pedida: pasa de nuevo por el service worker, que
   // prueba la red primero.
-  const volver = () => window.location.assign(ruta?.destino ?? "/admin");
+  const volver = () => window.location.assign(ir && ruta ? ir : "/admin");
 
   if (estado.tipo === "cargando") return null;
 
@@ -130,47 +112,13 @@ export function Cascara() {
   const r = ruta!;
   const { orgId, edificioId } = copia;
 
-  let contenido: ReactNode;
-  switch (r.seccion) {
-    case "inicio":
-      contenido = (
-        <PantallaInicio
-          orgId={orgId}
-          edificioId={edificioId}
-          tolerancia={copia.marco.edificios.find((e) => e.id === edificioId)?.tolerancia_alicuota}
-          props={armarPropsInicio(copia.inicio)}
-        />
-      );
-      break;
-    case "propietarios": {
-      const ficha = r.unidadId ? fichaDesdeCopia(copia.propietarios, copia.fichas, r.unidadId) : null;
-      contenido = ficha ? (
-        <Ficha orgId={orgId} edificioId={edificioId} {...ficha} />
-      ) : r.unidadId ? (
-        <Vacio titulo="Esa unidad no está en la copia" texto="Puede que se haya agregado después de la última copia." icono={<WifiOff size={28} />} />
-      ) : (
-        <Propietarios orgId={orgId} edificioId={edificioId} {...armarPropsPropietarios(copia.propietarios)} />
-      );
-      break;
-    }
-    case "pagos":
-      contenido = <Pagos orgId={orgId} edificioId={edificioId} {...armarPropsPagos(copia.pagos)} />;
-      break;
-    case "mes":
-      contenido = <CierreMes orgId={orgId} edificioId={edificioId} {...armarPropsMes(copia.mes)} />;
-      break;
-    case "cortes":
-      contenido = <Cortes orgId={orgId} edificioId={edificioId} {...copia.cortes} puedeOperar={false} />;
-      break;
-    default:
-      contenido = (
-        <Vacio
-          titulo={`${NOMBRES[r.seccion] ?? "Esta sección"} necesita conexión`}
-          texto="Sin conexión se pueden ver Inicio, Propietarios, Pagos recibidos, Gastos del mes y Cortes de cuenta."
-          icono={<WifiOff size={28} />}
-        />
-      );
-  }
+  const contenido: ReactNode = contenidoDeCopia({ copia, seccion: r.seccion, unidadId: r.unidadId }) ?? (
+    <Vacio
+      titulo={`${NOMBRES[r.seccion] ?? "Esta sección"} necesita conexión`}
+      texto="Sin conexión se pueden ver Inicio, Propietarios, Pagos recibidos, Gastos del mes y Cortes de cuenta."
+      icono={<WifiOff size={28} />}
+    />
+  );
 
   return (
     <ProveedorCopia copia={copia}>
@@ -198,8 +146,10 @@ export function Cascara() {
           {enLinea ? <Wifi size={16} /> : <CloudOff size={16} />}
           <span style={{ flex: 1, minWidth: 200 }}>
             {enLinea
-              ? "Volvió la conexión. Lo que ve es la copia guardada."
-              : `${lenta ? "Conexión muy lenta" : "Sin conexión"}: está viendo los datos de ${formatoHora(copia.sincronizadoEn)}. Para registrar o cambiar algo, espere a que vuelva internet.`}
+              ? pendientes > 0
+                ? "Volvió la conexión. Se está enviando lo pendiente; después puede ver lo último."
+                : "Volvió la conexión. Lo que ve es la copia guardada."
+              : `${lenta ? "Conexión muy lenta" : "Sin conexión"}: está viendo los datos de ${formatoHora(copia.sincronizadoEn)}. Lo que registre se guarda en este equipo y se envía solo al volver (puede llegar después del cierre del mes).`}
           </span>
           <Button type="button" mini variante={enLinea ? "primario" : "secundario"} onClick={volver}>
             <RefreshCw size={14} /> {enLinea ? "Ver lo último" : "Reintentar"}
