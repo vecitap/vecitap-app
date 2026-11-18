@@ -17,7 +17,9 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Administración de condominios",
     start_url: "/admin",
     scope: "/",
-    display: "standalone",
+    // Con el modo sin conexión apagado (producción, hasta aprobarlo) la app
+    // no se ofrece para instalar: «browser» = se abre como una página más.
+    display: process.env.NEXT_PUBLIC_SIN_CONEXION === "1" ? "standalone" : "browser",
     background_color: "#F8FAFC",
     theme_color: "#0A1128",
     lang: "es",

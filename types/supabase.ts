@@ -2556,6 +2556,7 @@ export type Database = {
           ruta: string
         }[]
       }
+      copia_edificio: { Args: { p_edificio: string }; Returns: Json }
       correo_recibo: {
         Args: { p_recibo: string }
         Returns: {

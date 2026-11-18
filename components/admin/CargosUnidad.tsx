@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useBorrador } from "@/lib/local/borrador";
+import { AvisoBorrador } from "@/components/sin-conexion/AvisoBorrador";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Aviso, Badge, Button, Campo, Confirmar, Input, Select } from "@/components/ui";
@@ -59,6 +61,9 @@ export function CargosUnidad({
   const [editando, setEditando] = useState<CargoDelMes | null>(null);
   const [quitar, setQuitar] = useState<CargoDelMes | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Cambio 3 (plan, sección 3): el cargo nuevo a medio escribir no se pierde.
+  // Mientras se edita uno existente, no se guarda borrador.
+  const borrador = useBorrador(editando ? null : `mes.cargo·${mes.id}`, f, setF, (b) => !b.concepto.trim() && !b.monto.trim() && !b.referencia.trim());
 
   const codigo = (id: string) => unidades.find((u) => u.id === id)?.codigo ?? "—";
   // Ronda 12 (B, decisión de Gustavo): en una multa la referencia es su
@@ -120,6 +125,7 @@ export function CargosUnidad({
             .insert({ ...campos, org_id: orgId, periodo_id: mes.id, tipo: "directo", bolsillo: "condominio", categoria_id: null, orden: 10 })
         : await supabase.from("cargos_unidad").insert({ ...campos, tipo, org_id: orgId, periodo_id: mes.id });
     if (e) throw e;
+    if (!editando) borrador.limpiar();
     setEditando(null);
     setF(VACIO);
     router.refresh();
@@ -141,6 +147,11 @@ export function CargosUnidad({
   return (
     <div style={{ background: "var(--lienzo)", border: "1px solid var(--linea)", borderRadius: "var(--radio)", padding: 18 }}>
       <h2 style={{ margin: "0 0 4px", fontSize: 16, fontFamily: "var(--font-titulos)" }}>Cargo a una sola unidad</h2>
+      {!editando && (
+        <div style={{ margin: "8px 0" }}>
+          <AvisoBorrador {...borrador} />
+        </div>
+      )}
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--tenue)", lineHeight: 1.5 }}>
         Una multa, un consumo o una reparación que se le cobra a una sola unidad. Sale en su próximo recibo como una
         línea propia, con el motivo, y se suma a lo que debe de condominio: si no lo paga, cuenta para la mora igual

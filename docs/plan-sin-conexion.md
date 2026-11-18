@@ -696,9 +696,54 @@ Es el caso más difícil, porque `navigator.onLine` sigue diciendo que hay conex
 - El manifiesto existe también con el interruptor apagado: Chrome podría ofrecer «Instalar» en
   producción. Inofensivo, pero se puede condicionar en A.
 
+## 9. Parte A (18-nov) — resultado
+
+Nicolás aprobó seguir con A después de la prueba de concepto. Rama `app-sin-conexion`.
+
+### Qué se agregó a la prueba de concepto
+
+| Pieza | Dónde |
+|---|---|
+| **`copia_edificio()`**, aplicada en vecitap-pruebas (con su rollback). Cambió respecto de 1.1 g: **no** arma toda la copia, solo lo que va por unidad (historial y detalle por mes), llamando a `historial_unidad()` y `deuda_por_mes()` sin copiar su lógica. Lo demás se baja con las mismas consultas que las páginas, así hay una sola definición de cada consulta. En el Edificio Gustavo: ~2,4 s en el servidor, ~250 KB | `supabase/migrations/20261118120000_copia_edificio.sql` |
+| Consultar y armar, separados y compartidos, en **Inicio, Ficha, Pagos, Gastos del mes y Cortes** (y Propietarios, de la prueba). Las páginas en línea quedaron con la misma salida; la de Inicio pasó su dibujo a `PantallaInicio` | `lib/admin/pantallas/*`, `components/admin/PantallaInicio.tsx` |
+| Copia completa (formato 2): lateral, las seis pantallas, gastos del mes abierto y recibos del último mes cerrado | `lib/local/almacen.ts`, `lib/local/copia.ts` |
+| **Huella** cada minuto: una consulta de unos cientos de bytes (`auditoria` + cargos + notas); la copia entera solo se baja si cambió algo, y una vez por hora como red | `lib/local/copia.ts`, `ModoSinConexion.tsx` |
+| Pantalla sin conexión **con el lateral** de siempre (`MarcoAdmin` con `local`) y las seis pantallas; las demás dicen «necesita conexión» | `app/(admin)/admin/sin-internet/Cascara.tsx` |
+| Los componentes que piden datos solos (detalle por mes, gastos del mes, recibos, correo) leen la copia cuando están sin conexión; en línea no cambian | `lib/local/contexto.tsx`, `DeudaPorMes`, `CierreMes`, `Cortes` |
+| **Borradores** (sección 3): Registrar un pago (también el agrupado), Exoneración, gasto nuevo, cargo a una unidad, y datos, contactos y nota de la ficha | `lib/local/borrador.ts`, `AvisoBorrador.tsx` |
+| «Salir» que borra la copia en los tres lugares (Administración, Sin acceso, Garita) | `FormularioSalir.tsx` |
+| Logo visible sin conexión; manifiesto que no ofrece instalar con el interruptor apagado | `components/ui/Logo.tsx`, `app/manifest.ts` |
+| **Service worker de emergencia** (`SIN_CONEXION_APAGAR=1` + desplegar) | `app/sw-apagar.ts` |
+
+### Probado contra `next start` (base de pruebas, `admin.prueba`, «Cambio 2 · prueba»)
+
+| Prueba | Resultado |
+|---|---|
+| Copia formato 2: 13 KB para 2 unidades, con historial (6), detalle por mes (6), pagos (2) y recibos del último mes (2) | ✅ |
+| `copia_edificio()` como `admin.prueba`: las mismas filas que una por una; un edificio ajeno sale vacío | ✅ |
+| Sin servidor: **Inicio** (por cobrar $ 300,00, quién debe más), **Propietarios**, **Ficha** de la 101 (estado de cuenta, detalle por mes julio–septiembre, historial), **Pagos**, **Gastos del mes** (con «La previa del reparto necesita conexión»), **Cortes** (los 2 recibos de septiembre), **Estadísticas** («necesita conexión») | ✅ |
+| Sin servidor, el lateral navega entre secciones desde el equipo | ✅ |
+| Borrador: monto y referencia escritos → recargar → formulario vacío con «Recuperamos lo que estaba escribiendo» → «Seguir» los devuelve | ✅ |
+| Las seis páginas **en línea** devuelven 200 con su contenido y sin errores; unidad y edificio ajenos siguen cayendo en «no encontrado» | ✅ |
+| Service worker de emergencia: compila y reemplaza al normal | ✅ (no se probó desinstalándose en un navegador) |
+| `npm run build` (encendido y apagado), `lint`, `tsc` | ✅ |
+
+Con el panel del navegador del asistente oculto, las páginas que llegan por partes no se
+activan (ya anotado en `estado-migracion.md`, cambio 2), así que **los borradores y la huella
+en las páginas en línea se probaron dentro de la pantalla sin conexión**, que usa los mismos
+componentes. Conviene que Nicolás los pruebe en línea en el Preview.
+
+### Lo que queda para B (o para decidir)
+
+- **Escribir sin conexión**: hoy, si se intenta registrar algo sin conexión, la base no contesta
+  y se muestra el error; el borrador queda guardado. La bandeja es la parte B.
+- El aviso de «Sin conexión» aparece dos veces en la pantalla sin conexión (el del lateral y el de
+  arriba). Se puede dejar solo uno.
+- Antes de producción: aplicar `20261118120000_copia_edificio.sql` (Nicolás, con respaldo).
+
 ## Preguntas abiertas
 
-Ninguna nueva. Falta que Nicolás pruebe el Preview y apruebe seguir con el resto de A.
+Ninguna. Falta que Nicolás pruebe la parte A en el Preview y apruebe seguir con la parte E.
 
 ---
 

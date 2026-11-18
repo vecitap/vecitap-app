@@ -2,33 +2,64 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { CloudOff, RefreshCw, Users, Wifi } from "lucide-react";
-import { Button, Card, PantallaMarca } from "@/components/ui";
-import { useConexion } from "@/lib/local/conexion";
+import { CloudOff, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Button, Card, PantallaMarca, Vacio } from "@/components/ui";
+import { MarcoAdmin } from "@/components/admin/MarcoAdmin";
 import { Propietarios } from "@/components/admin/Propietarios";
+import { PantallaInicio } from "@/components/admin/PantallaInicio";
+import { Ficha } from "@/components/admin/Ficha";
+import { Pagos } from "@/components/admin/Pagos";
+import { CierreMes } from "@/components/admin/CierreMes";
+import { Cortes } from "@/components/admin/Cortes";
 import { armarPropsPropietarios } from "@/lib/admin/pantallas/propietarios";
+import { armarPropsInicio } from "@/lib/admin/pantallas/inicio";
+import { fichaDesdeCopia } from "@/lib/admin/pantallas/ficha";
+import { armarPropsPagos } from "@/lib/admin/pantallas/pagos";
+import { armarPropsMes } from "@/lib/admin/pantallas/mes";
 import { usuarioLocal } from "@/lib/local/sesion-local";
 import { leerCopia, type CopiaEdificio } from "@/lib/local/almacen";
+import { ProveedorCopia } from "@/lib/local/contexto";
+import { useConexion } from "@/lib/local/conexion";
 import { RUTA_CASCARA, VERSION_COPIA } from "@/lib/local/config";
 import { formatoHora } from "@/lib/local/formato";
 import { esUuid } from "@/lib/validacion";
 
 /**
- * Lo que dibuja la cáscara sin internet (prueba de concepto: Propietarios).
+ * Lo que dibuja la pantalla sin internet (cambio 3, plan 1.1 c).
  *
- * `?ir=` trae la dirección que se quiso abrir (/admin/<org>/<edificio>/<sección>).
- * Se lee la copia de ese edificio y se dibuja **el mismo componente** que en
- * línea, con props armadas por **la misma función** (lib/admin/pantallas).
+ * `?ir=` trae la dirección que se quiso abrir
+ * (/admin/<org>/<edificio>/<sección>[/<unidad>]). Se lee la copia de ese
+ * edificio y se dibujan **los mismos componentes** que en línea, con props
+ * armadas por **las mismas funciones** (lib/admin/pantallas). Los
+ * componentes que en línea piden datos al montarse los leen de la copia
+ * (ProveedorCopia).
+ *
+ * Sin conexión se puede consultar: Inicio, Propietarios y la ficha de cada
+ * unidad, Pagos recibidos, Gastos del mes y Cortes (último mes cerrado). Lo
+ * demás dice que necesita conexión. Registrar o cambiar algo sin conexión es
+ * la parte B; hoy, si se intenta, la base no contesta y se avisa el error.
  */
 
-type Ruta = { orgId: string; edificioId: string; seccion: string; destino: string };
+type Ruta = { orgId: string; edificioId: string; seccion: string; unidadId: string | null; destino: string };
 
 function leerRuta(ir: string | null): Ruta | null {
   if (!ir || !ir.startsWith("/admin/")) return null;
-  const [, , orgId, edificioId, seccion = "inicio"] = ir.split("?")[0].split("/");
+  const [, , orgId, edificioId, seccion = "inicio", unidadId] = ir.split("?")[0].split("/");
   if (!esUuid(orgId ?? "") || !esUuid(edificioId ?? "")) return null;
-  return { orgId, edificioId, seccion, destino: ir };
+  return { orgId, edificioId, seccion, unidadId: unidadId && esUuid(unidadId) ? unidadId : null, destino: ir };
 }
+
+const hrefCascara = (orgId: string, edificioId: string, seccion: string) =>
+  `${RUTA_CASCARA}?ir=${encodeURIComponent(`/admin/${orgId}/${edificioId}/${seccion}`)}`;
+
+const NOMBRES: Record<string, string> = {
+  mensajes: "Mensajes",
+  estadisticas: "Estadísticas",
+  estado: "Estado financiero",
+  accesos: "Accesos",
+  ajustes: "Ajustes",
+  cobros: "Cobros",
+};
 
 type Estado =
   | { tipo: "cargando" }
@@ -39,7 +70,8 @@ type Estado =
 
 export function Cascara() {
   const params = useSearchParams();
-  const ruta = leerRuta(params.get("ir"));
+  const ir = params.get("ir");
+  const ruta = leerRuta(ir);
   const lenta = params.get("motivo") === "lenta";
   const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
   // Se llegó acá porque la red falló: hasta que una comprobación real diga
@@ -52,20 +84,19 @@ export function Cascara() {
       const usuarioId = await usuarioLocal();
       if (!vivo) return;
       if (!usuarioId) return setEstado({ tipo: "sin-sesion" });
-      if (!ruta) return setEstado({ tipo: "sin-ruta" });
-      const copia = await leerCopia(usuarioId, ruta.edificioId).catch(() => null);
+      const r = leerRuta(ir);
+      if (!r) return setEstado({ tipo: "sin-ruta" });
+      const copia = await leerCopia(usuarioId, r.edificioId).catch(() => null);
       if (!vivo) return;
       // Una copia de otra organización (URL armada a mano) o de otra
       // versión del formato no se usa.
-      if (!copia || copia.orgId !== ruta.orgId || copia.version !== VERSION_COPIA) return setEstado({ tipo: "sin-copia" });
+      if (!copia || copia.orgId !== r.orgId || copia.version !== VERSION_COPIA) return setEstado({ tipo: "sin-copia" });
       setEstado({ tipo: "copia", copia });
     })();
     return () => {
       vivo = false;
     };
-    // ruta se deriva de la URL: alcanza con depender del texto de `ir`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.get("ir")]);
+  }, [ir]);
 
   // Volver a la página pedida: pasa de nuevo por el service worker, que
   // prueba la red primero.
@@ -96,31 +127,59 @@ export function Cascara() {
   }
 
   const { copia } = estado;
-  const props = armarPropsPropietarios(copia.propietarios);
-  // Dentro de la cáscara se navega cambiando `?ir=` con el history del
-  // navegador (Next sincroniza useSearchParams): no pide nada a la red.
-  const irA = (seccion: string) =>
-    window.history.pushState(null, "", `${RUTA_CASCARA}?ir=${encodeURIComponent(`/admin/${copia.orgId}/${copia.edificioId}/${seccion}`)}`);
+  const r = ruta!;
+  const { orgId, edificioId } = copia;
 
   let contenido: ReactNode;
-  if (ruta!.seccion === "propietarios") {
-    contenido = <Propietarios orgId={copia.orgId} edificioId={copia.edificioId} {...props} />;
-  } else {
-    contenido = (
-      <Card>
-        <p style={{ marginTop: 0, fontSize: 14 }}>
-          Esta sección todavía no se puede ver sin conexión. En esta prueba, sin conexión solo está Propietarios.
-        </p>
-        <Button type="button" onClick={() => irA("propietarios")}>
-          <Users size={16} /> Ver Propietarios
-        </Button>
-      </Card>
-    );
+  switch (r.seccion) {
+    case "inicio":
+      contenido = (
+        <PantallaInicio
+          orgId={orgId}
+          edificioId={edificioId}
+          tolerancia={copia.marco.edificios.find((e) => e.id === edificioId)?.tolerancia_alicuota}
+          props={armarPropsInicio(copia.inicio)}
+        />
+      );
+      break;
+    case "propietarios": {
+      const ficha = r.unidadId ? fichaDesdeCopia(copia.propietarios, copia.fichas, r.unidadId) : null;
+      contenido = ficha ? (
+        <Ficha orgId={orgId} edificioId={edificioId} {...ficha} />
+      ) : r.unidadId ? (
+        <Vacio titulo="Esa unidad no está en la copia" texto="Puede que se haya agregado después de la última copia." icono={<WifiOff size={28} />} />
+      ) : (
+        <Propietarios orgId={orgId} edificioId={edificioId} {...armarPropsPropietarios(copia.propietarios)} />
+      );
+      break;
+    }
+    case "pagos":
+      contenido = <Pagos orgId={orgId} edificioId={edificioId} {...armarPropsPagos(copia.pagos)} />;
+      break;
+    case "mes":
+      contenido = <CierreMes orgId={orgId} edificioId={edificioId} {...armarPropsMes(copia.mes)} />;
+      break;
+    case "cortes":
+      contenido = <Cortes orgId={orgId} edificioId={edificioId} {...copia.cortes} puedeOperar={false} />;
+      break;
+    default:
+      contenido = (
+        <Vacio
+          titulo={`${NOMBRES[r.seccion] ?? "Esta sección"} necesita conexión`}
+          texto="Sin conexión se pueden ver Inicio, Propietarios, Pagos recibidos, Gastos del mes y Cortes de cuenta."
+          icono={<WifiOff size={28} />}
+        />
+      );
   }
 
   return (
-    <div className="admin-marco">
-      <main className="admin-principal">
+    <ProveedorCopia copia={copia}>
+      <MarcoAdmin
+        organizacion={copia.marco.organizacion}
+        edificios={copia.marco.edificios}
+        tasaInicial={copia.marco.tasa}
+        local={{ edificioId, seccion: r.seccion, href: (edificio, seccion) => hrefCascara(orgId, edificio, seccion) }}
+      >
         <div
           role="status"
           style={{
@@ -128,7 +187,9 @@ export function Cascara() {
             gap: 10,
             alignItems: "center",
             flexWrap: "wrap",
-            padding: "10px 16px",
+            padding: "10px 14px",
+            marginBottom: 16,
+            borderRadius: 10,
             background: enLinea ? "var(--acento-suave)" : "var(--acento)",
             color: enLinea ? "var(--acento-texto)" : "var(--acento-sobre)",
             fontSize: 13.5,
@@ -138,20 +199,14 @@ export function Cascara() {
           <span style={{ flex: 1, minWidth: 200 }}>
             {enLinea
               ? "Volvió la conexión. Lo que ve es la copia guardada."
-              : `${lenta ? "Conexión muy lenta" : "Sin conexión"}: está viendo los datos de ${formatoHora(copia.sincronizadoEn)}.`}
+              : `${lenta ? "Conexión muy lenta" : "Sin conexión"}: está viendo los datos de ${formatoHora(copia.sincronizadoEn)}. Para registrar o cambiar algo, espere a que vuelva internet.`}
           </span>
-          <Button type="button" variante={enLinea ? "primario" : "secundario"} onClick={volver}>
-            <RefreshCw size={15} /> {enLinea ? "Ver lo último" : "Reintentar"}
+          <Button type="button" mini variante={enLinea ? "primario" : "secundario"} onClick={volver}>
+            <RefreshCw size={14} /> {enLinea ? "Ver lo último" : "Reintentar"}
           </Button>
         </div>
-        <header className="admin-cabecera">
-          <div style={{ minWidth: 0 }}>
-            <h1 className="admin-titulo">{copia.edificioNombre}</h1>
-            <p className="admin-subtitulo">Copia sin conexión de este equipo</p>
-          </div>
-        </header>
-        <div className="admin-relleno">{contenido}</div>
-      </main>
-    </div>
+        {contenido}
+      </MarcoAdmin>
+    </ProveedorCopia>
   );
 }

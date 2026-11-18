@@ -1,5 +1,11 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { FilasPropietarios } from "@/lib/admin/pantallas/propietarios";
+import type { FilasInicio } from "@/lib/admin/pantallas/inicio";
+import type { FichasEdificio } from "@/lib/admin/pantallas/ficha";
+import type { FilasPagos } from "@/lib/admin/pantallas/pagos";
+import type { FilasMes } from "@/lib/admin/pantallas/mes";
+import type { FilasCortes } from "@/lib/admin/pantallas/cortes";
+import type { GastoAdmin, OrganizacionAdmin, ReciboAdmin, TasaViva } from "@/lib/admin/tipos";
 
 /**
  * El único módulo que lee y escribe la copia local (cambio 3, 1.1 e).
@@ -8,10 +14,16 @@ import type { FilasPropietarios } from "@/lib/admin/pantallas/propietarios";
  * (decidido el 17-nov: riesgo asumido por la empresa); si algún día cambia,
  * se cambia acá y en ningún otro lado.
  *
- * Prueba de concepto: solo guarda lo que necesita Propietarios. La parte A
- * completa suma el resto de las pantallas y los almacenes `bandeja` y
- * `borradores`.
+ * Almacenes: `copias` (una por edificio) y `borradores` (formularios a medio
+ * llenar, plan sección 3). La parte B suma `bandeja`.
  */
+
+/** Lo que necesita el lateral (MarcoAdmin) para dibujarse sin el servidor. */
+export type MarcoCopia = {
+  organizacion: Pick<OrganizacionAdmin, "id" | "nombre" | "logo_url">;
+  edificios: { id: string; nombre: string; direccion: string | null; tolerancia_alicuota: number | null }[];
+  tasa: TasaViva | null;
+};
 
 export type CopiaEdificio = {
   edificioId: string;
@@ -19,52 +31,74 @@ export type CopiaEdificio = {
   edificioNombre: string;
   version: number;
   sincronizadoEn: string; // ISO
+  /** Para saber si algo cambió sin bajar todo de nuevo (lib/local/copia.ts). */
+  huella: string;
+  marco: MarcoCopia;
+  inicio: FilasInicio;
   propietarios: FilasPropietarios;
+  fichas: FichasEdificio;
+  pagos: FilasPagos;
+  mes: FilasMes;
+  /** Lo que CierreMes pide en línea al abrir: los gastos del mes abierto. */
+  gastosAbierto: GastoAdmin[];
+  cortes: FilasCortes & { soloUsd: boolean };
+  /** Lo que Cortes pide en línea al abrir: los recibos del último mes cerrado. */
+  recibosUltimoMes: { periodoId: string; filas: ReciboAdmin[] } | null;
+};
+
+export type Borrador = {
+  clave: string; // formulario · edificio
+  valor: unknown;
+  guardadoEn: string; // ISO
 };
 
 interface EsquemaLocal extends DBSchema {
   copias: { key: string; value: CopiaEdificio };
+  borradores: { key: string; value: Borrador };
 }
 
 const PREFIJO = "vecitap-";
 const nombreBase = (usuarioId: string) => `${PREFIJO}${usuarioId}`;
 
 function abrir(usuarioId: string): Promise<IDBPDatabase<EsquemaLocal>> {
-  return openDB<EsquemaLocal>(nombreBase(usuarioId), 1, {
+  return openDB<EsquemaLocal>(nombreBase(usuarioId), 2, {
     upgrade(db) {
       if (!db.objectStoreNames.contains("copias")) db.createObjectStore("copias", { keyPath: "edificioId" });
+      if (!db.objectStoreNames.contains("borradores")) db.createObjectStore("borradores", { keyPath: "clave" });
     },
   });
 }
 
-export async function leerCopia(usuarioId: string, edificioId: string): Promise<CopiaEdificio | null> {
+async function conBase<T>(usuarioId: string, f: (db: IDBPDatabase<EsquemaLocal>) => Promise<T>): Promise<T> {
   const db = await abrir(usuarioId);
   try {
-    return (await db.get("copias", edificioId)) ?? null;
+    return await f(db);
   } finally {
     db.close();
   }
 }
 
-export async function guardarCopia(usuarioId: string, copia: CopiaEdificio): Promise<void> {
-  const db = await abrir(usuarioId);
-  try {
-    // Una sola escritura: la copia nueva reemplaza a la vieja de una vez,
-    // nunca queda a medias.
-    await db.put("copias", copia);
-  } finally {
-    db.close();
-  }
-}
+export const leerCopia = (usuarioId: string, edificioId: string) =>
+  conBase(usuarioId, async (db) => (await db.get("copias", edificioId)) ?? null);
 
-export async function listarCopias(usuarioId: string): Promise<CopiaEdificio[]> {
-  const db = await abrir(usuarioId);
-  try {
-    return await db.getAll("copias");
-  } finally {
-    db.close();
-  }
-}
+// Una sola escritura: la copia nueva reemplaza a la vieja de una vez, nunca
+// queda a medias.
+export const guardarCopia = (usuarioId: string, copia: CopiaEdificio) => conBase(usuarioId, (db) => db.put("copias", copia).then(() => undefined));
+
+export const borrarCopia = (usuarioId: string, edificioId: string) => conBase(usuarioId, (db) => db.delete("copias", edificioId));
+
+/** Las copias de este usuario, sin los datos: para el selector de edificios. */
+export const listarCopias = (usuarioId: string) =>
+  conBase(usuarioId, async (db) =>
+    (await db.getAll("copias")).map((c) => ({ edificioId: c.edificioId, orgId: c.orgId, edificioNombre: c.edificioNombre, sincronizadoEn: c.sincronizadoEn, version: c.version }))
+  );
+
+export const leerBorrador = (usuarioId: string, clave: string) =>
+  conBase(usuarioId, async (db) => (await db.get("borradores", clave)) ?? null);
+
+export const guardarBorrador = (usuarioId: string, borrador: Borrador) => conBase(usuarioId, (db) => db.put("borradores", borrador).then(() => undefined));
+
+export const borrarBorrador = (usuarioId: string, clave: string) => conBase(usuarioId, (db) => db.delete("borradores", clave));
 
 /**
  * Al salir: borra la base del usuario que sale (plan 1.1 j). Las de otros

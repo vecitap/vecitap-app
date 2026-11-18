@@ -1,18 +1,18 @@
 import { notFound } from "next/navigation";
 import { Cortes } from "@/components/admin/Cortes";
 import { crearClienteServidor } from "@/lib/supabase/server";
-import { tasaDelDia } from "@/lib/tasa";
 import { ajustesCobroDe } from "@/lib/cobro";
-import type { PeriodoAdmin, Unidad } from "@/lib/admin/tipos";
 import { tieneRolOrganizacion } from "@/lib/admin/acceso";
 import { ROLES_OPERAR } from "@/lib/admin/constantes";
+import { consultarCortes } from "@/lib/admin/pantallas/cortes";
 
 /**
  * Portado de Cortes() en admin.html:4918-5617 (Server Component: carga
  * unidades, períodos, organización, edificio y la tasa viva del BCV — la
  * misma que el encabezado de Admin y la que va al recibo en papel). Los
  * recibos del período elegido los carga el Client Component, porque
- * cambian al cambiar de mes sin recargar la página.
+ * cambian al cambiar de mes sin recargar la página. La consulta vive en
+ * lib/admin/pantallas/cortes.ts, que comparte con la copia sin conexión.
  */
 export default async function PaginaCortes({
   params,
@@ -25,52 +25,20 @@ export default async function PaginaCortes({
   const { periodo: periodoInicial } = await searchParams;
   const supabase = await crearClienteServidor();
 
-  const [{ data: org, error: eO }, { data: edificio, error: eE }, { data: unidades, error: eU }, { data: periodos, error: eP }, { data: cuentas }, cobro, { data: saldos }, { data: puedeOperar }] =
-    await Promise.all([
-      supabase.from("organizaciones").select("nombre,logo_url").eq("id", orgId).single(),
-      supabase.from("edificios").select("nombre,rif").eq("id", edificioId).single(),
-      supabase
-        .from("unidades")
-        .select(
-          "id,codigo,alicuota,saldo_inicial,saldo_inicial_hon,activa,vinculos(id,tipo,desde,hasta,enviar_corte,persona_id,personas(id,prefijo,nombre,documento,telefono,correo,correo_respaldo))"
-        )
-        .eq("edificio_id", edificioId)
-        .order("codigo"),
-      supabase
-        .from("periodos")
-        .select("id,anio,mes,etiqueta,estado,tasa_bcv,presupuesto,total_gastos,cerrado_en,enviado_en")
-        .eq("edificio_id", edificioId)
-        .order("anio", { ascending: false })
-        .order("mes", { ascending: false }),
-      // Ronda 7: los datos para pagar, para la vista previa del recibo.
-      supabase.from("datos_pago").select("id,destino,tipo,banco,titular,documento,cuenta,nota,orden").eq("edificio_id", edificioId).order("orden"),
-      ajustesCobroDe(orgId),
-      // Ronda 10 (B3): lo que debe hoy cada unidad, para el papel del último mes.
-      supabase.from("saldos_actuales").select("unidad_id,administracion,total").eq("edificio_id", edificioId),
-      // Ronda 12: contador y junta no ven «Probar el correo» (correo_recibo() se lo niega).
-      tieneRolOrganizacion(orgId, ROLES_OPERAR),
-    ]);
-
-  if (eO || eE) notFound();
-  if (eU) throw eU;
-  if (eP) throw eP;
-
-  const unidadesFilas: Unidad[] = unidades ?? [];
-  const periodosFilas: PeriodoAdmin[] = periodos ?? [];
-  const tasa = await tasaDelDia(supabase);
+  const [filas, cobro, { data: puedeOperar }] = await Promise.all([
+    consultarCortes(supabase, { orgId, edificioId }),
+    ajustesCobroDe(orgId),
+    // Ronda 12: contador y junta no ven «Probar el correo» (correo_recibo() se lo niega).
+    tieneRolOrganizacion(orgId, ROLES_OPERAR),
+  ]);
+  if (!filas) notFound();
 
   return (
     <Cortes
       orgId={orgId}
       edificioId={edificioId}
-      organizacion={org!}
-      edificio={edificio!}
-      unidades={unidadesFilas}
-      periodos={periodosFilas}
-      tasa={tasa}
-      cuentas={cuentas ?? []}
+      {...filas}
       soloUsd={cobro.soloUsd}
-      saldosHoy={saldos ?? []}
       puedeOperar={puedeOperar === true}
       periodoInicial={typeof periodoInicial === "string" ? periodoInicial : undefined}
     />

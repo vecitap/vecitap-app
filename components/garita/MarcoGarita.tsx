@@ -3,6 +3,7 @@
 import { useTema } from "@/lib/theme/ThemeProvider";
 import { Isotipo } from "./Isotipo";
 import { SelectorGarita } from "./SelectorGarita";
+import { FormularioSalir } from "@/components/sin-conexion/FormularioSalir";
 import type { GaritaAsignada } from "@/lib/garita/tipos";
 
 /**
@@ -54,11 +55,11 @@ export function MarcoGarita({
           Tema
         </button>
         {correo && (
-          <form action="/api/auth/salir" method="post">
+          <FormularioSalir>
             <button type="submit" className="garita-boton suave chico">
               Salir
             </button>
-          </form>
+          </FormularioSalir>
         )}
       </div>
     </header>

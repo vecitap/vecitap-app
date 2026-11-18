@@ -5,6 +5,8 @@ import { Badge, Card, type TonoBadge } from "@/components/ui";
 import { nf } from "@/lib/formato";
 import { crearClienteNavegador } from "@/lib/supabase/client";
 import { estadoMes, mesesDeDeuda, type MesDeuda } from "@/lib/reparto";
+import { useCopiaLocal } from "@/lib/local/contexto";
+import { deudaDesdeCopia } from "@/lib/admin/pantallas/ficha";
 
 const TONO: Record<ReturnType<typeof estadoMes>, TonoBadge> = { Pagado: "neutro", "En parte": "ambar", Pendiente: "rojo" };
 
@@ -22,10 +24,14 @@ const TONO: Record<ReturnType<typeof estadoMes>, TonoBadge> = { Pagado: "neutro"
  * mes»), la base contesta «Sin acceso» y el bloque no aparece.
  */
 export function DeudaPorMes({ unidadId, enTarjeta = false }: { unidadId: string; enTarjeta?: boolean }) {
-  const [meses, setMeses] = useState<MesDeuda[] | null>(null);
+  // Cambio 3: sin conexión, lo que devolvió deuda_por_mes() al bajar la copia.
+  const copia = useCopiaLocal();
+  const [pedidos, setMeses] = useState<MesDeuda[] | null>(null);
+  const meses = copia ? mesesDeDeuda(deudaDesdeCopia(copia.fichas, unidadId)) : pedidos;
   const [todos, setTodos] = useState(false);
 
   useEffect(() => {
+    if (copia) return;
     let vivo = true;
     crearClienteNavegador()
       .rpc("deuda_por_mes", { p_unidad: unidadId })
@@ -36,7 +42,7 @@ export function DeudaPorMes({ unidadId, enTarjeta = false }: { unidadId: string;
     return () => {
       vivo = false;
     };
-  }, [unidadId]);
+  }, [unidadId, copia]);
 
   if (!meses || meses.length === 0) return null;
   const pendientes = meses.filter((m) => m.falta > 0.005);

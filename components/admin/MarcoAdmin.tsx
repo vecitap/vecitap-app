@@ -30,9 +30,7 @@ import { tasaDeReferencia, type TasaViva } from "@/lib/tasa";
 import type { OrganizacionAdmin } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
 import { ModoSinConexion } from "@/components/sin-conexion/ModoSinConexion";
-import { SIN_CONEXION_ACTIVO } from "@/lib/local/config";
-import { borrarBaseDelUsuario } from "@/lib/local/almacen";
-import { usuarioLocal } from "@/lib/local/sesion-local";
+import { FormularioSalir } from "@/components/sin-conexion/FormularioSalir";
 
 /**
  * El armazón de Admin: columna lateral oscura + encabezado con la tasa del
@@ -74,11 +72,18 @@ export function MarcoAdmin({
   organizacion,
   edificios,
   tasaInicial,
+  local,
   children,
 }: {
   organizacion: Pick<OrganizacionAdmin, "id" | "nombre" | "logo_url">;
   edificios: { id: string; nombre: string; direccion: string | null }[];
   tasaInicial: TasaViva | null;
+  /**
+   * Cambio 3: dibujado desde la pantalla sin conexión. La dirección es la de
+   * la cáscara, así que el edificio y la sección vienen de acá, y los
+   * enlaces van a la cáscara (`href`), sin pedirle nada al servidor.
+   */
+  local?: { edificioId: string; seccion: string; href: (edificioId: string, seccion: string) => string };
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -87,8 +92,12 @@ export function MarcoAdmin({
   const [menuAbierto, setMenuAbierto] = useState(false);
 
   const segmentos = pathname.split("/").filter(Boolean); // admin / orgId / edificioId / seccion
-  const edificioId = segmentos[2] ?? "";
-  const seccion = segmentos[3] ?? "inicio";
+  const edificioId = local ? local.edificioId : (segmentos[2] ?? "");
+  const seccion = local ? local.seccion : (segmentos[3] ?? "inicio");
+  const hrefDe = (edificio: string, seg: string) => (local ? local.href(edificio, seg) : `/admin/${organizacion.id}/${edificio}/${seg}`);
+  // Sin conexión, un <a> común: el service worker sirve la cáscara al instante
+  // desde el equipo. Un <Link> intentaría pedir la página al servidor primero.
+  const Enlace = local ? "a" : Link;
   const edificio = edificios.find((e) => e.id === edificioId) ?? null;
 
   /* Qué módulos tiene contratado esta administradora. Lo decide Vecitap
@@ -98,7 +107,8 @@ export function MarcoAdmin({
      visible, y de todos modos la base rechaza lo que no corresponde. */
   const [modulos, setModulos] = useState<Record<string, boolean> | null>(null);
   useEffect(() => {
-    if (!edificioId) return;
+    // Sin conexión no se pregunta: se muestran todos los módulos.
+    if (!edificioId || local) return;
     let vivo = true;
     const supabase = crearClienteNavegador();
     supabase.rpc("mis_modulos", { p_edificio: edificioId }).then(({ data, error }) => {
@@ -113,7 +123,7 @@ export function MarcoAdmin({
     return () => {
       vivo = false;
     };
-  }, [edificioId]);
+  }, [edificioId, local]);
 
   const hayModulo = (clave: string) => !modulos || modulos[clave] !== false;
 
@@ -162,7 +172,7 @@ export function MarcoAdmin({
           <Select
             className="admin-sel-edificio"
             value={edificioId}
-            onChange={(e) => router.push(`/admin/${organizacion.id}/${e.target.value}/${seccion}`)}
+            onChange={(e) => router.push(hrefDe(e.target.value, seccion))}
             aria-label="Edificio"
           >
             {edificios.length === 0 && <option value="">Sin edificios</option>}
@@ -174,30 +184,30 @@ export function MarcoAdmin({
           </Select>
           {/* Cambio 3: copia sin conexión del edificio abierto (no dibuja
               nada con el interruptor apagado). */}
-          {edificio && <ModoSinConexion orgId={organizacion.id} edificioId={edificio.id} edificioNombre={edificio.nombre} />}
+          {edificio && <ModoSinConexion orgId={organizacion.id} edificioId={edificio.id} />}
         </div>
 
         {edificioId &&
           menu.map((m) => (
-            <Link
+            <Enlace
               key={m.seg}
-              href={`/admin/${organizacion.id}/${edificioId}/${m.seg}`}
+              href={hrefDe(edificioId, m.seg)}
               className={`admin-nav ${seccion === m.seg ? "activa" : ""}`}
               onClick={() => setMenuAbierto(false)}
             >
               <m.icono size={17} /> {m.etiqueta}
-            </Link>
+            </Enlace>
           ))}
 
         <div className="admin-lateral-pie">
           {edificioId && (
-            <Link
-              href={`/admin/${organizacion.id}/${edificioId}/ajustes`}
+            <Enlace
+              href={hrefDe(edificioId, "ajustes")}
               className={`admin-nav ${seccion === "ajustes" ? "activa" : ""}`}
               onClick={() => setMenuAbierto(false)}
             >
               <Settings2 size={17} /> Ajustes
-            </Link>
+            </Enlace>
           )}
           <button
             type="button"
@@ -208,26 +218,12 @@ export function MarcoAdmin({
             {tema === "oscuro" ? <Sun size={17} /> : <Moon size={17} />}
             {tema === "oscuro" ? "Tema claro" : "Tema oscuro"}
           </button>
-          {/* Cambio 3: antes de salir se borra la copia sin conexión de este
-              navegador (plan 1.1 j). Si el borrado fallara, se sale igual:
-              no se deja a nadie adentro por eso. */}
-          <form
-            action="/api/auth/salir"
-            method="post"
-            onSubmit={(e) => {
-              if (!SIN_CONEXION_ACTIVO) return;
-              e.preventDefault();
-              const form = e.currentTarget;
-              usuarioLocal()
-                .then((id) => (id ? borrarBaseDelUsuario(id) : undefined))
-                .catch(() => undefined)
-                .finally(() => form.submit());
-            }}
-          >
+          {/* Cambio 3: antes de salir se borra la copia sin conexión. */}
+          <FormularioSalir>
             <button type="submit" className="admin-nav">
               <LogOut size={17} /> Salir
             </button>
-          </form>
+          </FormularioSalir>
           <div style={{ padding: "16px 12px 4px", opacity: 0.75 }}>
             {/* El lateral es oscuro en los dos temas, así que acá va
                 siempre el logotipo en crema, no el de fondo claro. */}

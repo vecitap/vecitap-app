@@ -16,6 +16,27 @@ Toda corrección que salga de la validación en escritura va a `integration`.
 **Nunca mergear a `main`**: esa rama se publica sola en mi.vecitap.com vía
 GitHub Pages.
 
+## Cambio 3 del feedback de ING3 (18-nov) — trabajar sin internet — PARTE A EN LA RAMA `app-sin-conexion`
+
+Plan completo, decisiones y resultados en [`plan-sin-conexion.md`](plan-sin-conexion.md)
+(orden A → E → B → C, D después). **Rama propia, `app-sin-conexion`**, que sale de `dev`: `dev`
+queda para que Nicolás pruebe los cambios 1 y 2; las correcciones de `dev` se traen a la rama.
+
+- **Parte A hecha** (secciones 8 y 9 del plan): app instalable, service worker con alcance
+  `/admin/`, pantalla sin conexión con el lateral y seis pantallas de consulta, copia por
+  edificio en IndexedDB que se baja sola y se mira cada minuto, borradores de formularios,
+  Salir que borra la copia, y service worker de emergencia. Todo detrás del interruptor
+  `NEXT_PUBLIC_SIN_CONEXION` (encendido en los Preview de Vercel, **apagado en producción**).
+- **Base:** `20261118120000_copia_edificio.sql` y su rollback. **Aplicada en vecitap-pruebas el
+  18-nov** (asistente, execute_sql). `SECURITY INVOKER`, no copia lógica. **Sin aplicar en
+  producción.**
+- **Refactor sin cambio visible en línea:** Inicio, Propietarios, Ficha, Pagos, Gastos del mes y
+  Cortes separan «consultar» y «armar» en `lib/admin/pantallas/*` (los usa también la copia).
+- **Dependencias nuevas:** `@serwist/turbopack`, `serwist`, `idb`; `esbuild` y `esbuild-wasm` de
+  desarrollo.
+- **Falta:** que Nicolás pruebe A en el Preview (corte real, internet lento, instalar, borradores
+  en línea), después la parte E. Caso de uso mejorado: se registra al cerrar el cambio 3.
+
 ## Cambio 2 del feedback de ING3 (17-nov) — pagos parciales con varias unidades — APLICADA EN PRUEBAS
 
 En `dev`, **sin commit**. Respuestas 2.1 a 2.8 (y «Por confirmar», con sus valores por omisión)

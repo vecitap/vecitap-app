@@ -19,4 +19,4 @@ export const ALCANCE_SW = "/admin/";
  * Versión del formato de la copia. Si un despliegue cambia lo que se guarda,
  * se sube este número: una copia de otra versión no se usa, se vuelve a bajar.
  */
-export const VERSION_COPIA = 1;
+export const VERSION_COPIA = 2;

@@ -19,6 +19,8 @@ import { crearClienteNavegador } from "@/lib/supabase/client";
 import type { PeriodoAdmin, ReciboAdmin, TasaViva, Unidad, Vinculo } from "@/lib/admin/tipos";
 import { mensajeDeError } from "@/lib/errores";
 import { ordenarPorCodigo } from "@/lib/orden-unidades";
+import { useCopiaLocal } from "@/lib/local/contexto";
+import { SELECT_RECIBOS } from "@/lib/admin/pantallas/cortes";
 
 type Mensaje = { texto: string; tipo: "ok" | "error" };
 
@@ -138,6 +140,7 @@ export function Cortes({
   puedeOperar: boolean;
 }) {
   const router = useRouter();
+  const copia = useCopiaLocal();
   const cerrados = periodos.filter((p) => p.estado === "cerrado");
 
   // Al volver de imprimir, la ruta trae `?periodo=`: se queda en ese mes.
@@ -182,18 +185,21 @@ export function Cortes({
   // Ronda 9 (B3, caso 100): en el orden natural de las unidades (01A, 01B,
   // 01C, 01D, 02A…), no en el que llegan de la base.
   const codigoDe = (unidadId: string) => unidades.find((x) => x.id === unidadId)?.codigo ?? "";
-  const recibos = cargado?.periodoId === periodoId ? ordenarPorCodigo(cargado.filas, (r) => codigoDe(r.unidad_id)) : [];
-  const cargando = !!periodoId && cargado?.periodoId !== periodoId;
+  // Cambio 3: sin conexión, la copia trae los recibos del último mes cerrado.
+  // Otro mes no está en el equipo (`fueraDeCopia`).
+  const deCopia = copia ? (copia.recibosUltimoMes?.periodoId === periodoId ? copia.recibosUltimoMes.filas : null) : null;
+  const fueraDeCopia = !!copia && !!periodoId && !deCopia;
+  const filasMes = copia ? (deCopia ?? []) : cargado?.periodoId === periodoId ? cargado.filas : [];
+  const recibos = ordenarPorCodigo(filasMes, (r) => codigoDe(r.unidad_id));
+  const cargando = !copia && !!periodoId && cargado?.periodoId !== periodoId;
 
   useEffect(() => {
-    if (!periodoId) return;
+    if (!periodoId || copia) return;
     let vivo = true;
     const supabase = crearClienteNavegador();
     supabase
       .from("recibos")
-      .select(
-        "id,unidad_id,numero,cuota,directos,anterior,a_favor,mora,honorario,servicio,anterior_hon,anterior_serv,total,conceptos,cargos,detalle,deuda_meses,tasa_bcv,vence_el,alicuota"
-      )
+      .select(SELECT_RECIBOS)
       .eq("periodo_id", periodoId)
       .then(({ data, error }) => {
         if (!vivo) return;
@@ -207,6 +213,7 @@ export function Cortes({
   }, [periodoId]);
 
   useEffect(() => {
+    if (copia) return;
     let vivo = true;
     const supabase = crearClienteNavegador();
     supabase.rpc("resumen_correos", { p_org: orgId }).then(({ data }) => {
@@ -216,11 +223,12 @@ export function Cortes({
     return () => {
       vivo = false;
     };
-  }, [orgId, periodoId]);
+  }, [orgId, periodoId, copia]);
 
   /* Nota de la administradora: un mensaje suyo que se anexa al correo de
      todos los recibos. Se guarda por organización, no por envío. */
   useEffect(() => {
+    if (copia) return;
     let vivo = true;
     const supabase = crearClienteNavegador();
     supabase
@@ -235,7 +243,7 @@ export function Cortes({
     return () => {
       vivo = false;
     };
-  }, [orgId]);
+  }, [orgId, copia]);
 
   async function cargarEnvio() {
     const supabase = crearClienteNavegador();
@@ -245,7 +253,8 @@ export function Cortes({
   }
 
   async function cargarEstados() {
-    if (!periodoId) return;
+    // Sin conexión no hay estado de correos que mirar (cambio 3).
+    if (!periodoId || copia) return;
     const supabase = crearClienteNavegador();
     const [e, q, m] = await Promise.all([
       supabase.rpc("estado_correos_periodo", { p_periodo: periodoId }),
@@ -502,6 +511,11 @@ export function Cortes({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       {mensaje && <Aviso tono={mensaje.tipo === "error" ? "rojo" : "ok"}>{mensaje.texto}</Aviso>}
+      {fueraDeCopia && (
+        <Aviso tono="azul" titulo="Ese mes no está en este equipo">
+          Sin conexión solo se puede ver el último mes cerrado. Los demás vuelven con internet.
+        </Aviso>
+      )}
 
       <Card>
         <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Cortes de cuenta</h2>

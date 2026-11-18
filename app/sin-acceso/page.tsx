@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card, PantallaMarca } from "@/components/ui";
 import { usuarioActual } from "@/lib/supabase/cache";
+import { FormularioSalir } from "@/components/sin-conexion/FormularioSalir";
 
 /**
  * A dónde va quien tiene sesión pero no el rol de la sección que pidió
@@ -49,12 +50,13 @@ export default async function SinAcceso() {
             Ir a mi inicio
           </Link>
           {/* Mismo patrón que los encabezados de los módulos: un <form> que
-              postea a /api/auth/salir, sin JavaScript. */}
-          <form action="/api/auth/salir" method="post">
+              postea a /api/auth/salir, sin JavaScript. Con JavaScript, antes
+              borra la copia sin conexión (cambio 3). */}
+          <FormularioSalir>
             <button type="submit" className="btn btn-secundario">
               Salir
             </button>
-          </form>
+          </FormularioSalir>
         </div>
       </Card>
     </PantallaMarca>

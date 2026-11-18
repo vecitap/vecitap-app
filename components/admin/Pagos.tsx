@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useBorrador } from "@/lib/local/borrador";
+import { AvisoBorrador } from "@/components/sin-conexion/AvisoBorrador";
 import { useRouter } from "next/navigation";
 import { Aviso, Badge, Button, Campo, Card, Input, InputFecha, Select, type TonoBadge } from "@/components/ui";
 import { bs, hoyLocalISO, montoAlSalir, nf, num, paraCampo, usd, formatoFecha } from "@/lib/formato";
@@ -54,12 +56,15 @@ const TONO_ESTADO: Record<string, TonoBadge> = { conciliado: "neutro", anulado: 
 const MISMA_TASA = 0.005;
 export function Pagos({
   orgId,
+  edificioId,
   unidades,
   pagos,
   bancos,
   comprobantes,
 }: {
   orgId: string;
+  /** Para la clave de los borradores (cambio 3). */
+  edificioId: string;
   unidades: { id: string; codigo: string }[];
   pagos: PagoAdmin[];
   bancos: BancoFila[];
@@ -114,6 +119,19 @@ export function Pagos({
   // Cambio 2: lo que propuso «Repartir automáticamente», por unidad. La línea
   // «Cubre …» se muestra solo mientras el monto siga siendo el propuesto.
   const [cubre, setCubre] = useState<Record<string, { monto: string; texto: string }>>({});
+
+  // Cambio 3 (plan, sección 3): lo que se está escribiendo no se pierde.
+  const borradorPago = useBorrador(
+    `pagos.registrar·${edificioId}`,
+    { f, agrupado, partes },
+    (b) => {
+      setF(b.f);
+      setAgrupado(b.agrupado);
+      setPartes(b.partes);
+    },
+    (b) => !b.f.monto.trim() && !b.f.referencia.trim() && b.partes.every((x) => !x.monto.trim())
+  );
+  const borradorEx = useBorrador(`pagos.exonerar·${edificioId}`, ex, setEx, (b) => !b.monto.trim() && !b.motivo.trim());
 
   const [viendo, setViendo] = useState<{ url: string; tipo: string; pago: PagoAdmin; ficha: ComprobanteFila } | null>(null);
   const [purga, setPurga] = useState<number | null>(null);
@@ -310,6 +328,7 @@ export function Pagos({
     if (error) return fallo(error);
     setF({ ...f, monto: "", referencia: "" });
     limpiarTasa();
+    borradorPago.limpiar();
     notificar("Pago registrado como reportado. Falta conciliarlo.");
     router.refresh();
   }
@@ -402,6 +421,7 @@ export function Pagos({
     ]);
     setCubre({});
     limpiarTasa();
+    borradorPago.limpiar();
     notificar(`Transferencia registrada para ${filas.length} unidades, como reportada. Falta conciliarla.`);
     router.refresh();
   }
@@ -436,6 +456,7 @@ export function Pagos({
     });
     if (error) return fallo(error);
     setEx({ ...ex, monto: "", motivo: "" });
+    borradorEx.limpiar();
     notificar("Exoneración registrada.");
     router.refresh();
   }
@@ -798,6 +819,7 @@ export function Pagos({
         ))}
       </div>
 
+      {pest === "registrar" && <AvisoBorrador {...borradorPago} />}
       {pest === "registrar" && (
         <Card>
           <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>Registrar un pago</h2>
@@ -1081,6 +1103,7 @@ export function Pagos({
         </Card>
       )}
 
+      {pest === "exonerar" && <AvisoBorrador {...borradorEx} />}
       {pest === "exonerar" && (
         <Card>
           <h2 style={{ margin: 0, fontSize: 16, fontFamily: "var(--font-titulos)" }}>

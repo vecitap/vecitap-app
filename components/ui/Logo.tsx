@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useTema } from "@/lib/theme/ThemeProvider";
+import { useCopiaLocal } from "@/lib/local/contexto";
 
 /**
  * Igual que LogoVecitap en los HTML originales: si el archivo no está, cae
@@ -16,6 +17,9 @@ export function Logo({ alto = 22, forzarTema }: { alto?: number; forzarTema?: "c
   const { tema: temaActual } = useTema();
   const tema = forzarTema ?? temaActual;
   const [falla, setFalla] = useState(false);
+  // Cambio 3: sin conexión el optimizador de imágenes del servidor no
+  // contesta; se usa el PNG tal cual, que guarda el service worker.
+  const sinConexion = useCopiaLocal() !== null;
 
   if (falla) {
     return (
@@ -34,6 +38,7 @@ export function Logo({ alto = 22, forzarTema }: { alto?: number; forzarTema?: "c
       onError={() => setFalla(true)}
       style={{ height: alto, width: "auto", display: "block" }}
       priority
+      unoptimized={sinConexion}
     />
   );
 }

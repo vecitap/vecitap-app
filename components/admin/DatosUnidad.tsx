@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useBorrador } from "@/lib/local/borrador";
+import { AvisoBorrador } from "@/components/sin-conexion/AvisoBorrador";
 import { useRouter } from "next/navigation";
 import { Aviso, Button, Campo, Card, Confirmar, EstadoGuardado, Input, Select, Textarea } from "@/components/ui";
 import { useAccion } from "@/hooks/useAccion";
@@ -93,20 +95,37 @@ export function DatosUnidad({
   nota: string;
 }) {
   const router = useRouter();
-  const [u, setU] = useState({
-    codigo: unidad.codigo,
+  const uDe = (x: UnidadConPaga) => ({
+    codigo: x.codigo,
     // Escritos como en Venezuela y sin recortar decimales (ronda 4, caso
     // 50): la alícuota conserva los suyos y guardar sin tocar no cambia nada.
-    alicuota: paraCampo(unidad.alicuota, 0),
-    saldo: paraCampo(unidad.saldo_inicial),
-    saldoHon: paraCampo(unidad.saldo_inicial_hon),
-    activa: unidad.activa,
-    tipo: (unidad.tipo ?? "apartamento") as TipoUnidad,
+    alicuota: paraCampo(x.alicuota, 0),
+    saldo: paraCampo(x.saldo_inicial),
+    saldoHon: paraCampo(x.saldo_inicial_hon),
+    activa: x.activa,
+    tipo: (x.tipo ?? "apartamento") as TipoUnidad,
   });
+  const [u, setU] = useState(() => uDe(unidad));
   const [paga, setPaga] = useState<Paga>(pagaDe(unidad.paga));
   const [nota, setNota] = useState(notaGuardada);
   const [p, setP] = useState<FormPersona>(aForm(prop));
   const [i, setI] = useState<FormPersona>(aForm(inq));
+  // Cambio 3 (plan, sección 3): los cambios a medio escribir de la ficha
+  // (datos, contactos y nota) no se pierden. «Vacío» = igual a lo que está
+  // guardado en la base (las props de esta pantalla, que se renuevan al guardar).
+  const guardado = JSON.stringify({ u: uDe(unidad), paga: pagaDe(unidad.paga), nota: notaGuardada, p: aForm(prop), i: aForm(inq) });
+  const borrador = useBorrador(
+    `ficha.datos·${unidad.id}`,
+    { u, paga, nota, p, i },
+    (b) => {
+      setU(b.u);
+      setPaga(b.paga);
+      setNota(b.nota);
+      setP(b.p);
+      setI(b.i);
+    },
+    (b) => JSON.stringify(b) === guardado
+  );
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<string | null>(null);
@@ -304,6 +323,7 @@ export function DatosUnidad({
     }
     await guardarPaga();
     await guardarNota();
+    borrador.limpiar();
     if (avisos.length) setListo(avisos.join(" "));
     router.refresh();
   });
@@ -419,6 +439,7 @@ export function DatosUnidad({
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      <AvisoBorrador {...borrador} />
       {error && <p style={{ color: "var(--rojo)", fontSize: 13 }}>{error}</p>}
       {listo && (
         <Aviso tono="ok" titulo="Listo">

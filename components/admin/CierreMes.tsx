@@ -13,6 +13,10 @@ import { mensajeDeError } from "@/lib/errores";
 import { ordenarPorCodigo } from "@/lib/orden-unidades";
 import { CuotasExtraordinarias } from "./CuotasExtraordinarias";
 import { CargosUnidad, type CargoDelMes } from "./CargosUnidad";
+import { useCopiaLocal } from "@/lib/local/contexto";
+import { useBorrador } from "@/lib/local/borrador";
+import { AvisoBorrador } from "@/components/sin-conexion/AvisoBorrador";
+import { SELECT_GASTOS_MES } from "@/lib/admin/pantallas/mes";
 
 type ActualizarGasto = Database["public"]["Tables"]["gastos"]["Update"];
 type InsertarGasto = Database["public"]["Tables"]["gastos"]["Insert"];
@@ -71,8 +75,13 @@ export function CierreMes({
   // este componente (solo en las reglas de cobro) — no es un olvido de la migración.
   const usaPresupuesto = conceptos.some((c) => c.activo && c.modo.startsWith("presupuesto"));
 
-  const [gastos, setGastos] = useState<GastoAdmin[]>([]);
+  // Cambio 3: sin conexión, los gastos del mes abierto salen de la copia y la
+  // previa del reparto (simular_cierre, que calcula la base) no se pide.
+  const copia = useCopiaLocal();
+  const [gastos, setGastos] = useState<GastoAdmin[]>(copia?.gastosAbierto ?? []);
   const [nuevo, setNuevo] = useState({ concepto: "", referencia: "", monto: "", categoria: "" });
+  // Cambio 3 (plan, sección 3): el gasto a medio escribir no se pierde.
+  const borradorGasto = useBorrador(`mes.gasto·${edificioId}`, nuevo, setNuevo, (b) => !b.concepto.trim() && !b.monto.trim() && !b.referencia.trim());
   const [abrir, setAbrir] = useState({ anio: new Date().getFullYear(), mes: new Date().getMonth() + 1, tasa: "", presupuesto: "" });
   const [correccion, setCorreccion] = useState({ presupuesto: "", tasa: "" });
   const [previa, setPrevia] = useState<SimulacionCierre[] | null>(null);
@@ -118,7 +127,7 @@ export function CierreMes({
     const supabase = crearClienteNavegador();
     const { data, error } = await supabase
       .from("gastos")
-      .select("id,concepto,referencia,monto,tipo,unidad_id,bolsillo,categoria_id,orden")
+      .select(SELECT_GASTOS_MES)
       .eq("periodo_id", periodoAbierto.id)
       .order("orden")
       .order("creado_en");
@@ -141,11 +150,11 @@ export function CierreMes({
   }
 
   useEffect(() => {
-    if (!periodoAbierto) return;
+    if (!periodoAbierto || copia) return;
     const supabase = crearClienteNavegador();
     supabase
       .from("gastos")
-      .select("id,concepto,referencia,monto,tipo,unidad_id,bolsillo,categoria_id,orden")
+      .select(SELECT_GASTOS_MES)
       .eq("periodo_id", periodoAbierto.id)
       .order("orden")
       .order("creado_en")
@@ -173,7 +182,7 @@ export function CierreMes({
   ].join("|");
 
   useEffect(() => {
-    if (!periodoAbierto || !simulable) return;
+    if (!periodoAbierto || !simulable || copia) return;
     const supabase = crearClienteNavegador();
     supabase.rpc("simular_cierre", { p_periodo: periodoAbierto.id }).then(({ data, error }) => {
       if (error) {
@@ -304,6 +313,7 @@ export function CierreMes({
       bolsillo: "condominio",
     });
     if (error) return fallo(error);
+    borradorGasto.limpiar();
     setNuevo({ ...nuevo, concepto: "", referencia: "", monto: "" });
     cargarGastos();
   }
@@ -576,6 +586,7 @@ export function CierreMes({
                 </Button>
               </div>
 
+              <AvisoBorrador {...borradorGasto} />
               <div className="gasto-nuevo" style={{ display: "grid", gap: 10, gridTemplateColumns: "2fr 1.4fr 1.4fr 1fr auto", alignItems: "end", margin: "14px 0" }}>
                 <Campo etiqueta="Concepto">
                   <Input value={nuevo.concepto} onChange={(e) => setNuevo({ ...nuevo, concepto: e.target.value })} placeholder="Vigilancia" />
@@ -749,6 +760,13 @@ export function CierreMes({
                 </table>
               </div>
             </div>
+          )}
+
+          {copia && periodoAbierto && (
+            <Aviso tono="azul" titulo="La previa del reparto necesita conexión">
+              El reparto de cada unidad lo calcula el sistema. Sin conexión puede ver los gastos
+              cargados; la previa y el cierre del mes vuelven cuando vuelva internet.
+            </Aviso>
           )}
 
           {!simulable && (
